@@ -1,0 +1,31 @@
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f9fafe;
+  color: #333;
+  margin: 0;
+  padding: 20px;
+}
+
+.icon-button {
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+  transition: transform 0.2s ease, filter 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.icon-button img {
+  width: 20px;
+  height: 20px;
+}
+
+.icon-button:hover {
+  transform: scale(1.2);
+}
+
+.icon-button:active {
+  filter: brightness(0.7);
+}
