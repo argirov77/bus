@@ -19,7 +19,6 @@ function App() {
           <li><Link to="/stops">Stops</Link></li>
           <li><Link to="/routes">Routes</Link></li>
           <li><Link to="/pricelists">Pricelists</Link></li>
-          <li><Link to="/prices">Prices</Link></li>
           <li><Link to="/tours">Tours</Link></li>
           <li><Link to="/passengers">Passengers</Link></li>
           <li><Link to="/tickets">Tickets</Link></li>
