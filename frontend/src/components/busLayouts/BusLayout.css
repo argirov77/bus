@@ -1,0 +1,41 @@
+.bus-layout {
+    margin: 20px 0;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+    text-align: center;
+  }
+  
+  .bus-row {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 8px;
+  }
+  
+  .bus-seat {
+    width: 40px;
+    height: 40px;
+    line-height: 40px;
+    border-radius: 4px;
+    background-color: #4caf50;
+    color: #fff;
+    margin: 4px;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+  
+  .bus-seat:hover {
+    transform: scale(1.1);
+  }
+  
+  .bus-seat.selected {
+    background-color: #42a5f5;
+  }
+  
+  .bus-empty {
+    width: 40px;
+    height: 40px;
+    margin: 4px;
+  }
+  

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # Импортируем все роутеры
-from routers import stop, route, pricelist, prices, tour, passenger, ticket, available, seat, search
+from routers import stop, route, pricelist, prices, tour, passenger, report, available, seat, search, ticket
 
 app = FastAPI()
 
@@ -24,6 +24,7 @@ app.include_router(prices.router)
 app.include_router(tour.router)
 app.include_router(passenger.router)
 app.include_router(ticket.router)
+app.include_router(report.router)
 app.include_router(available.router)
 app.include_router(seat.router)
 app.include_router(search.router)
