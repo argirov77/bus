@@ -4,8 +4,13 @@ from models import Prices, PricesCreate
 
 router = APIRouter(prefix="/prices", tags=["prices"])
 
-@router.get("/", response_model=None)  # пока уберём response_model, чтобы вернуть любые поля
+@router.get("/", response_model=None)
 def get_prices(pricelist_id: int = None):
+    """
+    GET-запитване, което връща записите от таблицата prices.
+    Ако е зададен pricelist_id, връща само цените за него.
+    В резултата се връщат допълнителни полета с имена на спирките.
+    """
     conn = get_connection()
     cur = conn.cursor()
     if pricelist_id is not None:
@@ -49,89 +54,112 @@ def get_prices(pricelist_id: int = None):
 
     result = []
     for row in rows:
-        # row = [id, pricelist_id, departure_stop_id, departure_name, arrival_stop_id, arrival_name, price]
         result.append({
             "id": row[0],
             "pricelist_id": row[1],
             "departure_stop_id": row[2],
-            "departure_stop_name": row[3],   # <-- ключи с названиями
+            "departure_stop_name": row[3],
             "arrival_stop_id": row[4],
             "arrival_stop_name": row[5],
             "price": row[6]
         })
-
     return result
-
-
 
 @router.post("/", response_model=Prices)
 def create_price(price_data: PricesCreate):
+    """
+    Създава нов запис в таблицата prices и връща данните за създадената цена.
+    """
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO prices (pricelist_id, departure_stop_id, arrival_stop_id, price) VALUES (%s, %s, %s, %s) RETURNING id;",
-        (
-            price_data.pricelist_id,
-            price_data.departure_stop_id,
-            price_data.arrival_stop_id,
-            price_data.price,
+    try:
+        cur.execute(
+            """
+            INSERT INTO prices (pricelist_id, departure_stop_id, arrival_stop_id, price)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id;
+            """,
+            (
+                price_data.pricelist_id,
+                price_data.departure_stop_id,
+                price_data.arrival_stop_id,
+                price_data.price,
+            )
         )
-    )
-    new_id = cur.fetchone()[0]
-    conn.commit()
-    cur.close()
-    conn.close()
-    return {"id": new_id, **price_data.dict()}
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        return {"id": new_id, **price_data.dict()}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
 
 @router.put("/{price_id}", response_model=Prices)
 def update_price(price_id: int, price_data: PricesCreate):
+    """
+    Обновява запис в таблицата prices и връща обновената цена.
+    """
     conn = get_connection()
     cur = conn.cursor()
-    # Обновляем запись в таблице prices
-    cur.execute(
-        """
-        UPDATE prices
-        SET pricelist_id = %s,
-            departure_stop_id = %s,
-            arrival_stop_id = %s,
-            price = %s
-        WHERE id = %s
-        RETURNING id, pricelist_id, departure_stop_id, arrival_stop_id, price;
-        """,
-        (
-            price_data.pricelist_id,
-            price_data.departure_stop_id,
-            price_data.arrival_stop_id,
-            price_data.price,
-            price_id
+    try:
+        cur.execute(
+            """
+            UPDATE prices
+            SET pricelist_id = %s,
+                departure_stop_id = %s,
+                arrival_stop_id = %s,
+                price = %s
+            WHERE id = %s
+            RETURNING id, pricelist_id, departure_stop_id, arrival_stop_id, price;
+            """,
+            (
+                price_data.pricelist_id,
+                price_data.departure_stop_id,
+                price_data.arrival_stop_id,
+                price_data.price,
+                price_id
+            )
         )
-    )
-    updated_row = cur.fetchone()
-    conn.commit()
-    cur.close()
-    conn.close()
-    if updated_row is None:
-        raise HTTPException(status_code=404, detail="Price not found")
-    return {
-        "id": updated_row[0],
-        "pricelist_id": updated_row[1],
-        "departure_stop_id": updated_row[2],
-        "arrival_stop_id": updated_row[3],
-        "price": updated_row[4]
-    }
+        updated_row = cur.fetchone()
+        conn.commit()
+        if updated_row is None:
+            raise HTTPException(status_code=404, detail="Price not found")
+        return {
+            "id": updated_row[0],
+            "pricelist_id": updated_row[1],
+            "departure_stop_id": updated_row[2],
+            "arrival_stop_id": updated_row[3],
+            "price": updated_row[4]
+        }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
 
 @router.delete("/{price_id}")
 def delete_price(price_id: int):
+    """
+    Изтрива запис от таблицата prices и връща информация за изтрития запис.
+    """
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute(
-        "DELETE FROM prices WHERE id = %s RETURNING id;",
-        (price_id,)
-    )
-    deleted_row = cur.fetchone()
-    conn.commit()
-    cur.close()
-    conn.close()
-    if deleted_row is None:
-        raise HTTPException(status_code=404, detail="Price not found")
-    return {"deleted_id": deleted_row[0], "detail": "Price deleted"}
+    try:
+        cur.execute(
+            "DELETE FROM prices WHERE id = %s RETURNING id;",
+            (price_id,)
+        )
+        deleted_row = cur.fetchone()
+        conn.commit()
+        if deleted_row is None:
+            raise HTTPException(status_code=404, detail="Price not found")
+        return {"deleted_id": deleted_row[0], "detail": "Price deleted"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()

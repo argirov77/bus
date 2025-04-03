@@ -1,8 +1,8 @@
 from pydantic import BaseModel
 from datetime import datetime, date
-from typing import Optional
+from typing import Optional, List
 
-# --- Модели для Stop ---
+# --- Модели за Stop ---
 class StopBase(BaseModel):
     stop_name: str
 
@@ -12,9 +12,9 @@ class StopCreate(StopBase):
 class Stop(StopBase):
     id: int
     class Config:
-        from_attributes = True  # для Pydantic v2 (для v1  orm_mode = True)
+        from_attributes = True  # за Pydantic v2
 
-# --- Модели для Route ---
+# --- Модели за Route ---
 class RouteBase(BaseModel):
     name: str
 
@@ -26,7 +26,7 @@ class Route(RouteBase):
     class Config:
         from_attributes = True
 
-# --- Модели для RouteStop ---
+# --- Модели за RouteStop ---
 class RouteStopBase(BaseModel):
     route_id: int
     stop_id: int
@@ -42,7 +42,7 @@ class RouteStop(RouteStopBase):
     class Config:
         from_attributes = True
 
-# --- Модели для Pricelist ---
+# --- Модели за Pricelist ---
 class PricelistBase(BaseModel):
     name: str
 
@@ -54,7 +54,7 @@ class Pricelist(PricelistBase):
     class Config:
         from_attributes = True
 
-# --- Модели для Prices ---
+# --- Модели за Prices ---
 class PricesBase(BaseModel):
     pricelist_id: int
     departure_stop_id: int
@@ -69,22 +69,25 @@ class Prices(PricesBase):
     class Config:
         from_attributes = True
 
-# --- Модели для Tour ---
+# --- Модели за Tour ---
+# За вход при създаване използваме layout_variant и active_seats, а общият брой места се пресмята на бекенда
 class TourBase(BaseModel):
     route_id: int
     pricelist_id: int
     date: date
-    seats: int
+    layout_variant: int  # избран вариант на разположение (напр. 1 – Neoplan, 2 – Travego)
 
 class TourCreate(TourBase):
-    pass
+    active_seats: List[int]  # номера на активните места за продажба
 
+# При извеждане се връща и изчисленият общ брой места (seats)
 class Tour(TourBase):
     id: int
+    seats: int
     class Config:
         from_attributes = True
 
-# --- Модели для Passenger ---
+# --- Модели за Passenger ---
 class PassengerBase(BaseModel):
     name: str
     phone: Optional[str] = None
@@ -98,7 +101,7 @@ class Passenger(PassengerBase):
     class Config:
         from_attributes = True
 
-# --- Модели для Ticket ---
+# --- Модели за Ticket ---
 class TicketBase(BaseModel):
     tour_id: int
     seat_id: int
@@ -114,7 +117,7 @@ class Ticket(TicketBase):
     class Config:
         from_attributes = True
 
-# --- Модели для Available ---
+# --- Модели за Available ---
 class AvailableBase(BaseModel):
     tour_id: int
     departure_stop_id: int
@@ -129,11 +132,11 @@ class Available(AvailableBase):
     class Config:
         from_attributes = True
 
-# --- Модели для Seat ---
+# --- Модели за Seat ---
 class SeatBase(BaseModel):
     tour_id: int
     seat_num: int
-    available: str  
+    available: str  # Низ, съдържащ свободните сегменти, напр. "1234" или "0" ако мястото е деактивирано
 
 class SeatCreate(SeatBase):
     pass
