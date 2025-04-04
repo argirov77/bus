@@ -10,7 +10,7 @@ import addIcon from "../assets/icons/add.png";
 import saveIcon from "../assets/icons/save.png";
 import cancelIcon from "../assets/icons/cancel.png";
 
-export default function ToursPage() {
+function ToursPage() {
   const [tours, setTours] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [pricelists, setPricelists] = useState([]);
@@ -20,11 +20,11 @@ export default function ToursPage() {
     route_id: "",
     pricelist_id: "",
     date: "",
-    layout_variant: "",   // По умолчанию пусто
-    activeSeats: [],
+    layout_variant: "",
+    activeSeats: []
   });
 
-  // Данные для редактирования
+  // Данные для редактирования тура
   const [editingTourId, setEditingTourId] = useState(null);
   const [editingTourData, setEditingTourData] = useState({
     route_id: "",
@@ -33,116 +33,107 @@ export default function ToursPage() {
     layout_variant: "",
     activeSeats: []
   });
+  // Состояние раскладки мест для редактирования тура (полученное с сервера)
+  const [editingTourSeats, setEditingTourSeats] = useState([]);
 
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = () => {
-    axios.get("http://127.0.0.1:8000/tours").then((res) => setTours(res.data));
-    axios.get("http://127.0.0.1:8000/routes").then((res) => setRoutes(res.data));
-    axios.get("http://127.0.0.1:8000/pricelists").then((res) => setPricelists(res.data));
+    axios.get("http://127.0.0.1:8000/tours")
+      .then(res => setTours(res.data))
+      .catch(err => console.error("Ошибка загрузки туров:", err));
+    axios.get("http://127.0.0.1:8000/routes")
+      .then(res => setRoutes(res.data))
+      .catch(err => console.error("Ошибка загрузки маршрутов:", err));
+    axios.get("http://127.0.0.1:8000/pricelists")
+      .then(res => setPricelists(res.data))
+      .catch(err => console.error("Ошибка загрузки прайслистов:", err));
   };
 
-  // ----------------------------------
-  // Обработчики для создания нового тура
-  // ----------------------------------
+  // При входе в режим редактирования загружаем актуальную раскладку мест для выбранного тура
+  useEffect(() => {
+    if (editingTourId) {
+      axios.get("http://127.0.0.1:8000/seat", {
+        params: { tour_id: editingTourId, adminMode: 1 }
+      })
+      .then(res => setEditingTourSeats(res.data.seats))
+      .catch(err => console.error("Ошибка загрузки мест для редактирования:", err));
+    }
+  }, [editingTourId]);
+
   const handleToggleSeatNew = (seatNum) => {
-    setNewTour((prev) => ({
+    setNewTour(prev => ({
       ...prev,
       activeSeats: prev.activeSeats.includes(seatNum)
-        ? prev.activeSeats.filter((s) => s !== seatNum)
-        : [...prev.activeSeats, seatNum],
+        ? prev.activeSeats.filter(s => s !== seatNum)
+        : [...prev.activeSeats, seatNum]
     }));
   };
 
   const handleCreateTour = (e) => {
     e.preventDefault();
-    axios
-      .post("http://127.0.0.1:8000/tours", {
-        route_id: Number(newTour.route_id),
-        pricelist_id: Number(newTour.pricelist_id),
-        date: newTour.date,
-        layout_variant: Number(newTour.layout_variant),
-        active_seats: newTour.activeSeats
-      })
-      .then(() => {
-        loadData();
-        setNewTour({
-          route_id: "",
-          pricelist_id: "",
-          date: "",
-          layout_variant: "",
-          activeSeats: []
-        });
-      })
-      .catch((err) => console.error("Ошибка при создании тура:", err));
+    axios.post("http://127.0.0.1:8000/tours", {
+      route_id: Number(newTour.route_id),
+      pricelist_id: Number(newTour.pricelist_id),
+      date: newTour.date,
+      layout_variant: Number(newTour.layout_variant),
+      active_seats: newTour.activeSeats
+    })
+    .then(() => {
+      loadData();
+      setNewTour({ route_id: "", pricelist_id: "", date: "", layout_variant: "", activeSeats: [] });
+    })
+    .catch(err => console.error("Ошибка создания тура:", err));
   };
 
-  // ----------------------------------
-  // Удаление тура
-  // ----------------------------------
   const handleDeleteTour = (tourId) => {
     axios.delete(`http://127.0.0.1:8000/tours/${tourId}`)
-      .then(() => {
-        setTours(tours.filter(t => t.id !== tourId));
-      })
+      .then(() => setTours(tours.filter(t => t.id !== tourId)))
       .catch(err => console.error("Ошибка удаления тура:", err));
   };
 
-  // ----------------------------------
-  // Редактирование тура
-  // ----------------------------------
   const handleEditTour = (tour) => {
     setEditingTourId(tour.id);
-    // Если хотим сохранить ранее выбранные места, нужно получить их с сервера
-    // или хранить в tour. Но сейчас просто обнулим activeSeats.
     setEditingTourData({
       ...tour,
       layout_variant: String(tour.layout_variant || ""),
-      activeSeats: []
+      activeSeats: [] // Если API не возвращает активные места, можно оставить пустым или подгрузить их отдельно
     });
   };
 
   const handleToggleSeatEdit = (seatNum) => {
-    setEditingTourData((prev) => ({
+    setEditingTourData(prev => ({
       ...prev,
       activeSeats: prev.activeSeats.includes(seatNum)
-        ? prev.activeSeats.filter((s) => s !== seatNum)
-        : [...prev.activeSeats, seatNum],
+        ? prev.activeSeats.filter(s => s !== seatNum)
+        : [...prev.activeSeats, seatNum]
     }));
   };
 
   const handleSaveEdit = (tourId) => {
-    axios
-      .put(`http://127.0.0.1:8000/tours/${tourId}`, {
-        route_id: Number(editingTourData.route_id),
-        pricelist_id: Number(editingTourData.pricelist_id),
-        date: editingTourData.date,
-        layout_variant: Number(editingTourData.layout_variant),
-        active_seats: editingTourData.activeSeats
-      })
-      .then(() => {
-        loadData();
-        setEditingTourId(null);
-      })
-      .catch((err) => console.error("Ошибка обновления тура:", err));
+    axios.put(`http://127.0.0.1:8000/tours/${tourId}`, {
+      route_id: Number(editingTourData.route_id),
+      pricelist_id: Number(editingTourData.pricelist_id),
+      date: editingTourData.date,
+      layout_variant: Number(editingTourData.layout_variant),
+      active_seats: editingTourData.activeSeats
+    })
+    .then(() => {
+      loadData();
+      setEditingTourId(null);
+      setEditingTourSeats([]);
+    })
+    .catch(err => console.error("Ошибка обновления тура:", err));
   };
 
   const handleCancelEdit = () => {
     setEditingTourId(null);
-    setEditingTourData({
-      route_id: "",
-      pricelist_id: "",
-      date: "",
-      layout_variant: "",
-      activeSeats: []
-    });
+    setEditingTourData({ route_id: "", pricelist_id: "", date: "", layout_variant: "", activeSeats: [] });
+    setEditingTourSeats([]);
   };
 
-  // ----------------------------------
-  // Рендер
-  // ----------------------------------
   return (
     <div className="container">
       <h2>Рейсы (Туры)</h2>
@@ -157,7 +148,7 @@ export default function ToursPage() {
           </tr>
         </thead>
         <tbody>
-          {tours.map((tour) => {
+          {tours.map(tour => {
             const isEditing = (tour.id === editingTourId);
             return (
               <tr key={tour.id}>
@@ -170,12 +161,12 @@ export default function ToursPage() {
                       }
                     >
                       <option value="">Маршрут</option>
-                      {routes.map((r) => (
+                      {routes.map(r => (
                         <option key={r.id} value={r.id}>{r.name}</option>
                       ))}
                     </select>
                   ) : (
-                    routes.find((r) => r.id === tour.route_id)?.name || tour.route_id
+                    routes.find(r => r.id === tour.route_id)?.name || tour.route_id
                   )}
                 </td>
                 <td>
@@ -187,12 +178,12 @@ export default function ToursPage() {
                       }
                     >
                       <option value="">Прайс-лист</option>
-                      {pricelists.map((p) => (
+                      {pricelists.map(p => (
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
                     </select>
                   ) : (
-                    pricelists.find((p) => p.id === tour.pricelist_id)?.name || tour.pricelist_id
+                    pricelists.find(p => p.id === tour.pricelist_id)?.name || tour.pricelist_id
                   )}
                 </td>
                 <td>
@@ -213,11 +204,7 @@ export default function ToursPage() {
                     <select
                       value={editingTourData.layout_variant}
                       onChange={(e) =>
-                        setEditingTourData({
-                          ...editingTourData,
-                          layout_variant: e.target.value,
-                          activeSeats: []
-                        })
+                        setEditingTourData({ ...editingTourData, layout_variant: e.target.value, activeSeats: [] })
                       }
                     >
                       <option value="">(Не выбрано)</option>
@@ -228,18 +215,22 @@ export default function ToursPage() {
                     tour.layout_variant === 1 ? "Neoplan" : "Travego"
                   )}
                 </td>
-                <td>
+                <td className="actions-cell">
                   {isEditing ? (
                     <>
-                      <button onClick={() => handleSaveEdit(tour.id)}>Сохранить</button>
-                      <button onClick={handleCancelEdit}>Отмена</button>
+                      <button className="icon-btn" onClick={() => handleSaveEdit(tour.id)}>
+                        <img src={saveIcon} alt="Сохранить" />
+                      </button>
+                      <button className="icon-btn" onClick={handleCancelEdit}>
+                        <img src={cancelIcon} alt="Отменить" />
+                      </button>
                     </>
                   ) : (
                     <>
-                      <button onClick={() => handleEditTour(tour)}>
+                      <button className="icon-btn" onClick={() => handleEditTour(tour)}>
                         <img src={editIcon} alt="Редактировать" />
                       </button>
-                      <button onClick={() => handleDeleteTour(tour.id)}>
+                      <button className="icon-btn" onClick={() => handleDeleteTour(tour.id)}>
                         <img src={deleteIcon} alt="Удалить" />
                       </button>
                     </>
@@ -251,33 +242,22 @@ export default function ToursPage() {
         </tbody>
       </table>
 
-      {/* Если в режиме редактирования выбрана раскладка, отрисуем схему (для пересоздания activeSeats) */}
       {editingTourId && editingTourData.layout_variant && (
         <div style={{ marginTop: "20px" }}>
           <h4>Редактирование мест</h4>
           {editingTourData.layout_variant === "1" ? (
             <BusLayoutNeoplan
               selectedSeats={editingTourData.activeSeats}
-              toggleSeat={seatNum => {
-                setEditingTourData(prev => ({
-                  ...prev,
-                  activeSeats: prev.activeSeats.includes(seatNum)
-                    ? prev.activeSeats.filter(s => s !== seatNum)
-                    : [...prev.activeSeats, seatNum]
-                }));
-              }}
+              seats={editingTourSeats}
+              toggleSeat={(seatNum) => handleToggleSeatEdit(seatNum)}
+              interactive={true}
             />
           ) : (
             <BusLayoutTravego
               selectedSeats={editingTourData.activeSeats}
-              toggleSeat={seatNum => {
-                setEditingTourData(prev => ({
-                  ...prev,
-                  activeSeats: prev.activeSeats.includes(seatNum)
-                    ? prev.activeSeats.filter(s => s !== seatNum)
-                    : [...prev.activeSeats, seatNum]
-                }));
-              }}
+              seats={editingTourSeats}
+              toggleSeat={(seatNum) => handleToggleSeatEdit(seatNum)}
+              interactive={true}
             />
           )}
         </div>
@@ -291,7 +271,7 @@ export default function ToursPage() {
           onChange={(e) => setNewTour({ ...newTour, route_id: e.target.value })}
         >
           <option value="">Маршрут</option>
-          {routes.map((r) => (
+          {routes.map(r => (
             <option key={r.id} value={r.id}>{r.name}</option>
           ))}
         </select>
@@ -302,7 +282,7 @@ export default function ToursPage() {
           onChange={(e) => setNewTour({ ...newTour, pricelist_id: e.target.value })}
         >
           <option value="">Прайс-лист</option>
-          {pricelists.map((p) => (
+          {pricelists.map(p => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
@@ -325,18 +305,35 @@ export default function ToursPage() {
           <option value="2">Travego</option>
         </select>
 
-        {/* Схема автобуса показываем только если выбрана раскладка */}
         {newTour.layout_variant && (
           <div style={{ flexBasis: "100%" }}>
             {newTour.layout_variant === "1" ? (
               <BusLayoutNeoplan
                 selectedSeats={newTour.activeSeats}
-                toggleSeat={handleToggleSeatNew}
+                seats={[]}  // Если нет отдельного API – оставляем пустым
+                toggleSeat={(seatNum) =>
+                  setNewTour(prev => ({
+                    ...prev,
+                    activeSeats: prev.activeSeats.includes(seatNum)
+                      ? prev.activeSeats.filter(s => s !== seatNum)
+                      : [...prev.activeSeats, seatNum]
+                  }))
+                }
+                interactive={true}
               />
             ) : (
               <BusLayoutTravego
                 selectedSeats={newTour.activeSeats}
-                toggleSeat={handleToggleSeatNew}
+                seats={[]}  // Аналогично
+                toggleSeat={(seatNum) =>
+                  setNewTour(prev => ({
+                    ...prev,
+                    activeSeats: prev.activeSeats.includes(seatNum)
+                      ? prev.activeSeats.filter(s => s !== seatNum)
+                      : [...prev.activeSeats, seatNum]
+                  }))
+                }
+                interactive={true}
               />
             )}
           </div>
@@ -349,3 +346,5 @@ export default function ToursPage() {
     </div>
   );
 }
+
+export default ToursPage;

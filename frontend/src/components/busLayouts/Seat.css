@@ -1,0 +1,24 @@
+.seat {
+    margin: 3px;
+    padding: 10px;
+    border-radius: 4px;
+    width: 40px;
+    height: 40px;
+    border: none;
+  }
+  
+  .seat.available {
+    background-color: #a5d6a7; /* зелёный */
+    cursor: pointer;
+  }
+  
+  .seat.occupied {
+    background-color: #ef5350; /* красный */
+    cursor: not-allowed;
+  }
+  
+  .seat.blocked {
+    background-color: #cccccc; /* серый */
+    cursor: not-allowed;
+  }
+  

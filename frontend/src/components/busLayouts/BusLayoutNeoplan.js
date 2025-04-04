@@ -1,9 +1,7 @@
 import React from "react";
-import "./BusLayout.css";
 
-// Пример матрицы для автобуса Neoplan (46 мест)
-// Каждая строка – это ряд мест, где null обозначает отсутствие места (например, проход)
-const layout = [
+// Пример схемы Neoplan (по 5 элементов в ряду, где null — проход)
+const layoutNeoplan = [
   [1, 2, null, 3, 4],
   [5, 6, null, 7, 8],
   [9, 10, null, 11, 12],
@@ -15,34 +13,53 @@ const layout = [
   [33, 34, null, 35, 36],
   [37, 38, null, 39, 40],
   [41, 42, null, 43, 44],
-  [45, 46, null, null, null]
+  [45, 46, null, null,null,],
 ];
 
-const BusLayoutNeoplan = ({ selectedSeats, toggleSeat }) => {
+function BusLayoutNeoplan({
+  selectedSeats = [], // массив номеров сидений, которые считаем "выбранными"
+  seats = [],         // здесь можно было бы получить статусы мест (если нужно)
+  toggleSeat,         // функция (seatNum) => void
+  interactive = false // флаг, можно ли кликать по местам
+}) {
+  // Обработчик клика по месту
+  const handleClick = (seatNum) => {
+    if (!interactive) return; // Если не интерактивно, игнорируем клики
+    if (toggleSeat) {
+      toggleSeat(seatNum);
+    }
+  };
+
   return (
-    <div className="bus-layout">
-      <h4>Neoplan Layout (46 мест)</h4>
-      {layout.map((row, rowIndex) => (
-        <div key={rowIndex} className="bus-row">
-          {row.map((seat, colIndex) => {
-            if (seat === null) {
-              return <div key={colIndex} className="bus-empty"></div>;
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      {layoutNeoplan.map((row, rowIndex) => (
+        <div key={rowIndex} style={{ display: "flex", marginBottom: "4px" }}>
+          {row.map((seatNum, seatIndex) => {
+            if (seatNum === null) {
+              // Это проход
+              return <div key={seatIndex} style={{ width: "20px" }} />;
             }
-            const isSelected = selectedSeats.includes(seat);
+            const isSelected = selectedSeats.includes(seatNum);
             return (
-              <div
-                key={colIndex}
-                className={`bus-seat ${isSelected ? "selected" : "available"}`}
-                onClick={() => toggleSeat(seat)}
+              <button
+                key={seatIndex}
+                onClick={() => handleClick(seatNum)}
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  marginRight: "4px",
+                  backgroundColor: isSelected ? "green" : "#ccc",
+                  cursor: interactive ? "pointer" : "default",
+                }}
               >
-                {seat}
-              </div>
+                {seatNum}
+              </button>
             );
           })}
         </div>
       ))}
     </div>
   );
-};
+}
 
 export default BusLayoutNeoplan;
