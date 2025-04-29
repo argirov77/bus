@@ -8,7 +8,7 @@ import ToursPage from "./pages/ToursPage";
 import PassengersPage from "./pages/PassengersPage";
 import ReportPage from "./pages/ReportPage";
 import AvailablePage from "./pages/AvailablePage";
-import SeatsPage from "./pages/SeatsPage";
+
 import './App.css'; 
 
 function App() {
@@ -24,7 +24,7 @@ function App() {
           <li><Link to="/report">Report</Link></li>
           <li><Link to="/available">Available</Link></li>
           <li><Link to="/search">Search</Link></li>
-          <li><Link to="/seats">Seats</Link></li>
+        
         </ul>
       </nav>
       <Routes>
@@ -36,7 +36,7 @@ function App() {
         <Route path="/report" element={<ReportPage />} />
         <Route path="/available" element={<AvailablePage />} />
         <Route path="/search" element={<SearchPage />} />
-        <Route path="/seats" element={<SeatsPage />} />
+       
       </Routes>
     </Router>
   );

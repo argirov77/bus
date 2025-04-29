@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # Импортируем все роутеры
 from routers import stop, route, pricelist, prices, tour, passenger, report, available, seat, search, ticket
+from routers.ticket_admin import router as admin_tickets_router
+
 
 app = FastAPI()
 
@@ -28,6 +30,7 @@ app.include_router(report.router)
 app.include_router(available.router)
 app.include_router(seat.router)
 app.include_router(search.router)
+app.include_router(admin_tickets_router)
 
 if __name__ == "__main__":
     import uvicorn
