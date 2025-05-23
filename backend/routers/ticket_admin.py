@@ -1,8 +1,6 @@
-# backend/app/routers/ticket_admin.py
-
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict
 from database import get_connection
 
 router = APIRouter(prefix="/admin/tickets", tags=["admin_tickets"])
@@ -27,24 +25,24 @@ class TicketUpdate(BaseModel):
     arrival_stop_id: Optional[int]
 
 
+class TicketReassign(BaseModel):
+    ticket_id: int
+    to_seat: int
+
+
 @router.get("/", response_model=List[TicketInfo])
 def list_tickets(tour_id: int = Query(..., description="ID рейса")):
     """
-    Возвращает список проданных билетов для данного тура.
+    Список проданных билетов для тура.
     """
     conn = get_connection()
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT 
-              t.id,
-              s.seat_num,
-              t.passenger_id,
-              p.name,
-              p.phone,
-              p.email,
-              t.departure_stop_id,
-              t.arrival_stop_id
+            SELECT
+              t.id, s.seat_num, t.passenger_id,
+              p.name, p.phone, p.email,
+              t.departure_stop_id, t.arrival_stop_id
             FROM ticket t
             JOIN seat s      ON s.id = t.seat_id
             JOIN passenger p ON p.id = t.passenger_id
@@ -73,58 +71,53 @@ def list_tickets(tour_id: int = Query(..., description="ID рейса")):
 @router.put("/{ticket_id}", response_model=TicketInfo)
 def update_ticket(ticket_id: int, data: TicketUpdate):
     """
-    Частичное обновление информации о пассажире и/или остановок в билете.
+    Частичное обновление данных пассажира и/или остановок в билете.
     """
     conn = get_connection()
     cur = conn.cursor()
     try:
-        # 1) Убедимся, что билет существует, и получим passenger_id
+        # passenger data
         cur.execute("SELECT passenger_id FROM ticket WHERE id = %s", (ticket_id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "Ticket not found")
         passenger_id = row[0]
 
-        # 2) Обновляем данные пассажира
         if any([data.passenger_name, data.passenger_phone, data.passenger_email]):
-            cur.execute(
-                """
+            cur.execute("""
                 UPDATE passenger
-                SET
-                  name  = COALESCE(%s, name),
-                  phone = COALESCE(%s, phone),
-                  email = COALESCE(%s, email)
-                WHERE id = %s
-                """,
-                (data.passenger_name, data.passenger_phone, data.passenger_email, passenger_id)
-            )
+                   SET name  = COALESCE(%s, name),
+                       phone = COALESCE(%s, phone),
+                       email = COALESCE(%s, email)
+                 WHERE id = %s
+            """, (
+                data.passenger_name,
+                data.passenger_phone,
+                data.passenger_email,
+                passenger_id
+            ))
 
-        # 3) Обновляем остановки в билете
+        # stops in ticket
         if data.departure_stop_id is not None or data.arrival_stop_id is not None:
-            cur.execute(
-                """
+            cur.execute("""
                 UPDATE ticket
-                SET
-                  departure_stop_id = COALESCE(%s, departure_stop_id),
-                  arrival_stop_id   = COALESCE(%s, arrival_stop_id)
-                WHERE id = %s
-                """,
-                (data.departure_stop_id, data.arrival_stop_id, ticket_id)
-            )
+                   SET departure_stop_id = COALESCE(%s, departure_stop_id),
+                       arrival_stop_id   = COALESCE(%s, arrival_stop_id)
+                 WHERE id = %s
+            """, (
+                data.departure_stop_id,
+                data.arrival_stop_id,
+                ticket_id
+            ))
 
         conn.commit()
 
-        # 4) Вернём обновлённую запись
+        # return updated
         cur.execute("""
-            SELECT 
-              t.id,
-              s.seat_num,
-              t.passenger_id,
-              p.name,
-              p.phone,
-              p.email,
-              t.departure_stop_id,
-              t.arrival_stop_id
+            SELECT
+              t.id, s.seat_num, t.passenger_id,
+              p.name, p.phone, p.email,
+              t.departure_stop_id, t.arrival_stop_id
             FROM ticket t
             JOIN seat s      ON s.id = t.seat_id
             JOIN passenger p ON p.id = t.passenger_id
@@ -156,18 +149,86 @@ def update_ticket(ticket_id: int, data: TicketUpdate):
         conn.close()
 
 
-@router.delete("/{ticket_id}", status_code=204)
-def delete_ticket_admin(ticket_id: int):
+@router.post("/reassign", status_code=204)
+def reassign_ticket_admin(data: TicketReassign):
     """
-    Удаляем только билет (passenger остаётся), и «освобождаем» занятые сегменты:
-    1) возвращаем их в строку seat.available
-    2) увеличиваем seats в таблице available для каждого сегмента
-    3) удаляем саму запись в ticket
+    Пересадка пассажира на другое место в том же туре:
+      1) меняем места в таблице seat: просто обмениваем их доступности (available) и номера
+      2) обновляем seat_id в ticket
+      3) не трогаем таблицу available
     """
     conn = get_connection()
     cur = conn.cursor()
     try:
-        # 1) Получаем детали по билету
+        # 1) получаем старый seat_id и его available
+        cur.execute("""
+            SELECT seat_id
+            FROM ticket
+            WHERE id = %s
+        """, (data.ticket_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Ticket not found")
+        old_seat_id = row[0]
+
+        # 2) находим новый seat_id и его available
+        cur.execute("""
+            SELECT id, available
+            FROM seat
+            WHERE tour_id = (
+                SELECT tour_id FROM ticket WHERE id = %s
+            ) AND seat_num = %s
+        """, (data.ticket_id, data.to_seat))
+        new = cur.fetchone()
+        if not new:
+            raise HTTPException(404, f"Seat {data.to_seat} not found")
+        new_seat_id, new_avail = new
+
+        # 3) получаем available старого места
+        cur.execute("SELECT available FROM seat WHERE id = %s", (old_seat_id,))
+        old_avail = cur.fetchone()[0] or ""
+
+        # 4) меняем available между двумя seats
+        cur.execute("""
+            UPDATE seat
+               SET available = CASE 
+                 WHEN id = %s THEN %s
+                 WHEN id = %s THEN %s
+               END
+             WHERE id IN (%s, %s)
+        """, (old_seat_id, new_avail, new_seat_id, old_avail, old_seat_id, new_seat_id))
+
+        # 5) обновляем ticket
+        cur.execute("""
+            UPDATE ticket
+               SET seat_id = %s
+             WHERE id = %s
+        """, (new_seat_id, data.ticket_id))
+
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(500, str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.delete("/{ticket_id}", status_code=204)
+def delete_ticket_admin(ticket_id: int):
+    """
+    Удаляем билет (паспорт остаётся) и возвращаем места:
+      1) восстанавливаем seat.available по сегментам
+      2) увеличиваем seats в таблице available только по сегментам
+      3) удаляем запись ticket
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        # детали билета
         cur.execute("""
             SELECT tour_id, seat_id, departure_stop_id, arrival_stop_id
             FROM ticket
@@ -176,65 +237,49 @@ def delete_ticket_admin(ticket_id: int):
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "Ticket not found")
-        tour_id, seat_id, dep_stop, arr_stop = row
+        tour_id, seat_id, dep, arr = row
 
-        # 2) Узнаём маршрут и все остановки по порядку
+        # маршрут и остановки
         cur.execute("SELECT route_id FROM tour WHERE id = %s", (tour_id,))
-        route = cur.fetchone()
-        if not route:
-            raise HTTPException(500, "Tour not found")
-        route_id = route[0]
-
-        cur.execute(
-            "SELECT stop_id FROM routestop WHERE route_id = %s ORDER BY \"order\"",
-            (route_id,),
-        )
+        route_id = cur.fetchone()[0]
+        cur.execute("""
+            SELECT stop_id FROM routestop
+            WHERE route_id = %s ORDER BY "order"
+        """, (route_id,))
         stops = [r[0] for r in cur.fetchall()]
 
-        idx_from = stops.index(dep_stop)
-        idx_to   = stops.index(arr_stop)
+        idx_from = stops.index(dep)
+        idx_to   = stops.index(arr)
         if idx_from >= idx_to:
-            raise HTTPException(500, "Invalid ticket stops")
+            raise HTTPException(400, "Invalid ticket stops")
 
-        # 3) Восстанавливаем сегменты
-        segments = [str(i + 1) for i in range(idx_from, idx_to)]
+        segments = [str(i+1) for i in range(idx_from, idx_to)]
 
-        # 3a) Получаем текущую строку available
+        # вернуть seat.available
         cur.execute("SELECT available FROM seat WHERE id = %s", (seat_id,))
-        avail_str = cur.fetchone()[0] or ""
-
-        # 3b) Объединяем и сортируем
-        merged = sorted(
-            set(list(avail_str) + segments),
-            key=lambda x: int(x)
-        )
+        old_avail = cur.fetchone()[0] or ""
+        merged = sorted(set(old_avail + "".join(segments)), key=int)
         new_avail = "".join(merged) if merged else "0"
-
         cur.execute(
             "UPDATE seat SET available = %s WHERE id = %s",
-            (new_avail, seat_id),
+            (new_avail, seat_id)
         )
 
-        # 4) Увеличиваем счётчики в таблице available
+        # увеличить available.seats по сегментам
         for i in range(idx_from, idx_to):
-            dep = stops[i]
-            arr = stops[i + 1]
-            cur.execute(
-                """
+            d, a = stops[i], stops[i+1]
+            cur.execute("""
                 UPDATE available
-                SET seats = seats + 1
-                WHERE tour_id = %s
-                  AND departure_stop_id = %s
-                  AND arrival_stop_id   = %s
-                """,
-                (tour_id, dep, arr),
-            )
+                   SET seats = seats + 1
+                 WHERE tour_id = %s
+                   AND departure_stop_id = %s
+                   AND arrival_stop_id   = %s
+            """, (tour_id, d, a))
 
-        # 5) Наконец, удаляем сам билет
+        # удалить билет
         cur.execute("DELETE FROM ticket WHERE id = %s", (ticket_id,))
 
         conn.commit()
-
     except HTTPException:
         conn.rollback()
         raise

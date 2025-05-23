@@ -1,4 +1,4 @@
-# tour.py
+# backend/app/routers/tour.py
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -65,7 +65,7 @@ def create_tour(tour: TourCreate):
         )
         tour_id = cur.fetchone()[0]
 
-        # Собираем все сегменты маршрута
+        # Собираем все остановки и все возможные сегменты (i<j)
         cur.execute(
             "SELECT stop_id FROM routestop WHERE route_id=%s ORDER BY \"order\"",
             (tour.route_id,),
@@ -74,13 +74,13 @@ def create_tour(tour: TourCreate):
         if len(stops) < 2:
             raise HTTPException(400, "Route must have at least 2 stops")
 
-        segments = [
+        all_segments = [
             (stops[i], stops[j])
             for i in range(len(stops) - 1)
             for j in range(i + 1, len(stops))
         ]
 
-        # Фильтруем по прайслисту
+        # Выбираем только те сегменты, что есть в данном прайслисте
         cur.execute(
             "SELECT departure_stop_id, arrival_stop_id FROM prices WHERE pricelist_id=%s",
             (tour.pricelist_id,),
@@ -88,7 +88,9 @@ def create_tour(tour: TourCreate):
         valid_segments = set(cur.fetchall())
 
         active_count = len(tour.active_seats)
-        for dep, arr in segments:
+
+        # Заполняем таблицу available
+        for dep, arr in all_segments:
             if (dep, arr) in valid_segments:
                 cur.execute(
                     """
@@ -161,12 +163,13 @@ def update_tour(tour_id: int, tour_data: TourCreate):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        # Обновляем основные поля
+        # 1) Обновляем основные поля рейса
         cur.execute(
             """
             UPDATE tour
-            SET route_id=%s, pricelist_id=%s, date=%s, layout_variant=%s
-            WHERE id=%s RETURNING id
+               SET route_id=%s, pricelist_id=%s, date=%s, layout_variant=%s
+             WHERE id=%s
+             RETURNING id
             """,
             (
                 tour_data.route_id,
@@ -179,34 +182,54 @@ def update_tour(tour_id: int, tour_data: TourCreate):
         if not cur.fetchone():
             raise HTTPException(404, "Tour not found")
 
-        # Пересчитываем доступность мест
+        # 2) Снова собираем список остановок
         cur.execute(
             "SELECT stop_id FROM routestop WHERE route_id=%s ORDER BY \"order\"",
             (tour_data.route_id,),
         )
         stops = [r[0] for r in cur.fetchall()]
-        num_seg = len(stops) - 1
-        seg_str = "".join(str(i + 1) for i in range(num_seg))
+        if len(stops) < 2:
+            raise HTTPException(400, "Route must have at least 2 stops")
+        all_segments = [
+            (stops[i], stops[j])
+            for i in range(len(stops) - 1)
+            for j in range(i + 1, len(stops))
+        ]
+
+        # 3) Считаем новое число активных кресел
         active_cnt = len(tour_data.active_seats)
 
-        # Обновляем seat.available
-        for num in range(1, {1:46,2:48}[tour_data.layout_variant] + 1):
+        # 4) Обновляем seat.available по списку active_seats
+        seg_str = "".join(str(i + 1) for i in range(len(stops) - 1))
+        total_seats = {1: 46, 2: 48}[tour_data.layout_variant]
+        for num in range(1, total_seats + 1):
             avail = seg_str if num in tour_data.active_seats else "0"
             cur.execute(
                 "UPDATE seat SET available=%s WHERE tour_id=%s AND seat_num=%s",
                 (avail, tour_id, num),
             )
 
-        # Обновляем available.seats
-        for i in range(num_seg):
-            cur.execute(
-                """
-                UPDATE available
-                SET seats=%s
-                WHERE tour_id=%s AND departure_stop_id=%s AND arrival_stop_id=%s
-                """,
-                (active_cnt, tour_id, stops[i], stops[i + 1]),
-            )
+        # 5) Обновляем таблицу available **по всем** валидным сегментам
+        #    сначала — узнаём, какие сегменты вообще есть в прайслисте
+        cur.execute(
+            "SELECT departure_stop_id, arrival_stop_id FROM prices WHERE pricelist_id=%s",
+            (tour_data.pricelist_id,),
+        )
+        valid_segments = set(cur.fetchall())
+
+        #    а затем — для каждого валидного (dep,arr) обновляем seats = active_cnt
+        for dep, arr in all_segments:
+            if (dep, arr) in valid_segments:
+                cur.execute(
+                    """
+                    UPDATE available
+                       SET seats = %s
+                     WHERE tour_id = %s
+                       AND departure_stop_id = %s
+                       AND arrival_stop_id   = %s
+                    """,
+                    (active_cnt, tour_id, dep, arr),
+                )
 
         conn.commit()
         return {
@@ -240,12 +263,12 @@ def search_tours(
         cur.execute(
             """
             SELECT t.id, t.date, a.seats, t.layout_variant
-            FROM tour t
-            JOIN available a ON a.tour_id = t.id
-            WHERE a.departure_stop_id=%s
-              AND a.arrival_stop_id=%s
-              AND t.date=%s
-              AND a.seats>0
+              FROM tour t
+              JOIN available a ON a.tour_id = t.id
+             WHERE a.departure_stop_id=%s
+               AND a.arrival_stop_id=%s
+               AND t.date=%s
+               AND a.seats>0
             """,
             (departure_stop_id, arrival_stop_id, date),
         )
