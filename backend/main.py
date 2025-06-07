@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 # Импортируем все роутеры
 from routers import stop, route, pricelist, prices, tour, passenger, report, available, seat, search, ticket
@@ -32,6 +33,9 @@ app.include_router(seat.router)
 app.include_router(search.router)
 app.include_router(admin_tickets_router)
 
+# Serve React static files
+app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
