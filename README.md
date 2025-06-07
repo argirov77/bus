@@ -1,5 +1,8 @@
 # Запуск проекта в Docker
 
+Этот репозиторий содержит бэкенд на **FastAPI** и фронтенд на **React**.
+Приложение собирается в один Docker-контейнер, который обслуживает API и статику React.
+
 ## Требования
 - [Docker](https://www.docker.com/) и [docker-compose](https://docs.docker.com/compose/)
 
@@ -12,10 +15,23 @@ docker compose build
 ```bash
 docker compose up
 ```
-После запуска приложение будет доступно на `http://localhost:8000`. API и
-фронтенд работают на одном порту.
+После запуска приложение будет доступно на `http://localhost:8000`.
 
 Для остановки выполнения используйте:
 ```bash
 docker compose down
+```
+
+## Подключение к базе данных
+В контейнере запускается PostgreSQL с настройками по умолчанию:
+- **host:** `localhost`
+- **port:** `5432`
+- **database:** `test`
+- **user:** `postgres`
+- **password:** `postgres`
+
+URL подключения доступен в переменной окружения `DATABASE_URL`. Например,
+можно подключиться через `psql`:
+```bash
+psql postgresql://postgres:postgres@localhost:5432/test
 ```
