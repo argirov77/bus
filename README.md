@@ -12,8 +12,8 @@ docker compose build
 ```bash
 docker compose up
 ```
-После запуска API будет доступно на `http://localhost:8000`,
-а фронтенд на `http://localhost:3000`.
+После запуска приложение будет доступно на `http://localhost:8000`. API и
+фронтенд работают на одном порту.
 
 Для остановки выполнения используйте:
 ```bash
