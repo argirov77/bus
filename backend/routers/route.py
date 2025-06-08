@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from typing import Optional, List
 from datetime import time
 from pydantic import BaseModel
-from database import get_connection  # Предполагается, что у вас есть database.py
+from ..database import get_connection  # Предполагается, что у вас есть database.py
 
 router = APIRouter(prefix="/routes", tags=["routes"])
 

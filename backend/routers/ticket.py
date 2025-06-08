@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
-from database import get_connection
+from ..database import get_connection
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 

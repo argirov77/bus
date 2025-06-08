@@ -1,8 +1,8 @@
 # routers/pricelists.py
 from fastapi import APIRouter, HTTPException, status
 from typing import List
-from database import get_connection
-from models import Pricelist, PricelistCreate
+from ..database import get_connection
+from ..models import Pricelist, PricelistCreate
 
 router = APIRouter(prefix="/pricelists", tags=["pricelists"])
 

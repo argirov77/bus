@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from database import get_connection
+from ..database import get_connection
 
 router = APIRouter(prefix="/available", tags=["available"])
 

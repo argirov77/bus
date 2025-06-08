@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict
-from database import get_connection
+from ..database import get_connection
 
 router = APIRouter(prefix="/admin/tickets", tags=["admin_tickets"])
 

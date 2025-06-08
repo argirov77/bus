@@ -1,6 +1,6 @@
 from fastapi import APIRouter
-from database import get_connection
-from models import Passenger, PassengerCreate
+from ..database import get_connection
+from ..models import Passenger, PassengerCreate
 
 router = APIRouter(prefix="/passengers", tags=["passengers"])
 
