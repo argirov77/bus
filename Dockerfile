@@ -13,11 +13,15 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV VENV_PATH="/opt/venv"
+ENV PATH="$VENV_PATH/bin:$PATH"
 
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m venv $VENV_PATH \
+    && $VENV_PATH/bin/pip install --upgrade pip \
+    && $VENV_PATH/bin/pip install --no-cache-dir -r requirements.txt
 
 # Copy backend code and compiled frontend
 COPY backend ./backend
