@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from database import get_connection
-from models import Prices, PricesCreate
+from ..database import get_connection
+from ..models import Prices, PricesCreate
 
 router = APIRouter(prefix="/prices", tags=["prices"])
 

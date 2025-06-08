@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Dict, Optional
 from pydantic import BaseModel
-from database import get_connection
+from ..database import get_connection
 
 router = APIRouter(prefix="/seat", tags=["seat"])
 

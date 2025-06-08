@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
 from datetime import date
-from database import get_connection
+from ..database import get_connection
 
 router = APIRouter(prefix="/tours", tags=["tours"])
 

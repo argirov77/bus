@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Query
-from database import get_connection
+from ..database import get_connection
 
 router = APIRouter(prefix="/search", tags=["search"])
 

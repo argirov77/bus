@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from database import get_connection
-from models import Stop, StopCreate
+from ..database import get_connection
+from ..models import Stop, StopCreate
 
 router = APIRouter(prefix="/stops", tags=["stops"])
 
