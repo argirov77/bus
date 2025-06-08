@@ -24,7 +24,7 @@ create_dir(routers_dir)
 
 # 2. Файл backend/main.py
 main_py = '''from fastapi import FastAPI
-from routers import stops
+from backend.routers import stops
 
 app = FastAPI()
 

@@ -3,8 +3,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 # Импортируем все роутеры
-from routers import stop, route, pricelist, prices, tour, passenger, report, available, seat, search, ticket
-from routers.ticket_admin import router as admin_tickets_router
+from backend.routers import (
+    stop,
+    route,
+    pricelist,
+    prices,
+    tour,
+    passenger,
+    report,
+    available,
+    seat,
+    search,
+    ticket,
+)
+from backend.routers.ticket_admin import router as admin_tickets_router
 
 
 app = FastAPI()

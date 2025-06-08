@@ -26,7 +26,7 @@ def main():
 from fastapi.middleware.cors import CORSMiddleware
 
 # Импортируем все роутеры
-from routers import stop, route, routestop, pricelist, prices, tour, passenger, ticket, available, seat
+from backend.routers import stop, route, routestop, pricelist, prices, tour, passenger, ticket, available, seat
 
 app = FastAPI()
 
