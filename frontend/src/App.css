@@ -1,0 +1,303 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+
+body {
+  font-family: 'Roboto', sans-serif;
+  background-color: #f4f7fc;
+  color: #344767;
+  padding: 20px;
+  margin: 0;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+h1, h2, h3, h4 {
+  color: #344767;
+}
+
+.card {
+  background: #fff;
+  padding: 12px 20px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.stop-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.stop-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.icon-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 0.2s, opacity 0.2s;
+  padding: 2px;
+}
+
+.icon-btn img {
+  width: 24px;
+  height: 24px;
+}
+
+.icon-btn:hover {
+  transform: scale(1.15);
+  opacity: 1;
+}
+
+.icon-btn:active {
+  transform: scale(0.9);
+  opacity: 0.7;
+}
+
+input, select {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  transition: border-color 0.2s;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: #4d9ef9;
+}
+
+form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+nav {
+  background-color: #fff;
+  padding: 10px 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+nav ul {
+  display: flex;
+  gap: 15px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+nav ul li a {
+  color: #344767;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+nav ul li a:hover {
+  color: #4d9ef9;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+th, td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #eee;
+  text-align: left;
+}
+
+thead {
+  background-color: #f0f2f7;
+}
+
+tbody tr:hover {
+  background-color: #fafcff;
+}
+.route-btn {
+  display: inline-flex;
+  align-items: center;
+  background-color: #344767;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.route-btn:hover {
+  background-color: #4d9ef9;
+  transform: translateY(-2px);
+}
+
+.route-btn.active {
+  background-color: #4d9ef9;
+}
+
+
+.stop-header {
+  display: grid;
+  grid-template-columns: 2fr 120px 120px 50px;
+  padding: 0 16px;
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.sortable-stop {
+  display: grid;
+  grid-template-columns: 2fr 120px 120px 50px;
+  align-items: center;
+  gap: 12px;
+  background-color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.sortable-stop input[type="time"] {
+  width: 100%;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.icon-btn img {
+  width: 20px;
+  height: 20px;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.icon-btn:hover {
+  transform: scale(1.1);
+  opacity: 1;
+}
+.styled-table {
+  width: 100%;
+  border-collapse: collapse;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+
+.styled-table th,
+.styled-table td {
+  padding: 10px;
+  text-align: left;
+}
+
+.styled-table thead {
+  background-color: #4d9ef9;
+  color: white;
+}
+
+.styled-table tbody tr {
+  background-color: #fff;
+}
+
+.styled-table tbody tr:nth-child(even) {
+  background-color: #f7fbff;
+}
+
+.styled-table tbody tr:hover {
+  background-color: #e7f2ff;
+}
+
+.icon-btn img {
+  width: 20px;
+  height: 20px;
+}
+
+.actions-cell {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.add-price-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.add-price-form select,
+.add-price-form input {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  transition: border-color 0.3s;
+}
+
+.add-price-form select:focus,
+.add-price-form input:focus {
+  border-color: #4d9ef9;
+  outline: none;
+}
+
+.add-btn {
+  background-color: #4d9ef9;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.add-btn img {
+  width: 20px;
+  height: 20px;
+}
+
+.add-btn:hover {
+  background-color: #327ad6;
+}
+.booking-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 400px;
+  margin: 20px auto;
+}
+
+.booking-form input {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.booking-form button {
+  padding: 10px 16px;
+  background-color: #4d9ef9;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.booking-form button:hover {
+  background-color: #327ad6;
+}

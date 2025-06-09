@@ -1,0 +1,275 @@
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import editIcon from "../assets/icons/edit.png";
+import deleteIcon from "../assets/icons/delete.png";
+import addIcon from "../assets/icons/add.png";
+
+function PricelistPage() {
+  const [pricelists, setPricelists] = useState([]);
+  const [selectedPricelist, setSelectedPricelist] = useState(null);
+  const [prices, setPrices] = useState([]);
+  const [newPrice, setNewPrice] = useState({ departure_stop_id: "", arrival_stop_id: "", price: "" });
+  const [stops, setStops] = useState([]);
+  const [editingPriceId, setEditingPriceId] = useState(null);
+  const [editingPriceData, setEditingPriceData] = useState({ price: "" });
+
+  // Для создания и редактирования прайс-листов
+  const [newPricelistName, setNewPricelistName] = useState("");
+  const [editingPricelistId, setEditingPricelistId] = useState(null);
+  const [editingPricelistName, setEditingPricelistName] = useState("");
+
+  useEffect(() => {
+    fetchPricelists();
+    axios.get("http://127.0.0.1:8000/stops")
+      .then(res => setStops(res.data))
+      .catch(err => console.error(err));
+  }, []);
+
+  const fetchPricelists = () => {
+    axios.get("http://127.0.0.1:8000/pricelists")
+      .then(res => setPricelists(res.data))
+      .catch(err => console.error(err));
+  };
+
+  useEffect(() => {
+    if (selectedPricelist) {
+      axios.get(`http://127.0.0.1:8000/prices?pricelist_id=${selectedPricelist.id}`)
+        .then(res => setPrices(res.data))
+        .catch(err => console.error(err));
+    } else {
+      setPrices([]);
+    }
+  }, [selectedPricelist]);
+
+  const handleSelectPricelist = (pl) => {
+    setSelectedPricelist(pl);
+    setEditingPriceId(null);
+  };
+
+  // Создание нового прайс-листа
+  const handleCreatePricelist = (e) => {
+    e.preventDefault();
+    if (!newPricelistName.trim()) return;
+    axios.post("http://127.0.0.1:8000/pricelists", { name: newPricelistName.trim() })
+      .then(res => {
+        setPricelists([...pricelists, res.data]);
+        setNewPricelistName("");
+      })
+      .catch(err => console.error(err));
+  };
+
+  // Начать редактирование существующего прайс-листа
+  const handleEditPricelist = (pl) => {
+    setEditingPricelistId(pl.id);
+    setEditingPricelistName(pl.name);
+  };
+
+  // Отмена редактирования прайс-листа
+  const handleCancelEditPricelist = () => {
+    setEditingPricelistId(null);
+    setEditingPricelistName("");
+  };
+
+  // Сохранить изменения в прайс-листе
+  const handleUpdatePricelist = (e) => {
+    e.preventDefault();
+    axios.put(`http://127.0.0.1:8000/pricelists/${editingPricelistId}`, { name: editingPricelistName.trim() })
+      .then(res => {
+        setPricelists(pricelists.map(pl => pl.id === editingPricelistId ? res.data : pl));
+        // Переселектить, если редактируемый прайс-лист активен
+        if (selectedPricelist?.id === editingPricelistId) {
+          setSelectedPricelist(res.data);
+        }
+        handleCancelEditPricelist();
+      })
+      .catch(err => console.error(err));
+  };
+
+  // Удалить прайс-лист
+  const handleDeletePricelist = (id) => {
+    axios.delete(`http://127.0.0.1:8000/pricelists/${id}`)
+      .then(() => {
+        setPricelists(pricelists.filter(pl => pl.id !== id));
+        if (selectedPricelist?.id === id) {
+          setSelectedPricelist(null);
+        }
+      })
+      .catch(err => console.error(err));
+  };
+
+  // Остальные хэндлеры работы с ценами
+  const handleCreatePrice = (e) => {
+    e.preventDefault();
+    axios.post("http://127.0.0.1:8000/prices", {
+      pricelist_id: selectedPricelist.id,
+      departure_stop_id: Number(newPrice.departure_stop_id),
+      arrival_stop_id: Number(newPrice.arrival_stop_id),
+      price: Number(newPrice.price)
+    }).then(res => {
+      setPrices([...prices, res.data]);
+      setNewPrice({ departure_stop_id: "", arrival_stop_id: "", price: "" });
+    });
+  };
+
+  const handleDeletePrice = (priceId) => {
+    axios.delete(`http://127.0.0.1:8000/prices/${priceId}`)
+      .then(() => setPrices(prices.filter(p => p.id !== priceId)));
+  };
+
+  const handleEditPrice = (priceObj) => {
+    setEditingPriceId(priceObj.id);
+    setEditingPriceData({ price: priceObj.price.toString() });
+  };
+
+  const handleUpdatePrice = (e) => {
+    e.preventDefault();
+    const updated = { ...prices.find(p => p.id === editingPriceId), price: Number(editingPriceData.price) };
+    axios.put(`http://127.0.0.1:8000/prices/${editingPriceId}`, updated)
+      .then(res => {
+        setPrices(prices.map(p => p.id === editingPriceId ? res.data : p));
+        setEditingPriceId(null);
+      });
+  };
+
+  return (
+    <div className="container">
+      <h2>Прайс-листы</h2>
+
+      {/* Форма для добавления нового прайс-листа */}
+      <form onSubmit={handleCreatePricelist} className="add-pricelist-form">
+        <input
+          type="text"
+          placeholder="Название нового прайс-листа"
+          value={newPricelistName}
+          onChange={e => setNewPricelistName(e.target.value)}
+          required
+        />
+        <button type="submit" className="icon-btn add-btn">
+          <img src={addIcon} alt="Добавить прайс-лист" />
+        </button>
+      </form>
+
+      <div className="routes-wrapper">
+        {pricelists.map(pl => (
+          <div key={pl.id} className="pricelist-item">
+            {editingPricelistId === pl.id ? (
+              <form onSubmit={handleUpdatePricelist} className="edit-pricelist-form">
+                <input
+                  type="text"
+                  value={editingPricelistName}
+                  onChange={e => setEditingPricelistName(e.target.value)}
+                  required
+                />
+                <button type="submit">✅</button>
+                <button type="button" onClick={handleCancelEditPricelist}>❌</button>
+              </form>
+            ) : (
+              <>
+                <button
+                  className={`route-btn ${selectedPricelist?.id === pl.id ? "active" : ""}`}
+                  onClick={() => handleSelectPricelist(pl)}
+                >
+                  {pl.name}
+                </button>
+                <button className="icon-btn" onClick={() => handleEditPricelist(pl)}>
+                  <img src={editIcon} alt="Редактировать прайс-лист" />
+                </button>
+                <button className="icon-btn" onClick={() => handleDeletePricelist(pl.id)}>
+                  <img src={deleteIcon} alt="Удалить прайс-лист" />
+                </button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {selectedPricelist && (
+        <>
+          <h3>Цены для: {selectedPricelist.name}</h3>
+
+          <table className="styled-table">
+            <thead>
+              <tr>
+                <th>От остановки</th>
+                <th>До остановки</th>
+                <th>Цена</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {prices.map(p => (
+                <tr key={p.id}>
+                  <td>{p.departure_stop_name || `ID: ${p.departure_stop_id}`}</td>
+                  <td>{p.arrival_stop_name || `ID: ${p.arrival_stop_id}`}</td>
+                  <td>
+                    {editingPriceId === p.id ? (
+                      <input
+                        type="number"
+                        value={editingPriceData.price}
+                        onChange={e => setEditingPriceData({ price: e.target.value })}
+                      />
+                    ) : (
+                      p.price
+                    )}
+                  </td>
+                  <td className="actions-cell">
+                    {editingPriceId === p.id ? (
+                      <>
+                        <button onClick={handleUpdatePrice}>✅</button>
+                        <button onClick={() => setEditingPriceId(null)}>❌</button>
+                      </>
+                    ) : (
+                      <>
+                        <button className="icon-btn" onClick={() => handleEditPrice(p)}>
+                          <img src={editIcon} alt="Редактировать цену" />
+                        </button>
+                        <button className="icon-btn" onClick={() => handleDeletePrice(p.id)}>
+                          <img src={deleteIcon} alt="Удалить цену" />
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <h4>Добавить новую цену</h4>
+          <form onSubmit={handleCreatePrice} className="add-price-form">
+            <select
+              required
+              value={newPrice.departure_stop_id}
+              onChange={e => setNewPrice({ ...newPrice, departure_stop_id: e.target.value })}
+            >
+              <option value="">Отправление</option>
+              {stops.map(s => <option key={s.id} value={s.id}>{s.stop_name}</option>)}
+            </select>
+
+            <select
+              required
+              value={newPrice.arrival_stop_id}
+              onChange={e => setNewPrice({ ...newPrice, arrival_stop_id: e.target.value })}
+            >
+              <option value="">Прибытие</option>
+              {stops.map(s => <option key={s.id} value={s.id}>{s.stop_name}</option>)}
+            </select>
+
+            <input
+              required
+              type="number"
+              placeholder="Цена"
+              value={newPrice.price}
+              onChange={e => setNewPrice({ ...newPrice, price: e.target.value })}
+            />
+
+            <button type="submit" className="icon-btn add-btn">
+              <img src={addIcon} alt="Добавить цену" />
+            </button>
+          </form>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default PricelistPage;
