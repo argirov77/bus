@@ -38,3 +38,16 @@ URL подключения доступен в переменной окруже
 ```bash
 psql postgresql://postgres:postgres@localhost:5432/test
 ```
+
+## Локальный запуск без Docker
+Для разработки можно запустить сервер напрямую. Используйте Python 3.12 и установите зависимости:
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+Запустите приложение из корня репозитория командой:
+```bash
+python -m uvicorn backend.main:app --reload
+```
+Важно запускать команду именно из корня проекта, чтобы работали относительные импорты из `backend`.
