@@ -1,17 +1,18 @@
-# --- STAGE 1: сборка React-приложения ---
-FROM node:18-alpine AS node_builder
+FROM node:22-slim
 
 WORKDIR /app
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
-COPY frontend ./
-RUN npm run build
 
-# --- STAGE 2: отдача статических файлов через nginx ---
-FROM nginx:stable-alpine
+# Copy package files
+COPY package*.json ./
 
-COPY --from=node_builder /app/build /usr/share/nginx/html
-# (опционально) свой конфиг nginx
-EXPOSE 80
+# Install dependencies
+RUN npm install
 
-CMD ["nginx", "-g", "daemon off;"]
+# Copy the rest of the application
+COPY . .
+
+# Expose the port
+EXPOSE 5173
+
+# Start the development server
+CMD ["npm", "start"]

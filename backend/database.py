@@ -1,15 +1,23 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
 import os
+import psycopg2
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
-DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
-DB_PORT = os.getenv("POSTGRES_PORT", "5432")
-DB_NAME = os.getenv("POSTGRES_DB", "test")
-DB_USER = os.getenv("POSTGRES_USER", "postgres")
-DB_PASS = os.getenv("POSTGRES_PASSWORD", "postgres")
+# Read the URL from the environment; if it's not set (e.g. in Docker),
+# fall back to pointing at the "db" service on port 5432.
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@db:5432/test"
+)
 
-SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+# --- SQLAlchemy setup (if you use it elsewhere) ---
+engine = create_engine(DATABASE_URL, echo=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+
+# --- psycopg2 helper for your existing routers ---
+def get_connection():
+    """
+    Returns a new psycopg2 connection using DATABASE_URL.
+    All routers that do `get_connection()` will continue to work.
+    """
+    return psycopg2.connect(DATABASE_URL)

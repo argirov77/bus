@@ -19,3 +19,5 @@ Edit
 cd frontend
 npm ci              # или: yarn install
 npm start   
+
+uvicorn backend.main:app  --host 0.0.0.0 --port 8000
