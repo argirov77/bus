@@ -14,14 +14,14 @@ services:
 
   backend:
     build:
-      context: .               
+      context: .
       dockerfile: backend/Dockerfile
     env_file:
       - .env
     depends_on:
       - db
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
 
   frontend:
     build:
