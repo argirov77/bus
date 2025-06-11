@@ -1,11 +1,13 @@
 import React, {useEffect, useState} from "react";
 import axios from "axios";
 
+import { API } from "../config";
+
 function AvailablePage() {
   const [items, setItems] = useState([]);
 
   useEffect(() => {
-    axios.get(`http://127.0.0.1:8000/available`)
+    axios.get(`${API}/available`)
       .then(response => setItems(response.data))
       .catch(error => console.error("Ошибка при получении данных:", error));
   }, []);

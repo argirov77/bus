@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
+import { API } from "../config";
+
 import BusLayoutNeoplan from "../components/busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "../components/busLayouts/BusLayoutTravego";
 import SeatAdmin         from "../components/SeatAdmin";
@@ -12,7 +14,6 @@ import deleteIcon from "../assets/icons/delete.png";
 import saveIcon   from "../assets/icons/save.png";
 import cancelIcon from "../assets/icons/cancel.png";
 
-const API = "http://127.0.0.1:8000";
 
 export default function ToursPage() {
   // — reference data —

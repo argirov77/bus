@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import "../styles/ReportPage.css";
 
+import { API } from "../config";
+
 function ReportPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -21,7 +23,7 @@ function ReportPage() {
 
   // Загружаем маршруты
   useEffect(() => {
-    axios.get("http://127.0.0.1:8000/routes")
+    axios.get(`${API}/routes`)
       .then(res => setRoutes(res.data))
       .catch(err => console.error("Ошибка загрузки маршрутов:", err));
   }, []);
@@ -29,7 +31,7 @@ function ReportPage() {
   // Загружаем рейсы по маршруту
   useEffect(() => {
     if (routeId) {
-      axios.get(`http://127.0.0.1:8000/tours?route_id=${routeId}`)
+      axios.get(`${API}/tours?route_id=${routeId}`)
         .then(res => setTours(res.data))
         .catch(err => console.error("Ошибка загрузки рейсов:", err));
     } else {
@@ -40,7 +42,7 @@ function ReportPage() {
 
   // Загружаем все остановки
   useEffect(() => {
-    axios.get("http://127.0.0.1:8000/stops")
+    axios.get(`${API}/stops`)
       .then(res => setStops(res.data))
       .catch(err => console.error("Ошибка загрузки остановок:", err));
   }, []);
@@ -53,7 +55,7 @@ function ReportPage() {
     const departureStopId = departureStop || null;
     const arrivalStopId = arrivalStop || null;
 
-    axios.post("http://127.0.0.1:8000/report/", {
+    axios.post(`${API}/report/`, {
       start_date: startDate || null,
       end_date: endDate || null,
       route_id: routeId || null,

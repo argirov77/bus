@@ -4,6 +4,8 @@ import editIcon from "../assets/icons/edit.png";
 import deleteIcon from "../assets/icons/delete.png";
 import addIcon from "../assets/icons/add.png";
 
+import { API } from "../config";
+
 function PricelistPage() {
   const [pricelists, setPricelists] = useState([]);
   const [selectedPricelist, setSelectedPricelist] = useState(null);
@@ -20,20 +22,20 @@ function PricelistPage() {
 
   useEffect(() => {
     fetchPricelists();
-    axios.get("http://127.0.0.1:8000/stops")
+    axios.get(`${API}/stops`)
       .then(res => setStops(res.data))
       .catch(err => console.error(err));
   }, []);
 
   const fetchPricelists = () => {
-    axios.get("http://127.0.0.1:8000/pricelists")
+    axios.get(`${API}/pricelists`)
       .then(res => setPricelists(res.data))
       .catch(err => console.error(err));
   };
 
   useEffect(() => {
     if (selectedPricelist) {
-      axios.get(`http://127.0.0.1:8000/prices?pricelist_id=${selectedPricelist.id}`)
+      axios.get(`${API}/prices?pricelist_id=${selectedPricelist.id}`)
         .then(res => setPrices(res.data))
         .catch(err => console.error(err));
     } else {
@@ -50,7 +52,7 @@ function PricelistPage() {
   const handleCreatePricelist = (e) => {
     e.preventDefault();
     if (!newPricelistName.trim()) return;
-    axios.post("http://127.0.0.1:8000/pricelists", { name: newPricelistName.trim() })
+    axios.post(`${API}/pricelists`, { name: newPricelistName.trim() })
       .then(res => {
         setPricelists([...pricelists, res.data]);
         setNewPricelistName("");
@@ -73,7 +75,7 @@ function PricelistPage() {
   // Сохранить изменения в прайс-листе
   const handleUpdatePricelist = (e) => {
     e.preventDefault();
-    axios.put(`http://127.0.0.1:8000/pricelists/${editingPricelistId}`, { name: editingPricelistName.trim() })
+    axios.put(`${API}/pricelists/${editingPricelistId}`, { name: editingPricelistName.trim() })
       .then(res => {
         setPricelists(pricelists.map(pl => pl.id === editingPricelistId ? res.data : pl));
         // Переселектить, если редактируемый прайс-лист активен
@@ -87,7 +89,7 @@ function PricelistPage() {
 
   // Удалить прайс-лист
   const handleDeletePricelist = (id) => {
-    axios.delete(`http://127.0.0.1:8000/pricelists/${id}`)
+    axios.delete(`${API}/pricelists/${id}`)
       .then(() => {
         setPricelists(pricelists.filter(pl => pl.id !== id));
         if (selectedPricelist?.id === id) {
@@ -100,7 +102,7 @@ function PricelistPage() {
   // Остальные хэндлеры работы с ценами
   const handleCreatePrice = (e) => {
     e.preventDefault();
-    axios.post("http://127.0.0.1:8000/prices", {
+    axios.post(`${API}/prices`, {
       pricelist_id: selectedPricelist.id,
       departure_stop_id: Number(newPrice.departure_stop_id),
       arrival_stop_id: Number(newPrice.arrival_stop_id),
@@ -112,7 +114,7 @@ function PricelistPage() {
   };
 
   const handleDeletePrice = (priceId) => {
-    axios.delete(`http://127.0.0.1:8000/prices/${priceId}`)
+    axios.delete(`${API}/prices/${priceId}`)
       .then(() => setPrices(prices.filter(p => p.id !== priceId)));
   };
 
@@ -124,7 +126,7 @@ function PricelistPage() {
   const handleUpdatePrice = (e) => {
     e.preventDefault();
     const updated = { ...prices.find(p => p.id === editingPriceId), price: Number(editingPriceData.price) };
-    axios.put(`http://127.0.0.1:8000/prices/${editingPriceId}`, updated)
+    axios.put(`${API}/prices/${editingPriceId}`, updated)
       .then(res => {
         setPrices(prices.map(p => p.id === editingPriceId ? res.data : p));
         setEditingPriceId(null);

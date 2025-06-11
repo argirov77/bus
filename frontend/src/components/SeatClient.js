@@ -6,7 +6,7 @@ import axios from "axios";
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
 
-const API = "http://127.0.0.1:8000";
+import { API } from "../config";
 
 // Цвета для клиента
 const CLIENT_COLORS = {

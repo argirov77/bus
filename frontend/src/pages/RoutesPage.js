@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+
+import { API } from "../config";
 // dnd-kit
 import {
   DndContext,
@@ -33,15 +35,15 @@ export default function RoutesPage() {
 
   // 1. Загрузка маршрутов и остановок при первом рендере
   useEffect(() => {
-    axios.get("http://127.0.0.1:8000/routes").then((res) => setRoutes(res.data));
-    axios.get("http://127.0.0.1:8000/stops").then((res) => setStops(res.data));
+    axios.get(`${API}/routes`).then((res) => setRoutes(res.data));
+    axios.get(`${API}/stops`).then((res) => setStops(res.data));
   }, []);
 
   // 2. Загрузка остановок выбранного маршрута
   useEffect(() => {
     if (selectedRoute) {
       axios
-        .get(`http://127.0.0.1:8000/routes/${selectedRoute.id}/stops`)
+        .get(`${API}/routes/${selectedRoute.id}/stops`)
         .then((res) => setRouteStops(res.data))
         .catch((err) => console.error("Ошибка при получении остановок:", err));
     } else {
@@ -53,7 +55,7 @@ export default function RoutesPage() {
   const handleCreateRoute = () => {
     if (!newRouteName.trim()) return;
     axios
-      .post("http://127.0.0.1:8000/routes", { name: newRouteName })
+      .post(`${API}/routes`, { name: newRouteName })
       .then((res) => {
         setRoutes([...routes, res.data]);
         setNewRouteName("");
@@ -63,7 +65,7 @@ export default function RoutesPage() {
 
   // Удаление маршрута
   const handleDeleteRoute = (routeId) => {
-    axios.delete(`http://127.0.0.1:8000/routes/${routeId}`).then(() => {
+    axios.delete(`${API}/routes/${routeId}`).then(() => {
       setRoutes(routes.filter((r) => r.id !== routeId));
       if (selectedRoute && selectedRoute.id === routeId) {
         setSelectedRoute(null);
@@ -99,7 +101,7 @@ export default function RoutesPage() {
     };
 
     axios
-      .post(`http://127.0.0.1:8000/routes/${selectedRoute.id}/stops`, data)
+      .post(`${API}/routes/${selectedRoute.id}/stops`, data)
       .then((res) => {
         setRouteStops([...routeStops, res.data]);
         setNewStop({ stop_id: "", arrival_time: "", departure_time: "" });
@@ -111,7 +113,7 @@ export default function RoutesPage() {
   const handleDeleteStop = (stopId) => {
     if (!selectedRoute) return;
     axios
-      .delete(`http://127.0.0.1:8000/routes/${selectedRoute.id}/stops/${stopId}`)
+      .delete(`${API}/routes/${selectedRoute.id}/stops/${stopId}`)
       .then(() => {
         const updated = routeStops
           .filter((rs) => rs.id !== stopId)
@@ -119,7 +121,7 @@ export default function RoutesPage() {
         setRouteStops(updated);
         // Сохраняем пересчитанный order
         updated.forEach((rs) => {
-          axios.put(`http://127.0.0.1:8000/routes/${selectedRoute.id}/stops/${rs.id}`, rs);
+          axios.put(`${API}/routes/${selectedRoute.id}/stops/${rs.id}`, rs);
         });
       })
       .catch((err) => console.error("Ошибка удаления остановки:", err));
@@ -133,7 +135,7 @@ export default function RoutesPage() {
     setRouteStops(updatedStops);
 
     axios.put(
-      `http://127.0.0.1:8000/routes/${selectedRoute.id}/stops/${stopId}`,
+      `${API}/routes/${selectedRoute.id}/stops/${stopId}`,
       updatedStops.find((s) => s.id === stopId)
     );
   };
@@ -152,7 +154,7 @@ export default function RoutesPage() {
     }));
     setRouteStops(newOrder);
     newOrder.forEach((rs) => {
-      axios.put(`http://127.0.0.1:8000/routes/${selectedRoute.id}/stops/${rs.id}`, rs);
+      axios.put(`${API}/routes/${selectedRoute.id}/stops/${rs.id}`, rs);
     });
   };
 

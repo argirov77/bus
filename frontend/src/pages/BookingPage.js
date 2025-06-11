@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
+
+import { API } from "../config";
 import SeatSelection from "../components/SeatSelection";
 import "../styles/BookingPage.css";
 
@@ -24,7 +26,7 @@ function BookingPage(props) {
       return;
     }
     axios
-      .post("http://127.0.0.1:8000/tickets", {
+      .post(`${API}/tickets`, {
         tour_id: tourId,
         seat_num: selectedSeat,
         passenger_name: passengerData.name,
