@@ -15,7 +15,7 @@ import {
   useDroppable
 } from "@dnd-kit/core";
 
-const API = "http://127.0.0.1:8000";
+import { API } from "../config";
 
 // Цвета для админа
 const ADMIN_COLORS = {

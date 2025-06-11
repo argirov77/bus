@@ -1,6 +1,8 @@
 // src/pages/StopsPage.js
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+
+import { API } from "../config";
 import IconButton from "../components/IconButton";
 import editIcon from "../assets/icons/edit.png";
 import deleteIcon from "../assets/icons/delete.png";
@@ -17,7 +19,7 @@ function StopsPage() {
   }, []);
 
   const fetchStops = () => {
-    axios.get("http://127.0.0.1:8000/stops")
+    axios.get(`${API}/stops`)
       .then(res => setStops(res.data))
       .catch(err => console.error("Ошибка при загрузке остановок:", err));
   };
@@ -25,7 +27,7 @@ function StopsPage() {
   const handleCreateStop = (e) => {
     e.preventDefault();
     if (!newStopName.trim()) return;
-    axios.post("http://127.0.0.1:8000/stops", { stop_name: newStopName })
+    axios.post(`${API}/stops`, { stop_name: newStopName })
       .then(res => {
         setStops([...stops, res.data]);
         setNewStopName("");
@@ -34,7 +36,7 @@ function StopsPage() {
   };
 
   const handleDeleteStop = (id) => {
-    axios.delete(`http://127.0.0.1:8000/stops/${id}`)
+    axios.delete(`${API}/stops/${id}`)
       .then(() => setStops(stops.filter(s => s.id !== id)))
       .catch(err => console.error("Ошибка удаления остановки:", err));
   };
@@ -46,7 +48,7 @@ function StopsPage() {
 
   const handleUpdateStop = (e) => {
     e.preventDefault();
-    axios.put(`http://127.0.0.1:8000/stops/${editingStopId}`, { stop_name: editingStopName })
+    axios.put(`${API}/stops/${editingStopId}`, { stop_name: editingStopName })
       .then(res => {
         setStops(stops.map(stop => stop.id === editingStopId ? res.data : stop));
         setEditingStopId(null);

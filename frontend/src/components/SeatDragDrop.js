@@ -6,8 +6,9 @@ import axios from "axios";
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
 
+import { API } from "../config";
+
 const ITEM_TYPE = "SEAT";
-const API = "http://127.0.0.1:8000";
 
 function SeatCell({ seat, layoutVariant, onInfo, onDropSeat }) {
   const [{ isDragging }, drag] = useDrag({
