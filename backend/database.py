@@ -4,10 +4,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 # Read the URL from the environment; if it's not set (e.g. in Docker),
-# fall back to pointing at the "db" service on port 5433.
+# fall back to pointing at the "db" service on port 5432.
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:postgres@db:5433/test1"
+    "postgresql://postgres:postgres@db:5432/test1"
 )
 
 # --- SQLAlchemy setup (if you use it elsewhere) ---
