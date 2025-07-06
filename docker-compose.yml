@@ -10,8 +10,8 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      # expose container's default port 5432 on host port 5433
-      - "5433:5432"
+      # expose container's default port 5432 on host port 5433 (changeable via POSTGRES_HOST_PORT)
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
 
   backend:
     build:

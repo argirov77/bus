@@ -28,10 +28,11 @@ docker compose down
 
 ## Подключение к базе данных
 В контейнере запускается PostgreSQL с настройками по умолчанию. Контейнерный
-порт `5432` проброшен на хост по адресу `localhost:5433`, поэтому к базе можно
-подключиться по `localhost:5433`:
+порт `5432` проброшен на хост. По умолчанию он маппится на `localhost:5433`,
+но при необходимости это значение можно изменить переменной окружения
+`POSTGRES_HOST_PORT`:
 - **host:** `localhost`
-- **port:** `5433`
+- **port:** `5433` (или выбранный вами `POSTGRES_HOST_PORT`)
 - **database:** `test`
 - **user:** `postgres`
 - **password:** `postgres`
@@ -39,7 +40,7 @@ docker compose down
 URL подключения доступен в переменной окружения `DATABASE_URL`. Например,
 можно подключиться через `psql`:
 ```bash
-psql postgresql://postgres:postgres@localhost:5433/test
+psql postgresql://postgres:postgres@localhost:${POSTGRES_HOST_PORT:-5433}/test
 ```
 
 ## Локальный запуск без Docker
@@ -54,8 +55,6 @@ pip install -r requirements.txt
 python -m uvicorn backend.main:app --reload
 ```
 Важно запускать команду именно из корня проекта, чтобы работали относительные импорты из `backend`.
-
-Подробнее о запуске и настройке самого бэкенда без контейнеров смотрите в [backend/README.md](backend/README.md).
 
 ## Настройка адреса API
 Фронтенд использует переменную окружения `REACT_APP_API_URL` для обращения к бэкенду.
