@@ -27,11 +27,12 @@ docker compose down
 ```
 
 ## Подключение к базе данных
-В контейнере запускается PostgreSQL с настройками по умолчанию. Порт
-`5432` проброшен на хост, поэтому к базе можно подключиться по
-`localhost:5432`:
+В контейнере запускается PostgreSQL с настройками по умолчанию. Контейнерный
+порт `5432` проброшен на хост. По умолчанию он маппится на `localhost:5433`,
+но при необходимости это значение можно изменить переменной окружения
+`POSTGRES_HOST_PORT`:
 - **host:** `localhost`
-- **port:** `5432`
+- **port:** `5433` (или выбранный вами `POSTGRES_HOST_PORT`)
 - **database:** `test`
 - **user:** `postgres`
 - **password:** `postgres`
@@ -39,7 +40,7 @@ docker compose down
 URL подключения доступен в переменной окружения `DATABASE_URL`. Например,
 можно подключиться через `psql`:
 ```bash
-psql postgresql://postgres:postgres@localhost:5432/test
+psql postgresql://postgres:postgres@localhost:${POSTGRES_HOST_PORT:-5433}/test
 ```
 
 ## Локальный запуск без Docker
