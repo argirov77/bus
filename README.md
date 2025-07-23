@@ -33,14 +33,14 @@ docker compose down
 `POSTGRES_HOST_PORT`:
 - **host:** `localhost`
 - **port:** `5433` (или выбранный вами `POSTGRES_HOST_PORT`)
-- **database:** `test`
+- **database:** `test1`
 - **user:** `postgres`
 - **password:** `postgres`
 
 URL подключения доступен в переменной окружения `DATABASE_URL`. Например,
 можно подключиться через `psql`:
 ```bash
-psql postgresql://postgres:postgres@localhost:${POSTGRES_HOST_PORT:-5433}/test
+psql postgresql://postgres:postgres@localhost:${POSTGRES_HOST_PORT:-5433}/test1
 ```
 
 ## Локальный запуск без Docker
