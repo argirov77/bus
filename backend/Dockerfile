@@ -7,8 +7,8 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# install only the requirements.txt from backend/
-COPY backend/requirements.txt ./requirements.txt
+# install dependencies from the root requirements.txt
+COPY requirements.txt ./requirements.txt
 RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install --upgrade pip \
  && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
