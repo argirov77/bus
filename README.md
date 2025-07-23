@@ -50,6 +50,11 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
+Перед запуском необходимо указать переменную окружения `DATABASE_URL`, чтобы
+приложение подключилось к локальной базе данных:
+```bash
+export DATABASE_URL=postgresql://postgres:postgres@localhost:${POSTGRES_HOST_PORT:-5433}/test1
+```
 Запустите приложение из корня репозитория командой:
 ```bash
 python -m uvicorn backend.main:app --reload
