@@ -21,6 +21,12 @@ from .routers.ticket_admin import router as admin_tickets_router
 
 app = FastAPI()
 
+# Healthcheck endpoint
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Simple health check returning API status."""
+    return {"status": "ok"}
+
 # Настраиваем CORS (если нужно)
 origins = ["http://localhost:3000","http://10.4.4.108:3000" ]
 app.add_middleware(
