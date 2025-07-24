@@ -29,7 +29,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s \
-  CMD curl -f http://localhost:$BACKEND_PORT/health || exit 1
+  CMD curl -f http://localhost:${BACKEND_PORT:-8000}/health || exit 1
 
 # ← run as module inside the "backend" package. Allow custom port via BACKEND_PORT
 CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-8000}"]
