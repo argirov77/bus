@@ -1014,6 +1014,28 @@ ALTER TABLE ONLY public.tour
     ADD CONSTRAINT tour_route_id_fkey FOREIGN KEY (route_id) REFERENCES public.route(id);
 
 
+
+-- ----------------------------------------------------
+-- Допълнителна таблица с потребители
+-- ----------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    hashed_password VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL
+);
+
+-- Създаваме административен потребител по подразбиране
+INSERT INTO public.users (username, email, hashed_password, role)
+VALUES (
+    'admin',
+    'admin@example.com',
+    '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
+    'admin'
+)
+ON CONFLICT DO NOTHING;
+
 -- Completed on 2025-06-11 10:02:38
 
 --
