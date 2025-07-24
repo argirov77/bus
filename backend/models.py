@@ -145,3 +145,18 @@ class Seat(SeatBase):
     id: int
     class Config:
         from_attributes = True
+
+# --- Модели за User ---
+class UserBase(BaseModel):
+    username: str
+    email: str
+    role: str
+
+class UserCreate(UserBase):
+    hashed_password: str
+
+class User(UserBase):
+    id: int
+    hashed_password: str
+    class Config:
+        from_attributes = True
