@@ -1030,7 +1030,7 @@ INSERT INTO public.users (username, email, hashed_password, role)
 VALUES (
     'admin',
     'admin@example.com',
-    '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
+    '$2b$12$Y.DzD5azTaGBSLNfQCbwGOpVxBmWncTZyjNOyPNJwzLneHpIh9DO2',
     'admin'
 )
 ON CONFLICT DO NOTHING;
