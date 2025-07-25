@@ -298,7 +298,11 @@ function SortableStop({ id, routeStop, getStopName, onDeleteStop, onUpdateTime }
       </div>
   
       <button
-        onClick={() => onDeleteStop(id)}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onDeleteStop(id);
+        }}
         className="icon-btn"
       >
         <img src={deleteIcon} alt="Удалить" width="20"/>
