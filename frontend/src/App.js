@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import StopsPage from "./pages/StopsPage";
 import RoutesPage from "./pages/RoutesPage";
@@ -8,10 +8,26 @@ import ToursPage from "./pages/ToursPage";
 import PassengersPage from "./pages/PassengersPage";
 import ReportPage from "./pages/ReportPage";
 import AvailablePage from "./pages/AvailablePage";
+import LoginPage from "./pages/LoginPage";
 
 import './App.css'; 
 
 function App() {
+  const [token, setToken] = useState(localStorage.getItem("token"));
+
+  const handleLogin = () => {
+    setToken(localStorage.getItem("token"));
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    setToken(null);
+  };
+
+  if (!token) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
+
   return (
     <Router>
       <nav>
@@ -24,7 +40,7 @@ function App() {
           <li><Link to="/report">Report</Link></li>
           <li><Link to="/available">Available</Link></li>
           <li><Link to="/search">Search</Link></li>
-        
+          <li><button onClick={handleLogout}>Logout</button></li>
         </ul>
       </nav>
       <Routes>
@@ -36,7 +52,7 @@ function App() {
         <Route path="/report" element={<ReportPage />} />
         <Route path="/available" element={<AvailablePage />} />
         <Route path="/search" element={<SearchPage />} />
-       
+
       </Routes>
     </Router>
   );
