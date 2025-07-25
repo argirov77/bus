@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List, Dict, Optional
 from pydantic import BaseModel
 from ..database import get_connection
-from ..auth import get_current_admin
+from ..auth import require_admin_token
 
 router = APIRouter(prefix="/seat", tags=["seat"])
 
@@ -113,7 +113,7 @@ def block_seat(
     tour_id: int   = Query(..., description="ID рейса"),
     seat_num: int  = Query(..., description="Номер места"),
     block:    bool = Query(..., description="true — блокировать, false — разблокировать"),
-    current_admin: dict = Depends(get_current_admin),
+    current_admin: dict = Depends(require_admin_token),
 ):
     """
     Меняет состояние места:

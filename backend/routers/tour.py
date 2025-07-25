@@ -5,12 +5,12 @@ from pydantic import BaseModel
 from typing import List
 from datetime import date
 from ..database import get_connection
-from ..auth import get_current_admin
+from ..auth import require_admin_token
 
 router = APIRouter(
     prefix="/tours",
     tags=["tours"],
-    dependencies=[Depends(get_current_admin)],
+    dependencies=[Depends(require_admin_token)],
 )
 
 

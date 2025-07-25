@@ -1,12 +1,12 @@
 from fastapi import APIRouter, HTTPException, Depends
 from ..database import get_connection
 from ..models import Stop, StopCreate
-from ..auth import get_current_admin
+from ..auth import require_admin_token
 
 router = APIRouter(
     prefix="/stops",
     tags=["stops"],
-    dependencies=[Depends(get_current_admin)],
+    dependencies=[Depends(require_admin_token)],
 )
 
 @router.get("/", response_model=list[Stop])

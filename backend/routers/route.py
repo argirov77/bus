@@ -1,6 +1,6 @@
 # file: route.py
 from fastapi import APIRouter, HTTPException, Depends
-from ..auth import get_current_admin
+from ..auth import require_admin_token
 from typing import Optional, List
 from datetime import time
 from pydantic import BaseModel
@@ -9,7 +9,7 @@ from ..database import get_connection  # Предполагается, что у
 router = APIRouter(
     prefix="/routes",
     tags=["routes"],
-    dependencies=[Depends(get_current_admin)],
+    dependencies=[Depends(require_admin_token)],
 )
 
 #
