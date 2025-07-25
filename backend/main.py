@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+import os
 
 # Импортируем все роутеры
 from .routers import (
@@ -27,8 +28,9 @@ def health() -> dict[str, str]:
     """Simple health check returning API status."""
     return {"status": "ok"}
 
-# Настраиваем CORS (если нужно)
-origins = ["http://localhost:3000","http://10.4.4.108:3000" ]
+# Настраиваем CORS с помощью переменной окружения
+cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000")
+origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
