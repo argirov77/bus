@@ -18,7 +18,7 @@ class Available(BaseModel):
     seats: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 @router.get("/", response_model=list[Available])
 def get_available(
