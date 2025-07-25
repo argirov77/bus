@@ -74,8 +74,8 @@ def delete_route(route_id: int):
     """
     conn = get_connection()
     cur = conn.cursor()
-    # Если у вас нет CASCADE, можно удалить остановки вручную:
-    # cur.execute("DELETE FROM routestop WHERE route_id = %s;", (route_id,))
+    # Удаляем связанные остановки вручную, т.к. в БД нет ON DELETE CASCADE
+    cur.execute("DELETE FROM routestop WHERE route_id = %s;", (route_id,))
     cur.execute("DELETE FROM route WHERE id=%s RETURNING id;", (route_id,))
     deleted = cur.fetchone()
     conn.commit()
