@@ -1,8 +1,13 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from ..database import get_connection
 from ..models import Prices, PricesCreate
+from ..auth import get_current_admin
 
-router = APIRouter(prefix="/prices", tags=["prices"])
+router = APIRouter(
+    prefix="/prices",
+    tags=["prices"],
+    dependencies=[Depends(get_current_admin)],
+)
 
 @router.get("/", response_model=None)
 def get_prices(pricelist_id: int = None):
