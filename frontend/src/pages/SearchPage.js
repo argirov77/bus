@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 import SeatClient from "../components/SeatClient";
+import Loader from "../components/Loader";
+import Alert from "../components/Alert";
 
 import { API } from "../config";
 
@@ -25,6 +27,8 @@ export default function SearchPage() {
     name: "", phone: "", email: ""
   });
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("info");
+  const [loading, setLoading] = useState(false);
 
   // 1. Загрузить все отправные остановки
   useEffect(() => {
@@ -71,9 +75,12 @@ export default function SearchPage() {
     e.preventDefault();
     if (!selectedDeparture || !selectedArrival || !selectedDate) {
       setMessage("Заполните все поля поиска");
+      setMessageType("error");
       return;
     }
     setMessage("Идёт поиск…");
+    setMessageType("info");
+    setLoading(true);
     axios.get(`${API}/tours/search`, {
       params: {
         departure_stop_id: selectedDeparture,
@@ -85,12 +92,19 @@ export default function SearchPage() {
       setTours(res.data);
       setSelectedTour(null);
       setSelectedSeat(null);
-      setMessage(res.data.length ? "" : "Рейсы не найдены");
+      if (res.data.length) {
+        setMessage("");
+      } else {
+        setMessage("Рейсы не найдены");
+        setMessageType("info");
+      }
     })
     .catch(err => {
       console.error(err);
       setMessage("Ошибка поиска рейсов");
-    });
+      setMessageType("error");
+    })
+    .finally(() => setLoading(false));
   };
 
   // 5. Выбрать конкретный рейс
@@ -105,13 +119,17 @@ export default function SearchPage() {
     e.preventDefault();
     if (!selectedTour) {
       setMessage("Сначала выберите рейс");
+      setMessageType("error");
       return;
     }
     if (!selectedSeat) {
       setMessage("Сначала выберите место");
+      setMessageType("error");
       return;
     }
     setMessage("Бронирование…");
+    setMessageType("info");
+    setLoading(true);
     axios.post(`${API}/tickets`, {
       tour_id:            selectedTour.id,
       seat_num:           selectedSeat,
@@ -123,6 +141,7 @@ export default function SearchPage() {
     })
     .then(res => {
       setMessage(`Билет забронирован! Ticket ID: ${res.data.ticket_id}`);
+      setMessageType("success");
       // сброс полей и перезагрузка схемы мест
       setSelectedSeat(null);
       setPassengerData({ name:"", phone:"", email:"" });
@@ -130,7 +149,9 @@ export default function SearchPage() {
     .catch(err => {
       console.error(err);
       setMessage("Ошибка при бронировании");
-    });
+      setMessageType("error");
+    })
+    .finally(() => setLoading(false));
   };
 
   return (
@@ -172,7 +193,8 @@ export default function SearchPage() {
         <button type="submit">Найти рейсы</button>
       </form>
 
-      {message && <p>{message}</p>}
+      {loading && <Loader />}
+      {message && <Alert type={messageType} message={message} />}
 
       {!selectedTour && tours.length > 0 && (
         <>

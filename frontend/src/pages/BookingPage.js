@@ -3,6 +3,8 @@ import axios from "axios";
 
 import { API } from "../config";
 import SeatSelection from "../components/SeatSelection";
+import Loader from "../components/Loader";
+import Alert from "../components/Alert";
 import "../styles/BookingPage.css";
 
 function BookingPage(props) {
@@ -11,7 +13,9 @@ function BookingPage(props) {
   
   const [selectedSeat, setSelectedSeat] = useState(null);
   const [passengerData, setPassengerData] = useState({ name: "", phone: "", email: "" });
-  const [bookingMessage, setBookingMessage] = useState("");
+const [bookingMessage, setBookingMessage] = useState("");
+  const [bookingType, setBookingType] = useState("info");
+  const [loading, setLoading] = useState(false);
 
   // Обработчик выбора места из компонента SeatSelection
   const handleSeatSelect = function(seat) {
@@ -23,8 +27,12 @@ function BookingPage(props) {
     e.preventDefault();
     if (!selectedSeat) {
       setBookingMessage("Выберите место!");
+      setBookingType("error");
       return;
     }
+    setBookingMessage("Бронирование…");
+    setBookingType("info");
+    setLoading(true);
     axios
       .post(`${API}/tickets`, {
         tour_id: tourId,
@@ -37,6 +45,7 @@ function BookingPage(props) {
       })
       .then(function(res) {
         setBookingMessage("Билет успешно забронирован! Ticket ID: " + res.data.ticket_id);
+        setBookingType("success");
         // Сброс выбранного места и данных пассажира
         setSelectedSeat(null);
         setPassengerData({ name: "", phone: "", email: "" });
@@ -44,7 +53,9 @@ function BookingPage(props) {
       .catch(function(err) {
         console.error("Ошибка бронирования:", err);
         setBookingMessage("Ошибка при бронировании.");
-      });
+        setBookingType("error");
+      })
+      .finally(() => setLoading(false));
   };
 
   return (
@@ -88,7 +99,10 @@ function BookingPage(props) {
         </form>
       </div>
 
-      {bookingMessage && <p className="booking-message">{bookingMessage}</p>}
+      {loading && <Loader />}
+      {bookingMessage && (
+        <Alert type={bookingType} message={bookingMessage} />
+      )}
     </div>
   );
 }
