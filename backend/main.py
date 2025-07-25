@@ -16,6 +16,7 @@ from .routers import (
     seat,
     search,
     ticket,
+    auth,
 )
 from .routers.ticket_admin import router as admin_tickets_router
 
@@ -52,6 +53,7 @@ app.include_router(available.router)
 app.include_router(seat.router)
 app.include_router(search.router)
 app.include_router(admin_tickets_router)
+app.include_router(auth.router)
 
 # Serve React static files
 # app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
