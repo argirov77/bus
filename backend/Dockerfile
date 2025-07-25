@@ -21,6 +21,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# install curl so the healthcheck can run
+RUN apt-get update && apt-get install -y curl
+
 # bring in the venv & code
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /app/backend /app/backend
