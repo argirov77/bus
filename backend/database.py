@@ -29,7 +29,7 @@ def _ensure_database_exists() -> None:
         admin = psycopg2.connect(DEFAULT_ADMIN_URL)
         admin.autocommit = True
         cur = admin.cursor()
-        cur.execute(sql.SQL("CREATE DATABASE {}".format(sql.Identifier(db_name))))
+        cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(db_name)))
         cur.close()
         admin.close()
 
