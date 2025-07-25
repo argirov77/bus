@@ -109,6 +109,11 @@ nav ul li a:hover {
   color: #4d9ef9;
 }
 
+nav ul li a.active {
+  color: #4d9ef9;
+  font-weight: 700;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -300,4 +305,11 @@ tbody tr:hover {
 
 .booking-form button:hover {
   background-color: #327ad6;
+}
+
+@media (max-width: 600px) {
+  nav ul {
+    flex-direction: column;
+    gap: 10px;
+  }
 }
