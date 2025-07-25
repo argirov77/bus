@@ -21,10 +21,12 @@ cp .env.example .env
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=admin
 ADMIN_TOKEN=adminsecret
+JWT_SECRET=changeme
 ```
 Значения по умолчанию совпадают с теми, что указаны выше. Токен
 возвращается эндпоинтом `/auth/login` и используется в заголовке
 `Authorization` при обращении к административным маршрутам.
+Переменная `JWT_SECRET` задаёт ключ, которым подписываются эти токены.
 Команда `docker compose` читает этот файл и без него не запустит контейнеры.
 
 ## Сборка контейнеров
