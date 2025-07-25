@@ -1,8 +1,13 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from ..database import get_connection
+from ..auth import get_current_admin
 
-router = APIRouter(prefix="/available", tags=["available"])
+router = APIRouter(
+    prefix="/available",
+    tags=["available"],
+    dependencies=[Depends(get_current_admin)],
+)
 
 class AvailableCreate(BaseModel):
     tour_id: int

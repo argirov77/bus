@@ -1,10 +1,15 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from ..database import get_connection
+from ..auth import get_current_admin
 
-router = APIRouter(prefix="/report", tags=["report"])
+router = APIRouter(
+    prefix="/report",
+    tags=["report"],
+    dependencies=[Depends(get_current_admin)],
+)
 
 class ReportFilters(BaseModel):
     start_date: Optional[str] = None

@@ -1,11 +1,16 @@
 # file: route.py
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from ..auth import get_current_admin
 from typing import Optional, List
 from datetime import time
 from pydantic import BaseModel
 from ..database import get_connection  # Предполагается, что у вас есть database.py
 
-router = APIRouter(prefix="/routes", tags=["routes"])
+router = APIRouter(
+    prefix="/routes",
+    tags=["routes"],
+    dependencies=[Depends(get_current_admin)],
+)
 
 #
 # --- Pydantic модели ---

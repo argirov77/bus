@@ -1,9 +1,14 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict
 from ..database import get_connection
+from ..auth import get_current_admin
 
-router = APIRouter(prefix="/admin/tickets", tags=["admin_tickets"])
+router = APIRouter(
+    prefix="/admin/tickets",
+    tags=["admin_tickets"],
+    dependencies=[Depends(get_current_admin)],
+)
 
 
 class TicketInfo(BaseModel):

@@ -1,12 +1,17 @@
 # backend/app/routers/tour.py
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import List
 from datetime import date
 from ..database import get_connection
+from ..auth import get_current_admin
 
-router = APIRouter(prefix="/tours", tags=["tours"])
+router = APIRouter(
+    prefix="/tours",
+    tags=["tours"],
+    dependencies=[Depends(get_current_admin)],
+)
 
 
 class TourCreate(BaseModel):
