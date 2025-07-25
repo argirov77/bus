@@ -1,6 +1,6 @@
 # routers/pricelists.py
 from fastapi import APIRouter, HTTPException, status, Depends
-from ..auth import get_current_admin
+from ..auth import require_admin_token
 from typing import List
 from ..database import get_connection
 from ..models import Pricelist, PricelistCreate
@@ -8,7 +8,7 @@ from ..models import Pricelist, PricelistCreate
 router = APIRouter(
     prefix="/pricelists",
     tags=["pricelists"],
-    dependencies=[Depends(get_current_admin)],
+    dependencies=[Depends(require_admin_token)],
 )
 
 @router.get("/", response_model=List[Pricelist])
