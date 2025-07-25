@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, NavLink } from "react-router-dom";
 import StopsPage from "./pages/StopsPage";
 import RoutesPage from "./pages/RoutesPage";
 import PricelistsPage from "./pages/PricelistsPage";
@@ -32,15 +32,49 @@ function App() {
     <Router>
       <nav>
         <ul>
-          <li><Link to="/stops">Stops</Link></li>
-          <li><Link to="/routes">Routes</Link></li>
-          <li><Link to="/pricelists">Pricelists</Link></li>
-          <li><Link to="/tours">Tours</Link></li>
-          <li><Link to="/passengers">Passengers</Link></li>
-          <li><Link to="/report">Report</Link></li>
-          <li><Link to="/available">Available</Link></li>
-          <li><Link to="/search">Search</Link></li>
-          <li><button onClick={handleLogout}>Logout</button></li>
+          <li>
+            <NavLink to="/stops" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              Stops
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/routes" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              Routes
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/pricelists" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              Pricelists
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/tours" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              Tours
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/passengers" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              Passengers
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/report" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              Report
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/available" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              Available
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/search" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              Search
+            </NavLink>
+          </li>
+          <li>
+            <button onClick={handleLogout}>Logout</button>
+          </li>
         </ul>
       </nav>
       <Routes>
