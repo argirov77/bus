@@ -15,6 +15,12 @@ cp .env.example .env
 ```
 На Windows используйте `copy .env.example .env`. В файле `.env` можно
 изменить порты и другие переменные окружения под свои нужды.
+Также укажите параметры для JWT-токенов:
+```bash
+SECRET_KEY=...
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+```
 Команда `docker compose` читает этот файл и без него не запустит контейнеры.
 
 ## Сборка контейнеров
