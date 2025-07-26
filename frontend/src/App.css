@@ -307,7 +307,6 @@ tbody tr:hover {
   background-color: #327ad6;
 }
 
-codex/add-reusable-loader-and-alert-components
 .loader-container {
   display: flex;
   justify-content: center;
@@ -346,11 +345,11 @@ codex/add-reusable-loader-and-alert-components
 .alert-error {
   background-color: #f8d7da;
   color: #721c24;
-=======
+}
+
 @media (max-width: 600px) {
   nav ul {
     flex-direction: column;
     gap: 10px;
   }
-main
 }
