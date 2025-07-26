@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import axios from "axios";
+import Button from "@mui/material/Button";
+import TextField from "@mui/material/TextField";
 
 import { API } from "../config";
 import SeatSelection from "../components/SeatSelection";
-import "../styles/BookingPage.css";
+import styles from "./BookingPage.module.css";
 
 function BookingPage(props) {
   // Параметры должны быть переданы через props (например, из SearchPage или выбранного тура)
@@ -48,10 +50,10 @@ function BookingPage(props) {
   };
 
   return (
-    <div className="container">
+    <div className={styles.container}>
       <h2>Бронирование билета</h2>
       
-      <div className="seat-section">
+      <div className={styles['seat-section']}>
         <h3>Выберите место в салоне</h3>
         <SeatSelection 
           tourId={tourId}
@@ -62,33 +64,37 @@ function BookingPage(props) {
         {selectedSeat && <p>Вы выбрали место: {selectedSeat}</p>}
       </div>
 
-      <div className="passenger-section">
+      <div className={styles['passenger-section']}>
         <h3>Введите данные пассажира</h3>
-        <form onSubmit={handleBooking} className="booking-form">
-          <input 
-            type="text" 
-            placeholder="Имя" 
+        <form onSubmit={handleBooking} className={styles['booking-form']}>
+          <TextField
+            label="Имя"
+            variant="outlined"
+            size="small"
             value={passengerData.name}
             onChange={(e) => setPassengerData({ ...passengerData, name: e.target.value })}
             required
           />
-          <input 
-            type="text" 
-            placeholder="Телефон" 
+          <TextField
+            label="Телефон"
+            variant="outlined"
+            size="small"
             value={passengerData.phone}
             onChange={(e) => setPassengerData({ ...passengerData, phone: e.target.value })}
           />
-          <input 
-            type="email" 
-            placeholder="Email" 
+          <TextField
+            label="Email"
+            type="email"
+            variant="outlined"
+            size="small"
             value={passengerData.email}
             onChange={(e) => setPassengerData({ ...passengerData, email: e.target.value })}
           />
-          <button type="submit">Забронировать</button>
+          <Button variant="contained" type="submit">Забронировать</Button>
         </form>
       </div>
 
-      {bookingMessage && <p className="booking-message">{bookingMessage}</p>}
+      {bookingMessage && <p className={styles['booking-message']}>{bookingMessage}</p>}
     </div>
   );
 }

@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import Button from "@mui/material/Button";
+import styles from "./SeatAdmin.module.css";
 
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
@@ -16,13 +18,6 @@ import {
 } from "@dnd-kit/core";
 
 import { API } from "../config";
-
-// Цвета для админа
-const ADMIN_COLORS = {
-  available: "#a2d5ab",
-  occupied:  "#e27c7c",
-  blocked:   "#cccccc",
-};
 
 export default function SeatAdmin({
   tourId,
@@ -69,7 +64,6 @@ export default function SeatAdmin({
       ? (seatEdits[seatNum] ? "blocked" : "available")
       : origStatus;
 
-    const bg = ADMIN_COLORS[status] || ADMIN_COLORS.available;
     const isOccupied = status === "occupied";
 
     // dnd-kit draggable & droppable
@@ -80,31 +74,25 @@ export default function SeatAdmin({
       useDroppable({ id: String(seatNum) });
 
     const style = {
-      width:  40,
-      height: 40,
-      backgroundColor: bg,
-      border: "1px solid #888",
-      borderRadius: 4,
-      cursor: "pointer",
-      opacity: isOccupied ? 0.6 : 1,
       transform: transform
         ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
         : undefined,
-      zIndex:   isDragging ? 10 : 1,
-      boxShadow: isOver ? "0 0 0 2px #333" : undefined
+      zIndex: isDragging ? 10 : 1,
+      opacity: isOccupied ? 0.6 : 1
     };
 
     return (
-      <div key={seatNum} ref={dropRef} style={{ display: "inline-block", marginRight: 4 }}>
-        <button
+      <div key={seatNum} ref={dropRef} className={styles.seatContainer}>
+        <Button
           ref={dragRef}
           {...listeners}
           {...attributes}
           onClick={() => onToggle && onToggle(seatNum)}
+          className={`${styles.seatButton} ${styles[status]} ${isOver ? styles.over : ""}`}
           style={style}
         >
           {seatNum}
-        </button>
+        </Button>
       </div>
     );
   };
