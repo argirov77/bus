@@ -5,28 +5,33 @@ import TextField from "@mui/material/TextField";
 
 import { API } from "../config";
 import SeatSelection from "../components/SeatSelection";
+import Loader from "../components/Loader";
+import Alert from "../components/Alert";
 import styles from "./BookingPage.module.css";
 
 function BookingPage(props) {
-  // Параметры должны быть переданы через props (например, из SearchPage или выбранного тура)
   const { tourId, departureStopId, arrivalStopId } = props;
-  
+
   const [selectedSeat, setSelectedSeat] = useState(null);
   const [passengerData, setPassengerData] = useState({ name: "", phone: "", email: "" });
   const [bookingMessage, setBookingMessage] = useState("");
+  const [bookingType, setBookingType] = useState("info");
+  const [loading, setLoading] = useState(false);
 
-  // Обработчик выбора места из компонента SeatSelection
   const handleSeatSelect = function(seat) {
     setSelectedSeat(seat.seat_number);
   };
 
-  // Обработчик бронирования (создания билета)
   const handleBooking = function(e) {
     e.preventDefault();
     if (!selectedSeat) {
       setBookingMessage("Выберите место!");
+      setBookingType("error");
       return;
     }
+    setBookingMessage("Бронирование…");
+    setBookingType("info");
+    setLoading(true);
     axios
       .post(`${API}/tickets`, {
         tour_id: tourId,
@@ -39,20 +44,21 @@ function BookingPage(props) {
       })
       .then(function(res) {
         setBookingMessage("Билет успешно забронирован! Ticket ID: " + res.data.ticket_id);
-        // Сброс выбранного места и данных пассажира
+        setBookingType("success");
         setSelectedSeat(null);
         setPassengerData({ name: "", phone: "", email: "" });
       })
       .catch(function(err) {
         console.error("Ошибка бронирования:", err);
         setBookingMessage("Ошибка при бронировании.");
-      });
+        setBookingType("error");
+      })
+      .finally(() => setLoading(false));
   };
 
   return (
     <div className={styles.container}>
       <h2>Бронирование билета</h2>
-      
       <div className={styles['seat-section']}>
         <h3>Выберите место в салоне</h3>
         <SeatSelection 
@@ -63,7 +69,6 @@ function BookingPage(props) {
         />
         {selectedSeat && <p>Вы выбрали место: {selectedSeat}</p>}
       </div>
-
       <div className={styles['passenger-section']}>
         <h3>Введите данные пассажира</h3>
         <form onSubmit={handleBooking} className={styles['booking-form']}>
@@ -93,10 +98,13 @@ function BookingPage(props) {
           <Button variant="contained" type="submit">Забронировать</Button>
         </form>
       </div>
-
-      {bookingMessage && <p className={styles['booking-message']}>{bookingMessage}</p>}
+      {loading && <Loader />}
+      {bookingMessage && (
+        <Alert type={bookingType} message={bookingMessage} />
+      )}
     </div>
   );
 }
 
 export default BookingPage;
+
