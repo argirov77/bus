@@ -1,0 +1,23 @@
+.container {
+  padding: 20px;
+}
+
+.seat-section {
+  margin-bottom: 20px;
+}
+
+.passenger-section {
+  margin-top: 20px;
+}
+
+.booking-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 300px;
+}
+
+.booking-message {
+  margin-top: 20px;
+  color: green;
+}
