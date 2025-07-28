@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import styles from "./SeatAdmin.module.css";
 import SeatIcon from "./SeatIcon";
+import passImg from "../assets/icons/pass.svg";
 
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
@@ -74,25 +75,32 @@ export default function SeatAdmin({
     const { setNodeRef: dropRef, isOver } =
       useDroppable({ id: String(seatNum) });
 
-    const style = {
+    const dragStyle = {
       transform: transform
         ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
         : undefined,
       zIndex: isDragging ? 10 : 1,
-      opacity: isOccupied ? 0.6 : 1
     };
 
     return (
       <div key={seatNum} ref={dropRef} className={styles.seatContainer}>
         <button
-          ref={dragRef}
-          {...listeners}
-          {...attributes}
           onClick={() => onToggle && onToggle(seatNum)}
           className={`${styles.seatButton} ${isOver ? styles.over : ""}`}
-          style={style}
+          style={{ opacity: isOccupied ? 0.6 : 1 }}
         >
-          <SeatIcon number={seatNum} status={status} />
+          <SeatIcon seatNum={seatNum} status={status} />
+          {isOccupied && (
+            <img
+              ref={dragRef}
+              {...listeners}
+              {...attributes}
+              src={passImg}
+              alt="passenger"
+              className={styles.passengerIcon}
+              style={dragStyle}
+            />
+          )}
         </button>
       </div>
     );

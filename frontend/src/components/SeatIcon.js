@@ -1,6 +1,5 @@
 // src/components/SeatIcon.js
 import React from "react";
-import passImg from "../assets/icons/pass.svg";
 
 // Цвета для статусов (можно вынести в constants.js при необходимости)
 const COLORS = {
@@ -57,21 +56,7 @@ export default function SeatIcon({ seatNum, status = "available", onClick }) {
           {seatNum}
         </text>
       </svg>
-      {/* Если занято — сверху пассажир */}
-      {status === "occupied" && (
-        <img
-          src={passImg}
-          alt="passenger"
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: 40,
-            height: 40,
-            pointerEvents: "none"
-          }}
-        />
-      )}
+      {/* Иконка пассажира рендерится снаружи */}
     </div>
   );
 }
