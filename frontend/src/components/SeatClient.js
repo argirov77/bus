@@ -4,10 +4,11 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
-import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
+import BusLayoutTravego from "./busLayouts/BusLayoutTravego";
+import SeatIcon from "./SeatIcon";
 
 import { API } from "../config";
-import { CLIENT_COLORS } from "./seatColors";
+import { CLIENT_COLORS } from "../constants";
 
 /**
  * SeatClient — для страницы покупки билета.
@@ -26,7 +27,7 @@ export default function SeatClient({
   layoutVariant,
   onSelect
 }) {
-  const [seats, setSeats]             = useState([]); // [{seat_num, status}, ...]
+  const [seats, setSeats] = useState([]); // [{seat_num, status}, ...]
   const [selectedSeat, setSelectedSeat] = useState(null);
 
   // Загружаем статусы мест
@@ -66,33 +67,18 @@ export default function SeatClient({
   // renderCell для скелетного режима
   const renderCell = (seatNum) => {
     const seat = seats.find(s => s.seat_num === seatNum);
-    const status = seat ? seat.status : "blocked";
-    let bg;
-    if (status === "blocked") {
-      bg = CLIENT_COLORS.blocked;
-    } else if (seatNum === selectedSeat) {
-      bg = CLIENT_COLORS.selected;
-    } else {
-      bg = CLIENT_COLORS.available;
+    let status = seat ? seat.status : "blocked";
+    if (seatNum === selectedSeat) {
+      status = "selected";
     }
 
     return (
-      <button
+      <SeatIcon
         key={seatNum}
-        type="button"
+        seatNum={seatNum}
+        status={status}
         onClick={() => handleSelect(seatNum)}
-        style={{
-          width: 40,
-          height: 40,
-          margin: 0,
-          backgroundColor: bg,
-          border: "1px solid #888",
-          borderRadius: 4,
-          cursor: status === "available" ? "pointer" : "default"
-        }}
-      >
-        {seatNum}
-      </button>
+      />
     );
   };
 
@@ -103,3 +89,4 @@ export default function SeatClient({
   // Рендерим только skeleton-режим с renderCell
   return <Layout renderCell={renderCell} />;
 }
+
