@@ -7,6 +7,7 @@ import styles from "./SeatAdmin.module.css";
 
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
+import BusLayoutHorizontal from "./busLayouts/BusLayoutHorizontal";
 
 import {
   DndContext,
@@ -99,10 +100,13 @@ export default function SeatAdmin({
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      {layoutVariant === 1
-        ? <BusLayoutNeoplan renderCell={renderCell} />
-        : <BusLayoutTravego  renderCell={renderCell} />
-      }
+      {layoutVariant === 1 ? (
+        <BusLayoutNeoplan renderCell={renderCell} />
+      ) : layoutVariant === 2 ? (
+        <BusLayoutTravego renderCell={renderCell} />
+      ) : (
+        <BusLayoutHorizontal renderCell={renderCell} />
+      )}
     </DndContext>
   );
 }

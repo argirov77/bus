@@ -5,6 +5,7 @@ import axios from "axios";
 
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
+import BusLayoutHorizontal from "./busLayouts/BusLayoutHorizontal";
 
 import { API } from "../config";
 
@@ -104,7 +105,9 @@ export default function SeatClient({
 
   const Layout = layoutVariant === 1
     ? BusLayoutNeoplan
-    : BusLayoutTravego;
+    : layoutVariant === 2
+      ? BusLayoutTravego
+      : BusLayoutHorizontal;
 
   // Рендерим только skeleton-режим с renderCell
   return <Layout renderCell={renderCell} />;
