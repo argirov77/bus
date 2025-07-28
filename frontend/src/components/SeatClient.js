@@ -7,13 +7,7 @@ import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
 
 import { API } from "../config";
-
-// Цвета для клиента
-const CLIENT_COLORS = {
-  blocked:   "#ddd",    // недоступное
-  available: "#4caf50", // зелёное
-  selected:  "#2196f3"  // синим помеченное выбранное
-};
+import { CLIENT_COLORS } from "./seatColors";
 
 /**
  * SeatClient — для страницы покупки билета.
