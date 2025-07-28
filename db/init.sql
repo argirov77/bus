@@ -651,6 +651,9 @@ COPY public.seat (id, tour_id, seat_num, available) FROM stdin;
 458	10	44	0
 459	10	45	0
 460	10	46	0
+461	10	47	0
+462	10	48	0
+463	10	49	0
 \.
 
 
@@ -749,7 +752,7 @@ SELECT pg_catalog.setval('public.routestop_id_seq', 4, true);
 -- Name: seat_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.seat_id_seq', 460, true);
+SELECT pg_catalog.setval('public.seat_id_seq', 463, true);
 
 
 --
