@@ -32,7 +32,7 @@ export default function BusLayoutNeoplan(props) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {layoutNeoplan.map((row, i) => (
-          <div key={i} style={{ display: "flex", gap: 4 }}>
+          <div key={i} style={{ display: "flex", flexDirection: "row", gap: 4 }}>
             {row.map((seatNum, j) =>
               seatNum === null
                 ? <div key={j} style={{ width: 40 }} />
@@ -56,7 +56,7 @@ export default function BusLayoutNeoplan(props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       {layoutNeoplan.map((row, i) => (
-        <div key={i} style={{ display: "flex", gap: 4 }}>
+        <div key={i} style={{ display: "flex", flexDirection: "row", gap: 4 }}>
           {row.map((seatNum, j) => {
             if (seatNum === null) {
               return <div key={j} style={{ width: 40 }} />;

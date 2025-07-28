@@ -1,6 +1,7 @@
 .seats-grid {
   display: grid;
   grid-template-columns: repeat(5, 50px);
+  grid-auto-flow: row;
   gap: 10px;
   margin-top: 20px;
 }

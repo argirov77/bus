@@ -16,7 +16,7 @@ export default function BusLayoutHorizontal({ renderCell }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       {layout.map((row, rowIdx) => (
-        <div key={rowIdx} style={{ display: "flex", gap: 4 }}>
+        <div key={rowIdx} style={{ display: "flex", flexDirection: "row", gap: 4 }}>
           {row.map((cell, cellIdx) => {
             if (cell === "door") {
               return (
