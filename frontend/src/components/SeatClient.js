@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
-import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
+import BusLayoutTravego from "./busLayouts/BusLayoutTravego";
 import SeatIcon from "./SeatIcon";
 
 import { API } from "../config";
@@ -26,7 +26,7 @@ export default function SeatClient({
   layoutVariant,
   onSelect
 }) {
-  const [seats, setSeats]             = useState([]); // [{seat_num, status}, ...]
+  const [seats, setSeats] = useState([]); // [{seat_num, status}, ...]
   const [selectedSeat, setSelectedSeat] = useState(null);
 
   // Загружаем статусы мест
@@ -66,28 +66,18 @@ export default function SeatClient({
   // renderCell для скелетного режима
   const renderCell = (seatNum) => {
     const seat = seats.find(s => s.seat_num === seatNum);
-    const baseStatus = seat ? seat.status : "blocked";
-    const status = baseStatus === "available"
-      ? (seatNum === selectedSeat ? "selected" : "available")
-      : "blocked";
+    let status = seat ? seat.status : "blocked";
+    if (seatNum === selectedSeat) {
+      status = "selected";
+    }
 
     return (
-      <button
+      <SeatIcon
         key={seatNum}
-        type="button"
+        seatNum={seatNum}
+        status={status}
         onClick={() => handleSelect(seatNum)}
-        style={{
-          width: 40,
-          height: 40,
-          margin: 0,
-          padding: 0,
-          background: "none",
-          border: "none",
-          cursor: baseStatus === "available" ? "pointer" : "default"
-        }}
-      >
-        <SeatIcon number={seatNum} status={status} />
-      </button>
+      />
     );
   };
 
