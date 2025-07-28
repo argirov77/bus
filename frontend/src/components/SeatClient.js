@@ -5,6 +5,7 @@ import axios from "axios";
 
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego from "./busLayouts/BusLayoutTravego";
+import BusLayoutHorizontal from "./busLayouts/BusLayoutHorizontal";
 import SeatIcon from "./SeatIcon";
 
 import { API } from "../config";
@@ -16,7 +17,7 @@ import { API } from "../config";
  *  - tourId
  *  - departureStopId
  *  - arrivalStopId
- *  - layoutVariant (1 или 2)
+ *  - layoutVariant (1, 2 или 3)
  *  - onSelect(seatNum) — коллбэк при выборе места
  */
 export default function SeatClient({
@@ -81,10 +82,12 @@ export default function SeatClient({
     );
   };
 
-  const Layout = layoutVariant === 1
-    ? BusLayoutNeoplan
-    : BusLayoutTravego;
+  // Подбор раскладки по варианту
+  let Layout;
+  if (layoutVariant === 1) Layout = BusLayoutNeoplan;
+  else if (layoutVariant === 2) Layout = BusLayoutTravego;
+  else Layout = BusLayoutHorizontal;
 
-  // Рендерим только skeleton-режим с renderCell
+  // Рендерим skeleton-режим с renderCell
   return <Layout renderCell={renderCell} />;
 }
