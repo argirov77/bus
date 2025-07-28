@@ -11,17 +11,6 @@
   cursor: pointer;
 }
 
-.available {
-  background-color: #a2d5ab;
-}
-
-.occupied {
-  background-color: #e27c7c;
-}
-
-.blocked {
-  background-color: #cccccc;
-}
 
 .over {
   box-shadow: 0 0 0 2px #333;

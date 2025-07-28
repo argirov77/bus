@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
-import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
+import BusLayoutTravego from "./busLayouts/BusLayoutTravego";
 import SeatIcon from "./SeatIcon";
 
 import { API } from "../config";
@@ -27,7 +27,7 @@ export default function SeatClient({
   layoutVariant,
   onSelect
 }) {
-  const [seats, setSeats]             = useState([]); // [{seat_num, status}, ...]
+  const [seats, setSeats] = useState([]); // [{seat_num, status}, ...]
   const [selectedSeat, setSelectedSeat] = useState(null);
 
   // Загружаем статусы мест
@@ -89,3 +89,4 @@ export default function SeatClient({
   // Рендерим только skeleton-режим с renderCell
   return <Layout renderCell={renderCell} />;
 }
+
