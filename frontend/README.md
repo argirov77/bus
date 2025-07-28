@@ -39,6 +39,45 @@ Instead, it will copy all the configuration files and the transitive dependencie
 
 You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
 
+## Seat Statuses
+
+Both the client and the admin interface rely on the `/seat` API to obtain the
+current status of every seat in a tour.
+
+- **Client mode** &mdash; the API returns only two statuses:
+  - `available` &mdash; the seat can be selected and is highlighted in green;
+  - `blocked` &mdash; the seat cannot be purchased for the chosen segment.
+
+  Occupied seats are not shown to the client directly; if a seat is taken on at
+  least one of the relevant segments it appears as `blocked`.
+
+- **Admin mode** exposes a third status:
+  - `occupied` &mdash; the seat is already sold and is displayed in red.
+
+  In this mode an administrator can block or unblock seats and also reassign
+  passengers between occupied seats.
+
+## Bus Layout Variants
+
+The application supports two bus layout variants:
+
+1. **Neoplan** &ndash; variant `1` with 46 seats.
+2. **Travego** &ndash; variant `2` with 48 seats.
+
+When creating or editing a tour the backend expects the `layout_variant` field in
+the payload so that it can generate the proper number of seats. The front end
+reads the same field and automatically renders the corresponding layout.
+Set `REACT_APP_API_URL` in `frontend/.env` to point the React app to your
+backend instance; no additional environment variables are required for selecting
+the layout variant.
+
+## Horizontal layout with icons
+
+The bus layouts include a compact horizontal view. Driver position, wheels and
+doors are represented with small SVG icons so the orientation of the bus remains
+clear even on wide screens. The seat numbers are arranged from left to right in
+rows to match the real arrangement inside the coach.
+
 ## Learn More
 
 You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
