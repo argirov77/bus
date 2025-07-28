@@ -104,7 +104,38 @@ def test_admin_routes_with_and_without_token(client):
 
     resp = client.put(
         "/seat/block",
+        params={"tour_id": 1, "seat_num": 49, "block": True},
+        headers=headers,
+    )
+    assert resp.status_code != 401
+
+    resp = client.put(
+        "/seat/block",
         params={"tour_id": 1, "seat_num": 1, "block": True},
         headers=bad_headers,
     )
     assert resp.status_code == 401
+
+    resp = client.put(
+        "/seat/block",
+        params={"tour_id": 1, "seat_num": 49, "block": True},
+        headers=bad_headers,
+    )
+    assert resp.status_code == 401
+
+
+def test_ticket_create_accepts_high_seat_num(client):
+    resp = client.post(
+        "/tickets/",
+        json={
+            "tour_id": 1,
+            "seat_num": 49,
+            "passenger_name": "A",
+            "passenger_phone": "1",
+            "passenger_email": "a@b.com",
+            "departure_stop_id": 1,
+            "arrival_stop_id": 2,
+        },
+    )
+    # Pydantic validation should allow seat_num=49
+    assert resp.status_code != 422
