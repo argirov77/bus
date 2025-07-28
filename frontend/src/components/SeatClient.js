@@ -8,7 +8,6 @@ import BusLayoutTravego from "./busLayouts/BusLayoutTravego";
 import SeatIcon from "./SeatIcon";
 
 import { API } from "../config";
-import { CLIENT_COLORS } from "../constants";
 
 /**
  * SeatClient — для страницы покупки билета.
@@ -89,4 +88,3 @@ export default function SeatClient({
   // Рендерим только skeleton-режим с renderCell
   return <Layout renderCell={renderCell} />;
 }
-

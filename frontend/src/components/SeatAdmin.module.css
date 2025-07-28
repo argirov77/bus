@@ -6,8 +6,9 @@
 .seatButton {
   width: 40px;
   height: 40px;
-  border: 1px solid #888;
-  border-radius: 4px;
+  padding: 0;
+  border: none;
+  background: none;
   cursor: pointer;
 }
 

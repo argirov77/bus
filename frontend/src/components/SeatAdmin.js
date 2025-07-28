@@ -2,9 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import Button from "@mui/material/Button";
 import styles from "./SeatAdmin.module.css";
-import { ADMIN_COLORS } from "./seatColors";
+import SeatIcon from "./SeatIcon";
 
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
@@ -79,13 +78,12 @@ export default function SeatAdmin({
         ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
         : undefined,
       zIndex: isDragging ? 10 : 1,
-      opacity: isOccupied ? 0.6 : 1,
-      backgroundColor: ADMIN_COLORS[status]
+      opacity: isOccupied ? 0.6 : 1
     };
 
     return (
       <div key={seatNum} ref={dropRef} className={styles.seatContainer}>
-        <Button
+        <button
           ref={dragRef}
           {...listeners}
           {...attributes}
@@ -93,8 +91,8 @@ export default function SeatAdmin({
           className={`${styles.seatButton} ${isOver ? styles.over : ""}`}
           style={style}
         >
-          {seatNum}
-        </Button>
+          <SeatIcon number={seatNum} status={status} />
+        </button>
       </div>
     );
   };
@@ -108,3 +106,4 @@ export default function SeatAdmin({
     </DndContext>
   );
 }
+
