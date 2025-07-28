@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import Button from "@mui/material/Button";
 import styles from "./SeatAdmin.module.css";
+import { ADMIN_COLORS } from "./seatColors";
 
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
@@ -78,7 +79,8 @@ export default function SeatAdmin({
         ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
         : undefined,
       zIndex: isDragging ? 10 : 1,
-      opacity: isOccupied ? 0.6 : 1
+      opacity: isOccupied ? 0.6 : 1,
+      backgroundColor: ADMIN_COLORS[status]
     };
 
     return (
@@ -88,7 +90,7 @@ export default function SeatAdmin({
           {...listeners}
           {...attributes}
           onClick={() => onToggle && onToggle(seatNum)}
-          className={`${styles.seatButton} ${styles[status]} ${isOver ? styles.over : ""}`}
+          className={`${styles.seatButton} ${isOver ? styles.over : ""}`}
           style={style}
         >
           {seatNum}
