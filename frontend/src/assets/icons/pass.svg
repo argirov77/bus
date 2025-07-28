@@ -1,0 +1,8 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Сиденье -->
+  <rect x="10" y="5" width="20" height="20" rx="8" fill="#10634eff" stroke="#3a8b7779" stroke-width="2"/>
+ 
+  <!-- голова -->
+  <ellipse cx="25" cy="12" rx="7" ry="7" fill="#F4D4B7"/>
+  
+</svg>
