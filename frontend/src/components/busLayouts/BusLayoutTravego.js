@@ -27,7 +27,7 @@ export default function BusLayoutTravego({ renderCell }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       {layoutTravego.map((row, rowIdx) => (
-        <div key={rowIdx} style={{ display: "flex", gap: 4 }}>
+        <div key={rowIdx} style={{ display: "flex", flexDirection: "row", gap: 4 }}>
           {row.map((seatNum, cellIdx) => {
             if (seatNum === null) {
               return <div key={cellIdx} style={{ width: 40 }} />;
