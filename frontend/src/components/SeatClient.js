@@ -5,15 +5,9 @@ import axios from "axios";
 
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
+import SeatIcon from "./SeatIcon";
 
 import { API } from "../config";
-
-// Цвета для клиента
-const CLIENT_COLORS = {
-  blocked:   "#ddd",    // недоступное
-  available: "#4caf50", // зелёное
-  selected:  "#2196f3"  // синим помеченное выбранное
-};
 
 /**
  * SeatClient — для страницы покупки билета.
@@ -72,15 +66,10 @@ export default function SeatClient({
   // renderCell для скелетного режима
   const renderCell = (seatNum) => {
     const seat = seats.find(s => s.seat_num === seatNum);
-    const status = seat ? seat.status : "blocked";
-    let bg;
-    if (status === "blocked") {
-      bg = CLIENT_COLORS.blocked;
-    } else if (seatNum === selectedSeat) {
-      bg = CLIENT_COLORS.selected;
-    } else {
-      bg = CLIENT_COLORS.available;
-    }
+    const baseStatus = seat ? seat.status : "blocked";
+    const status = baseStatus === "available"
+      ? (seatNum === selectedSeat ? "selected" : "available")
+      : "blocked";
 
     return (
       <button
@@ -91,13 +80,13 @@ export default function SeatClient({
           width: 40,
           height: 40,
           margin: 0,
-          backgroundColor: bg,
-          border: "1px solid #888",
-          borderRadius: 4,
-          cursor: status === "available" ? "pointer" : "default"
+          padding: 0,
+          background: "none",
+          border: "none",
+          cursor: baseStatus === "available" ? "pointer" : "default"
         }}
       >
-        {seatNum}
+        <SeatIcon number={seatNum} status={status} />
       </button>
     );
   };
