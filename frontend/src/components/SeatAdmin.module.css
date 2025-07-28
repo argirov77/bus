@@ -6,22 +6,12 @@
 .seatButton {
   width: 40px;
   height: 40px;
-  border: 1px solid #888;
-  border-radius: 4px;
+  padding: 0;
+  border: none;
+  background: none;
   cursor: pointer;
 }
 
-.available {
-  background-color: #a2d5ab;
-}
-
-.occupied {
-  background-color: #e27c7c;
-}
-
-.blocked {
-  background-color: #cccccc;
-}
 
 .over {
   box-shadow: 0 0 0 2px #333;

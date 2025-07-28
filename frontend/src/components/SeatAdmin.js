@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import Button from "@mui/material/Button";
 import styles from "./SeatAdmin.module.css";
+import SeatIcon from "./SeatIcon";
 
 import BusLayoutNeoplan from "./busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "./busLayouts/BusLayoutTravego";
@@ -84,16 +84,16 @@ export default function SeatAdmin({
 
     return (
       <div key={seatNum} ref={dropRef} className={styles.seatContainer}>
-        <Button
+        <button
           ref={dragRef}
           {...listeners}
           {...attributes}
           onClick={() => onToggle && onToggle(seatNum)}
-          className={`${styles.seatButton} ${styles[status]} ${isOver ? styles.over : ""}`}
+          className={`${styles.seatButton} ${isOver ? styles.over : ""}`}
           style={style}
         >
-          {seatNum}
-        </Button>
+          <SeatIcon number={seatNum} status={status} />
+        </button>
       </div>
     );
   };
@@ -110,3 +110,4 @@ export default function SeatAdmin({
     </DndContext>
   );
 }
+
