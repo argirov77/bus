@@ -351,7 +351,9 @@ CREATE TABLE public.ticket (
     seat_id integer NOT NULL,
     passenger_id integer NOT NULL,
     departure_stop_id integer NOT NULL,
-    arrival_stop_id integer NOT NULL
+    arrival_stop_id integer NOT NULL,
+    purchase_id integer,
+    extra_baggage boolean DEFAULT FALSE
 );
 
 
@@ -393,7 +395,8 @@ CREATE TABLE public.tour (
     pricelist_id integer NOT NULL,
     date date NOT NULL,
     seats integer NOT NULL,
-    layout_variant integer DEFAULT 1 NOT NULL
+    layout_variant integer DEFAULT 1 NOT NULL,
+    booking_terms text
 );
 
 
@@ -422,6 +425,22 @@ ALTER SEQUENCE public.tour_id_seq OWNER TO postgres;
 --
 
 ALTER SEQUENCE public.tour_id_seq OWNED BY public.tour.id;
+
+-- Нови таблици за покупки и журнал на продажбите
+
+CREATE TABLE IF NOT EXISTS public.purchase (
+    id SERIAL PRIMARY KEY,
+    status VARCHAR(20) NOT NULL DEFAULT 'reserved',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.sales (
+    id SERIAL PRIMARY KEY,
+    purchase_id INTEGER NOT NULL REFERENCES public.purchase(id),
+    status VARCHAR(20) NOT NULL,
+    changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 
 --
@@ -996,6 +1015,9 @@ ALTER TABLE ONLY public.ticket
 
 ALTER TABLE ONLY public.ticket
     ADD CONSTRAINT ticket_tour_id_fkey FOREIGN KEY (tour_id) REFERENCES public.tour(id);
+
+ALTER TABLE ONLY public.ticket
+    ADD CONSTRAINT ticket_purchase_id_fkey FOREIGN KEY (purchase_id) REFERENCES public.purchase(id);
 
 
 --
