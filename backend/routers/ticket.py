@@ -10,11 +10,13 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 class TicketCreate(BaseModel):
     tour_id: int
     seat_num: int
+    purchase_id: int | None = None
     passenger_name: str
     passenger_phone: str
     passenger_email: EmailStr
     departure_stop_id: int
     arrival_stop_id: int
+    extra_baggage: bool = False
 
 
 class TicketOut(BaseModel):
@@ -84,8 +86,8 @@ def create_ticket(data: TicketCreate):
         cur.execute(
             """
             INSERT INTO ticket
-              (tour_id, seat_id, passenger_id, departure_stop_id, arrival_stop_id)
-            VALUES (%s, %s, %s, %s, %s)
+              (tour_id, seat_id, passenger_id, departure_stop_id, arrival_stop_id, purchase_id, extra_baggage)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
@@ -94,6 +96,8 @@ def create_ticket(data: TicketCreate):
                 passenger_id,
                 data.departure_stop_id,
                 data.arrival_stop_id,
+                data.purchase_id,
+                data.extra_baggage,
             ),
         )
         ticket_id = cur.fetchone()[0]

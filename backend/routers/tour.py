@@ -20,6 +20,7 @@ class TourCreate(BaseModel):
     date: date
     layout_variant: int
     active_seats: List[int]
+    booking_terms: str | None = None
 
 
 class TourOut(BaseModel):
@@ -63,10 +64,17 @@ def create_tour(tour: TourCreate):
         # Вставляем запись рейса
         cur.execute(
             """
-            INSERT INTO tour (route_id, pricelist_id, date, seats, layout_variant)
-            VALUES (%s, %s, %s, %s, %s) RETURNING id
+            INSERT INTO tour (route_id, pricelist_id, date, seats, layout_variant, booking_terms)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
             """,
-            (tour.route_id, tour.pricelist_id, tour.date, total_seats, tour.layout_variant),
+            (
+                tour.route_id,
+                tour.pricelist_id,
+                tour.date,
+                total_seats,
+                tour.layout_variant,
+                tour.booking_terms,
+            ),
         )
         tour_id = cur.fetchone()[0]
 
@@ -172,7 +180,7 @@ def update_tour(tour_id: int, tour_data: TourCreate):
         cur.execute(
             """
             UPDATE tour
-               SET route_id=%s, pricelist_id=%s, date=%s, layout_variant=%s
+               SET route_id=%s, pricelist_id=%s, date=%s, layout_variant=%s, booking_terms=%s
              WHERE id=%s
              RETURNING id
             """,
@@ -181,6 +189,7 @@ def update_tour(tour_id: int, tour_data: TourCreate):
                 tour_data.pricelist_id,
                 tour_data.date,
                 tour_data.layout_variant,
+                tour_data.booking_terms,
                 tour_id,
             ),
         )
@@ -243,6 +252,7 @@ def update_tour(tour_id: int, tour_data: TourCreate):
             "pricelist_id": tour_data.pricelist_id,
             "date": tour_data.date,
             "layout_variant": tour_data.layout_variant,
+            "booking_terms": tour_data.booking_terms,
         }
 
     except HTTPException:

@@ -76,6 +76,7 @@ class TourBase(BaseModel):
     pricelist_id: int
     date: date
     layout_variant: int  # избран вариант на разположение (напр. 1 – Neoplan, 2 – Travego)
+    booking_terms: str | None = None
 
 class TourCreate(TourBase):
     active_seats: List[int]  # номера на активните места за продажба
@@ -108,6 +109,8 @@ class TicketBase(BaseModel):
     passenger_id: int
     departure_stop_id: int
     arrival_stop_id: int
+    purchase_id: Optional[int] = None
+    extra_baggage: bool = False
 
 class TicketCreate(TicketBase):
     pass
@@ -158,5 +161,29 @@ class UserCreate(UserBase):
 class User(UserBase):
     id: int
     hashed_password: str
+    class Config:
+        from_attributes = True
+
+# --- Модели за Purchase и Sales ---
+
+class PurchaseBase(BaseModel):
+    status: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+class PurchaseCreate(PurchaseBase):
+    pass
+
+class Purchase(PurchaseBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+
+class Sales(BaseModel):
+    id: int
+    purchase_id: int
+    status: str
+    changed_at: datetime
     class Config:
         from_attributes = True
