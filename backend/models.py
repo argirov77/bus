@@ -5,6 +5,11 @@ from typing import Optional, List
 # --- Модели за Stop ---
 class StopBase(BaseModel):
     stop_name: str
+    stop_en: Optional[str] = None
+    stop_bg: Optional[str] = None
+    stop_ua: Optional[str] = None
+    description: Optional[str] = None
+    location: Optional[str] = None
 
 class StopCreate(StopBase):
     pass
@@ -91,8 +96,6 @@ class Tour(TourBase):
 # --- Модели за Passenger ---
 class PassengerBase(BaseModel):
     name: str
-    phone: Optional[str] = None
-    email: Optional[str] = None
 
 class PassengerCreate(PassengerBase):
     pass
@@ -110,7 +113,7 @@ class TicketBase(BaseModel):
     departure_stop_id: int
     arrival_stop_id: int
     purchase_id: Optional[int] = None
-    extra_baggage: bool = False
+    extra_baggage: int = 0
 
 class TicketCreate(TicketBase):
     pass
@@ -167,9 +170,14 @@ class User(UserBase):
 # --- Модели за Purchase и Sales ---
 
 class PurchaseBase(BaseModel):
-    status: str
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
+    amount_due: Optional[float] = None
+    deadline: Optional[datetime] = None
+    status: Optional[str] = None
+    update_at: Optional[datetime] = None
+    payment_method: Optional[str] = None
 
 class PurchaseCreate(PurchaseBase):
     pass
@@ -182,8 +190,10 @@ class Purchase(PurchaseBase):
 
 class Sales(BaseModel):
     id: int
-    purchase_id: int
-    status: str
-    changed_at: datetime
+    date: datetime
+    category: str
+    amount: float
+    purchase_id: Optional[int] = None
+    comment: Optional[str] = None
     class Config:
         from_attributes = True

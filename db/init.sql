@@ -70,9 +70,7 @@ ALTER SEQUENCE public.available_id_seq OWNED BY public.available.id;
 
 CREATE TABLE public.passenger (
     id integer NOT NULL,
-    name character varying(255) NOT NULL,
-    phone character varying(50),
-    email character varying(255)
+    name character varying(255) NOT NULL
 );
 
 
@@ -309,7 +307,12 @@ ALTER SEQUENCE public.seat_id_seq OWNED BY public.seat.id;
 
 CREATE TABLE public.stop (
     id integer NOT NULL,
-    stop_name character varying(255) NOT NULL
+    stop_name character varying(255) NOT NULL,
+    stop_en character varying(255),
+    stop_bg character varying(255),
+    stop_ua character varying(255),
+    description text,
+    location text
 );
 
 
@@ -353,7 +356,7 @@ CREATE TABLE public.ticket (
     departure_stop_id integer NOT NULL,
     arrival_stop_id integer NOT NULL,
     purchase_id integer,
-    extra_baggage boolean DEFAULT FALSE
+    extra_baggage integer DEFAULT 0
 );
 
 
@@ -396,7 +399,7 @@ CREATE TABLE public.tour (
     date date NOT NULL,
     seats integer NOT NULL,
     layout_variant integer DEFAULT 1 NOT NULL,
-    booking_terms text
+    booking_terms smallint DEFAULT 0 NOT NULL
 );
 
 
@@ -428,18 +431,29 @@ ALTER SEQUENCE public.tour_id_seq OWNED BY public.tour.id;
 
 -- Нови таблици за покупки и журнал на продажбите
 
+CREATE TYPE purchase_status AS ENUM ('reserved','paid','cancelled','refunded');
+CREATE TYPE payment_method_type AS ENUM ('online','offline');
+
 CREATE TABLE IF NOT EXISTS public.purchase (
     id SERIAL PRIMARY KEY,
-    status VARCHAR(20) NOT NULL DEFAULT 'reserved',
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    customer_name VARCHAR(255),
+    customer_email VARCHAR(255),
+    customer_phone VARCHAR(50),
+    amount_due DECIMAL,
+    deadline TIMESTAMP,
+    status purchase_status NOT NULL DEFAULT 'reserved',
+    update_at TIMESTAMP,
+    payment_method payment_method_type NOT NULL DEFAULT 'online'
 );
 
+CREATE TYPE sales_category AS ENUM ('ticket_sale','refund','part_refund');
 CREATE TABLE IF NOT EXISTS public.sales (
     id SERIAL PRIMARY KEY,
-    purchase_id INTEGER NOT NULL REFERENCES public.purchase(id),
-    status VARCHAR(20) NOT NULL,
-    changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    category sales_category NOT NULL,
+    amount DECIMAL NOT NULL,
+    purchase_id INTEGER REFERENCES public.purchase(id),
+    comment TEXT
 );
 
 
