@@ -430,6 +430,7 @@ ALTER SEQUENCE public.tour_id_seq OWNER TO postgres;
 ALTER SEQUENCE public.tour_id_seq OWNED BY public.tour.id;
 
 -- Нови таблици за покупки и журнал на продажбите
+SET search_path = public;
 
 CREATE TYPE purchase_status AS ENUM ('reserved','paid','cancelled','refunded');
 CREATE TYPE payment_method_type AS ENUM ('online','offline');
