@@ -347,6 +347,13 @@ tbody tr:hover {
   color: #721c24;
 }
 
+.stop-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
 @media (max-width: 600px) {
   nav ul {
     flex-direction: column;
