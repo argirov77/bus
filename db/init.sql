@@ -218,6 +218,9 @@ ALTER SEQUENCE public.route_id_seq OWNER TO postgres;
 ALTER SEQUENCE public.route_id_seq OWNED BY public.route.id;
 
 
+ALTER TABLE ONLY public.route
+    ADD CONSTRAINT route_pkey PRIMARY KEY (id);
+
 --
 -- TOC entry 230 (class 1259 OID 16631)
 -- Name: routestop; Type: TABLE; Schema: public; Owner: postgres
@@ -858,15 +861,6 @@ ALTER TABLE ONLY public.pricelist
 
 ALTER TABLE ONLY public.prices
     ADD CONSTRAINT prices_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 4700 (class 2606 OID 16571)
--- Name: route route_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.route
-    ADD CONSTRAINT route_pkey PRIMARY KEY (id);
 
 
 --
