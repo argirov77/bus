@@ -19,10 +19,10 @@ class PurchaseOut(BaseModel):
     purchase_id: int
 
 
-def _log_status(cur, purchase_id: int, status: str) -> None:
+def _log_sale(cur, purchase_id: int, category: str, amount: float = 0.0) -> None:
     cur.execute(
         "INSERT INTO sales (purchase_id, category, amount) VALUES (%s, %s, %s)",
-        (purchase_id, status, 0),
+        (purchase_id, category, amount),
     )
 
 
@@ -79,7 +79,7 @@ def create_purchase(data: PurchaseCreate):
         )
         cur.fetchone()
 
-        _log_status(cur, purchase_id, "reserved")
+        _log_sale(cur, purchase_id, "ticket_sale", 0)
         conn.commit()
         return {"purchase_id": purchase_id}
     except HTTPException:
@@ -104,7 +104,7 @@ def pay_purchase(purchase_id: int):
         )
         if cur.rowcount == 0:
             raise HTTPException(404, "Purchase not found")
-        _log_status(cur, purchase_id, "paid")
+        _log_sale(cur, purchase_id, "ticket_sale", 0)
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -137,7 +137,7 @@ def cancel_purchase(purchase_id: int):
             "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
-        _log_status(cur, purchase_id, "cancelled")
+        _log_sale(cur, purchase_id, "refund", 0)
         conn.commit()
     except HTTPException:
         conn.rollback()
