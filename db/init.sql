@@ -187,7 +187,8 @@ ALTER SEQUENCE public.prices_id_seq OWNED BY public.prices.id;
 
 CREATE TABLE public.route (
     id integer NOT NULL,
-    name character varying(255) NOT NULL
+    name character varying(255) NOT NULL,
+    is_demo boolean NOT NULL DEFAULT false
 );
 
 
@@ -623,9 +624,9 @@ COPY public.prices (id, pricelist_id, departure_stop_id, arrival_stop_id, price)
 -- Data for Name: route; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.route (id, name) FROM stdin;
-1	Stop1-Stop4
-2	Stop4-Stop1
+COPY public.route (id, name, is_demo) FROM stdin;
+1	Stop1-Stop4	f
+2	Stop4-Stop1	f
 \.
 
 
