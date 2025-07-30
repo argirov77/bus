@@ -564,29 +564,6 @@ COPY public.available (id, tour_id, departure_stop_id, arrival_stop_id, seats) F
 \.
 
 
---
--- TOC entry 4895 (class 0 OID 16670)
--- Dependencies: 234
--- Data for Name: passenger; Type: TABLE DATA; Schema: public; Owner: postgres
---
-
-COPY public.passenger (id, name, phone, email) FROM stdin;
-1	Dmitriy Stoykov 	08832321	stoykovdm@gmai.com
-2	афыва	234234	324@gdf.df
-3	121	311313	1212@dsd.ds
-4	3213	12321	122@df.fd
-5	we	123312321	sdad@sd.ds
-6	43324	1233123	21312@dsd.ds
-7	23123	3123	12312@fdf.fd
-8	21312321	1321312	12312@dsd.ds
-9	3123213	123123123	12@fds.ds
-10	wedqwe	23123	sad@sd.ds
-11	23123	12312312	13@ds.sd
-12	213213123213	123123	wqe@df.fd
-13	21121	121212	sdsad@gmail.df
-14	323	123	12321@fsd.fd
-15	Dimas	21312312	12312@gmail.fd
-\.
 
 
 --
