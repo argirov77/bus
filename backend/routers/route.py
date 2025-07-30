@@ -18,10 +18,12 @@ router = APIRouter(
 
 class RouteCreate(BaseModel):
     name: str
+    is_demo: bool = False
 
 class Route(BaseModel):
     id: int
     name: str
+    is_demo: bool
     class Config:
         from_attributes = True  # или orm_mode = True
 
@@ -41,6 +43,9 @@ class RouteStop(BaseModel):
     class Config:
         from_attributes = True
 
+class RouteDemoUpdate(BaseModel):
+    is_demo: bool
+
 #
 # --- Часть 1: CRUD для маршрутов (Route) ---
 #
@@ -52,11 +57,23 @@ def get_routes():
     """
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, name FROM route ORDER BY id ASC;")
+    cur.execute("SELECT id, name, is_demo FROM route ORDER BY id ASC;")
     rows = cur.fetchall()
     cur.close()
     conn.close()
-    return [{"id": r[0], "name": r[1]} for r in rows]
+    return [{"id": r[0], "name": r[1], "is_demo": r[2]} for r in rows]
+
+
+@router.get("/demo", response_model=List[Route])
+def get_demo_routes():
+    """Return routes marked as demo."""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, name, is_demo FROM route WHERE is_demo ORDER BY id ASC;")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [{"id": r[0], "name": r[1], "is_demo": r[2]} for r in rows]
 
 @router.post("/", response_model=Route)
 def create_route(route_data: RouteCreate):
@@ -65,12 +82,15 @@ def create_route(route_data: RouteCreate):
     """
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("INSERT INTO route (name) VALUES (%s) RETURNING id;", (route_data.name,))
+    cur.execute(
+        "INSERT INTO route (name, is_demo) VALUES (%s, %s) RETURNING id;",
+        (route_data.name, route_data.is_demo),
+    )
     new_id = cur.fetchone()[0]
     conn.commit()
     cur.close()
     conn.close()
-    return {"id": new_id, "name": route_data.name}
+    return {"id": new_id, "name": route_data.name, "is_demo": route_data.is_demo}
 
 @router.delete("/{route_id}")
 def delete_route(route_id: int):
@@ -89,6 +109,30 @@ def delete_route(route_id: int):
     if not deleted:
         raise HTTPException(status_code=404, detail="Route not found")
     return {"deleted_id": deleted[0], "detail": "Route deleted"}
+
+
+@router.put("/{route_id}/demo", response_model=Route)
+def update_route_demo(route_id: int, data: RouteDemoUpdate):
+    """Mark or unmark a route as demo. Only two routes may be demo."""
+    conn = get_connection()
+    cur = conn.cursor()
+    if data.is_demo:
+        cur.execute("SELECT COUNT(*) FROM route WHERE is_demo")
+        if cur.fetchone()[0] >= 2:
+            cur.close()
+            conn.close()
+            raise HTTPException(status_code=400, detail="Only two demo routes allowed")
+    cur.execute(
+        "UPDATE route SET is_demo=%s WHERE id=%s RETURNING id, name, is_demo;",
+        (data.is_demo, route_id),
+    )
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Route not found")
+    return {"id": row[0], "name": row[1], "is_demo": row[2]}
 
 #
 # --- Часть 2: CRUD для остановок маршрута (RouteStop) ---

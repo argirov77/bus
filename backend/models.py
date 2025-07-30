@@ -22,6 +22,7 @@ class Stop(StopBase):
 # --- Модели за Route ---
 class RouteBase(BaseModel):
     name: str
+    is_demo: bool = False
 
 class RouteCreate(RouteBase):
     pass

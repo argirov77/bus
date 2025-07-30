@@ -52,6 +52,8 @@ def client(monkeypatch):
 def test_admin_routes_require_token(client):
     routes = [
         ("get", "/routes/"),
+        ("get", "/routes/demo"),
+        ("put", "/routes/1/demo"),
         ("get", "/stops/"),
         ("get", "/pricelists/"),
         ("get", "/prices/"),
@@ -78,6 +80,8 @@ def test_admin_routes_with_and_without_token(client):
     headers = {"Authorization": f"Bearer {token}"}
     routes = [
         ("get", "/routes/"),
+        ("get", "/routes/demo"),
+        ("put", "/routes/1/demo"),
         ("get", "/stops/"),
         ("get", "/pricelists/"),
         ("get", "/prices/"),

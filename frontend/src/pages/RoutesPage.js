@@ -55,7 +55,7 @@ export default function RoutesPage() {
   const handleCreateRoute = () => {
     if (!newRouteName.trim()) return;
     axios
-      .post(`${API}/routes`, { name: newRouteName })
+      .post(`${API}/routes`, { name: newRouteName, is_demo: false })
       .then((res) => {
         setRoutes([...routes, res.data]);
         setNewRouteName("");
@@ -72,6 +72,17 @@ export default function RoutesPage() {
         setRouteStops([]);
       }
     });
+  };
+
+  const handleToggleDemo = (route) => {
+    axios
+      .put(`${API}/routes/${route.id}/demo`, { is_demo: !route.is_demo })
+      .then((res) => {
+        setRoutes(routes.map((r) => (r.id === route.id ? res.data : r)));
+      })
+      .catch((err) => {
+        alert(err.response?.data?.detail || "Ошибка обновления демо статуса");
+      });
   };
 
   // Выбор маршрута
@@ -177,6 +188,14 @@ export default function RoutesPage() {
             >
               {route.name}
             </button>
+            <label style={{ marginLeft: '4px' }}>
+              <input
+                type="checkbox"
+                checked={route.is_demo}
+                onChange={() => handleToggleDemo(route)}
+              />
+              demo
+            </label>
             <button
               className="icon-btn"
               onClick={() => handleDeleteRoute(route.id)}
