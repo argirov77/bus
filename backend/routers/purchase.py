@@ -18,13 +18,11 @@ class PurchaseCreate(BaseModel):
 class PurchaseOut(BaseModel):
     purchase_id: int
 
-
 def _log_sale(cur, purchase_id: int, category: str, amount: float = 0.0) -> None:
     cur.execute(
         "INSERT INTO sales (purchase_id, category, amount) VALUES (%s, %s, %s)",
         (purchase_id, category, amount),
     )
-
 
 @router.post("/", response_model=PurchaseOut)
 def create_purchase(data: PurchaseCreate):
@@ -92,7 +90,6 @@ def create_purchase(data: PurchaseCreate):
         cur.close()
         conn.close()
 
-
 @router.post("/{purchase_id}/pay", status_code=204)
 def pay_purchase(purchase_id: int):
     conn = get_connection()
@@ -115,7 +112,6 @@ def pay_purchase(purchase_id: int):
     finally:
         cur.close()
         conn.close()
-
 
 @router.post("/{purchase_id}/cancel", status_code=204)
 def cancel_purchase(purchase_id: int):
