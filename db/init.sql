@@ -456,6 +456,14 @@ CREATE TABLE IF NOT EXISTS public.sales (
     purchase_id INTEGER REFERENCES public.purchase(id),
     comment TEXT
 );
+-- Table to link forward/backward routes with a pricelist
+CREATE TABLE IF NOT EXISTS public.route_pricelist_bundle (
+    id SERIAL PRIMARY KEY,
+    route_forward_id INT NOT NULL REFERENCES public.route(id),
+    route_backward_id INT NOT NULL REFERENCES public.route(id),
+    pricelist_id INT NOT NULL REFERENCES public.pricelist(id)
+);
+
 
 
 --

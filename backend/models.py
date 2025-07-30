@@ -73,6 +73,20 @@ class Prices(PricesBase):
     id: int
     class Config:
         from_attributes = True
+# --- Модели за RoutePricelistBundle ---
+class RoutePricelistBundleBase(BaseModel):
+    route_forward_id: int
+    route_backward_id: int
+    pricelist_id: int
+
+class RoutePricelistBundleCreate(RoutePricelistBundleBase):
+    pass
+
+class RoutePricelistBundle(RoutePricelistBundleBase):
+    id: int
+    class Config:
+        from_attributes = True
+
 
 # --- Модели за Tour ---
 # За вход при създаване използваме layout_variant и active_seats, а общият брой места се пресмята на бекенда
