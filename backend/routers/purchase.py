@@ -21,8 +21,8 @@ class PurchaseOut(BaseModel):
 
 def _log_status(cur, purchase_id: int, status: str) -> None:
     cur.execute(
-        "INSERT INTO sales (purchase_id, status) VALUES (%s, %s)",
-        (purchase_id, status),
+        "INSERT INTO sales (purchase_id, category, amount) VALUES (%s, %s, %s)",
+        (purchase_id, status, 0),
     )
 
 
@@ -33,14 +33,20 @@ def create_purchase(data: PurchaseCreate):
     try:
         # 1) create passenger
         cur.execute(
-            "INSERT INTO passenger (name, phone, email) VALUES (%s,%s,%s) RETURNING id",
-            (data.passenger_name, data.passenger_phone, data.passenger_email),
+            "INSERT INTO passenger (name) VALUES (%s) RETURNING id",
+            (data.passenger_name,),
         )
         passenger_id = cur.fetchone()[0]
 
         # 2) create purchase record
         cur.execute(
-            "INSERT INTO purchase (status) VALUES ('reserved') RETURNING id",
+            """
+            INSERT INTO purchase
+              (customer_name, customer_email, customer_phone, amount_due, deadline, status, update_at, payment_method)
+            VALUES (%s,%s,%s,0,NOW() + interval '1 day','reserved',NOW(),'online')
+            RETURNING id
+            """,
+            (data.passenger_name, data.passenger_email, data.passenger_phone),
         )
         purchase_id = cur.fetchone()[0]
 
@@ -68,7 +74,7 @@ def create_purchase(data: PurchaseCreate):
                 data.departure_stop_id,
                 data.arrival_stop_id,
                 purchase_id,
-                data.extra_baggage,
+                int(data.extra_baggage),
             ),
         )
         cur.fetchone()
@@ -93,7 +99,7 @@ def pay_purchase(purchase_id: int):
     cur = conn.cursor()
     try:
         cur.execute(
-            "UPDATE purchase SET status='paid', updated_at=NOW() WHERE id=%s",
+            "UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
         if cur.rowcount == 0:
@@ -128,7 +134,7 @@ def cancel_purchase(purchase_id: int):
 
         cur.execute("DELETE FROM ticket WHERE id=%s", (ticket_id,))
         cur.execute(
-            "UPDATE purchase SET status='cancelled', updated_at=NOW() WHERE id=%s",
+            "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
         _log_status(cur, purchase_id, "cancelled")

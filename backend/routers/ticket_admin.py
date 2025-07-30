@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from typing import List, Optional, Dict
 from ..database import get_connection
 from ..auth import require_admin_token
@@ -16,16 +16,12 @@ class TicketInfo(BaseModel):
     seat_num: int
     passenger_id: int
     passenger_name: str
-    passenger_phone: str
-    passenger_email: EmailStr
     departure_stop_id: int
     arrival_stop_id: int
 
 
 class TicketUpdate(BaseModel):
     passenger_name: Optional[str]
-    passenger_phone: Optional[str]
-    passenger_email: Optional[EmailStr]
     departure_stop_id: Optional[int]
     arrival_stop_id: Optional[int]
 
@@ -46,7 +42,7 @@ def list_tickets(tour_id: int = Query(..., description="ID рейса")):
         cur.execute("""
             SELECT
               t.id, s.seat_num, t.passenger_id,
-              p.name, p.phone, p.email,
+              p.name,
               t.departure_stop_id, t.arrival_stop_id
             FROM ticket t
             JOIN seat s      ON s.id = t.seat_id
@@ -61,10 +57,8 @@ def list_tickets(tour_id: int = Query(..., description="ID рейса")):
                 seat_num=r[1],
                 passenger_id=r[2],
                 passenger_name=r[3],
-                passenger_phone=r[4],
-                passenger_email=r[5],
-                departure_stop_id=r[6],
-                arrival_stop_id=r[7],
+                departure_stop_id=r[4],
+                arrival_stop_id=r[5],
             )
             for r in rows
         ]
@@ -88,19 +82,11 @@ def update_ticket(ticket_id: int, data: TicketUpdate):
             raise HTTPException(404, "Ticket not found")
         passenger_id = row[0]
 
-        if any([data.passenger_name, data.passenger_phone, data.passenger_email]):
-            cur.execute("""
-                UPDATE passenger
-                   SET name  = COALESCE(%s, name),
-                       phone = COALESCE(%s, phone),
-                       email = COALESCE(%s, email)
-                 WHERE id = %s
-            """, (
-                data.passenger_name,
-                data.passenger_phone,
-                data.passenger_email,
-                passenger_id
-            ))
+        if data.passenger_name is not None:
+            cur.execute(
+                "UPDATE passenger SET name = %s WHERE id = %s",
+                (data.passenger_name, passenger_id),
+            )
 
         # stops in ticket
         if data.departure_stop_id is not None or data.arrival_stop_id is not None:
@@ -118,16 +104,19 @@ def update_ticket(ticket_id: int, data: TicketUpdate):
         conn.commit()
 
         # return updated
-        cur.execute("""
+        cur.execute(
+            """
             SELECT
               t.id, s.seat_num, t.passenger_id,
-              p.name, p.phone, p.email,
+              p.name,
               t.departure_stop_id, t.arrival_stop_id
             FROM ticket t
             JOIN seat s      ON s.id = t.seat_id
             JOIN passenger p ON p.id = t.passenger_id
             WHERE t.id = %s
-        """, (ticket_id,))
+            """,
+            (ticket_id,)
+        )
         updated = cur.fetchone()
         if not updated:
             raise HTTPException(404, "Ticket not found after update")
@@ -137,10 +126,8 @@ def update_ticket(ticket_id: int, data: TicketUpdate):
             seat_num=updated[1],
             passenger_id=updated[2],
             passenger_name=updated[3],
-            passenger_phone=updated[4],
-            passenger_email=updated[5],
-            departure_stop_id=updated[6],
-            arrival_stop_id=updated[7],
+            departure_stop_id=updated[4],
+            arrival_stop_id=updated[5],
         )
 
     except HTTPException:
