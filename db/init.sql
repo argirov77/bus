@@ -107,7 +107,7 @@ ALTER SEQUENCE public.passenger_id_seq OWNED BY public.passenger.id;
 --
 
 CREATE TABLE public.pricelist (
-    id integer NOT NULL,
+    id integer PRIMARY KEY,
     name character varying(255) NOT NULL
 );
 
@@ -843,15 +843,6 @@ ALTER TABLE ONLY public.available
 
 ALTER TABLE ONLY public.passenger
     ADD CONSTRAINT passenger_pkey PRIMARY KEY (id);
-
-
---
--- TOC entry 4702 (class 2606 OID 16578)
--- Name: pricelist pricelist_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.pricelist
-    ADD CONSTRAINT pricelist_pkey PRIMARY KEY (id);
 
 
 --
