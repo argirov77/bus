@@ -5,11 +5,14 @@ from psycopg2 import sql
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Read the URL from the environment; if it's not set (e.g. in Docker),
-# fall back to pointing at the "db" service on port 5432.
+# Determine database host from environment. When running under docker-compose
+# a DB_HOST variable is typically provided and points to the "db" service.
+# For local development we fall back to "localhost" so the application can run
+# against a local PostgreSQL instance without extra configuration.
+DEFAULT_DB_HOST = os.getenv("DB_HOST", "localhost")
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:postgres@db:5432/test1",
+    f"postgresql://postgres:postgres@{DEFAULT_DB_HOST}:5432/test1",
 )
 
 # Derive admin connection string to the default "postgres" database
