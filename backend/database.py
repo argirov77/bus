@@ -48,3 +48,39 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def get_connection():
     """Returns a new psycopg2 connection using DATABASE_URL."""
     return psycopg2.connect(DATABASE_URL)
+
+from pathlib import Path
+
+
+def run_migrations() -> None:
+    """Apply SQL migrations found in db/migrations."""
+    migrations_dir = Path(__file__).resolve().parents[1] / "db" / "migrations"
+    if not migrations_dir.exists():
+        return
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            filename VARCHAR(255) PRIMARY KEY,
+            applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.commit()
+    for path in sorted(migrations_dir.glob("*.sql")):
+        cur.execute("SELECT 1 FROM schema_migrations WHERE filename=%s", (path.name,))
+        if cur.fetchone():
+            continue
+        with open(path, "r") as f:
+            sql_statements = f.read()
+        cur.execute(sql_statements)
+        cur.execute(
+            "INSERT INTO schema_migrations (filename) VALUES (%s)", (path.name,)
+        )
+        conn.commit()
+    cur.close()
+    conn.close()
+
+
+run_migrations()
