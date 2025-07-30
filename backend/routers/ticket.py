@@ -74,11 +74,8 @@ def create_ticket(data: TicketCreate):
 
         # --- 5) Создаём запись в passenger ---
         cur.execute(
-            """
-            INSERT INTO passenger (name, phone, email)
-            VALUES (%s, %s, %s) RETURNING id
-            """,
-            (data.passenger_name, data.passenger_phone, data.passenger_email),
+            "INSERT INTO passenger (name) VALUES (%s) RETURNING id",
+            (data.passenger_name,),
         )
         passenger_id = cur.fetchone()[0]
 
@@ -97,7 +94,7 @@ def create_ticket(data: TicketCreate):
                 data.departure_stop_id,
                 data.arrival_stop_id,
                 data.purchase_id,
-                data.extra_baggage,
+                int(data.extra_baggage),
             ),
         )
         ticket_id = cur.fetchone()[0]

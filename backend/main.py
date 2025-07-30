@@ -70,15 +70,15 @@ def _cancel_expired_loop():
             cur.execute(
                 """
                 UPDATE purchase
-                   SET status='cancelled', updated_at=NOW()
+                   SET status='cancelled', update_at=NOW()
                  WHERE status='reserved'
-                   AND created_at < NOW() - INTERVAL '1 hour'
+                   AND deadline < NOW()
                  RETURNING id
                 """
             )
             for row in cur.fetchall():
                 cur.execute(
-                    "INSERT INTO sales (purchase_id, status) VALUES (%s, 'cancelled')",
+                    "INSERT INTO sales (purchase_id, category, amount) VALUES (%s, 'refund', 0)",
                     (row[0],),
                 )
             conn.commit()
