@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 class DummyCursor:
+    status_resp = "reserved"
     def __init__(self):
         self.queries = []
         self.query = ""
@@ -15,6 +16,8 @@ class DummyCursor:
     def fetchone(self):
         if "SELECT id, seat_id FROM ticket" in self.query:
             return [1, 1]
+        if "SELECT status FROM purchase" in self.query:
+            return [self.status_resp]
         return [1]
     def fetchall(self):
         return []
@@ -57,7 +60,7 @@ def client(monkeypatch):
 
 def test_purchase_flow(client):
     cli, store = client
-    resp = cli.post('/purchase/', json={
+    resp = cli.post('/book', json={
         'tour_id': 1,
         'seat_num': 1,
         'passenger_name': 'A',
@@ -66,10 +69,42 @@ def test_purchase_flow(client):
         'departure_stop_id': 1,
         'arrival_stop_id': 2,
     })
+    assert resp.status_code == 200
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
 
-    resp = cli.post('/purchase/1/pay')
+    store['cursor'].queries.clear()
+
+    resp = cli.post('/pay', json={'purchase_id': 1})
+    assert resp.status_code == 204
+    assert any("status='paid'" in q[0] for q in store['cursor'].queries)
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
 
-    resp = cli.post('/purchase/1/cancel')
+    store['cursor'].queries.clear()
+
+    resp = cli.post('/purchase', json={
+        'tour_id': 1,
+        'seat_num': 1,
+        'passenger_name': 'B',
+        'passenger_phone': '2',
+        'passenger_email': 'b@c.com',
+        'departure_stop_id': 1,
+        'arrival_stop_id': 2,
+    })
+    assert resp.status_code == 200
+    assert any('INSERT INTO purchase' in q[0] for q in store['cursor'].queries)
+    assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
+
+    store['cursor'].queries.clear()
+
+    DummyCursor.status_resp = 'reserved'
+    resp = cli.post('/cancel/1')
+    assert resp.status_code == 204
+    assert any("status='cancelled'" in q[0] for q in store['cursor'].queries)
+    assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
+
+    store['cursor'].queries.clear()
+    DummyCursor.status_resp = 'paid'
+    resp = cli.post('/refund/1')
+    assert resp.status_code == 204
+    assert any("status='refunded'" in q[0] for q in store['cursor'].queries)
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
