@@ -20,6 +20,7 @@ from .routers import (
     ticket,
     purchase,
     auth,
+    bundle,
 )
 from .routers.ticket_admin import router as admin_tickets_router
 
@@ -59,6 +60,7 @@ app.include_router(seat.router)
 app.include_router(search.router)
 app.include_router(admin_tickets_router)
 app.include_router(auth.router)
+app.include_router(bundle.router)
 
 
 def _cancel_expired_loop():

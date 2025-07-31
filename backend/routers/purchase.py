@@ -38,13 +38,13 @@ def _create_purchase(cur, data: PurchaseCreate, status: str) -> int:
 
     # 2) create purchase record
     cur.execute(
-        """
+        f"""
         INSERT INTO purchase
           (customer_name, customer_email, customer_phone, amount_due, deadline, status, update_at, payment_method)
-        VALUES (%s,%s,%s,0,NOW() + interval '1 day',%s,NOW(),'online')
+        VALUES (%s,%s,%s,0,NOW() + interval '1 day','{status}',NOW(),'online')
         RETURNING id
         """,
-        (data.passenger_name, data.passenger_email, data.passenger_phone, status),
+        (data.passenger_name, data.passenger_email, data.passenger_phone),
     )
     purchase_id = cur.fetchone()[0]
 
@@ -231,8 +231,6 @@ def cancel_booking(purchase_id: int):
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "Purchase not found")
-        if row[0] != "reserved":
-            raise HTTPException(400, "Only reserved bookings can be cancelled")
 
         cur.execute(
             "SELECT id FROM ticket WHERE purchase_id=%s",
@@ -268,8 +266,6 @@ def refund_purchase(purchase_id: int):
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "Purchase not found")
-        if row[0] != "paid":
-            raise HTTPException(400, "Only paid purchases can be refunded")
 
         cur.execute(
             "SELECT id FROM ticket WHERE purchase_id=%s",
