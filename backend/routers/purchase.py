@@ -5,6 +5,12 @@ from ..database import get_connection
 
 router = APIRouter(prefix="/purchase", tags=["purchase"])
 
+# Explicit categories for sales log entries
+BOOKING_CATEGORY = "booking"
+PAYMENT_CATEGORY = "ticket_sale"
+CANCEL_CATEGORY = "cancel"
+REFUND_CATEGORY = "refund"
+
 class PurchaseCreate(BaseModel):
     tour_id: int
     seat_num: int
@@ -19,6 +25,7 @@ class PurchaseOut(BaseModel):
     purchase_id: int
 
 def _log_sale(cur, purchase_id: int, category: str, amount: float = 0.0) -> None:
+    """Write a record into the ``sales`` table."""
     cur.execute(
         "INSERT INTO sales (purchase_id, category, amount) VALUES (%s, %s, %s)",
         (purchase_id, category, amount),
@@ -77,7 +84,7 @@ def create_purchase(data: PurchaseCreate):
         )
         cur.fetchone()
 
-        _log_sale(cur, purchase_id, "ticket_sale", 0)
+        _log_sale(cur, purchase_id, BOOKING_CATEGORY, 0)
         conn.commit()
         return {"purchase_id": purchase_id}
     except HTTPException:
@@ -101,7 +108,13 @@ def pay_purchase(purchase_id: int):
         )
         if cur.rowcount == 0:
             raise HTTPException(404, "Purchase not found")
-        _log_sale(cur, purchase_id, "ticket_sale", 0)
+        cur.execute(
+            "SELECT amount_due FROM purchase WHERE id=%s",
+            (purchase_id,),
+        )
+        amount_row = cur.fetchone()
+        amount = amount_row[0] if amount_row else 0
+        _log_sale(cur, purchase_id, PAYMENT_CATEGORY, amount)
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -133,7 +146,8 @@ def cancel_purchase(purchase_id: int):
             "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
-        _log_sale(cur, purchase_id, "refund", 0)
+        _log_sale(cur, purchase_id, CANCEL_CATEGORY, 0)
+        _log_sale(cur, purchase_id, REFUND_CATEGORY, 0)
         conn.commit()
     except HTTPException:
         conn.rollback()

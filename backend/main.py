@@ -78,7 +78,7 @@ def _cancel_expired_loop():
             )
             for row in cur.fetchall():
                 cur.execute(
-                    "INSERT INTO sales (purchase_id, category, amount) VALUES (%s, 'refund', 0)",
+                    "INSERT INTO sales (purchase_id, category, amount) VALUES (%s, 'cancel', 0)",
                     (row[0],),
                 )
             conn.commit()
