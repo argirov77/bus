@@ -63,13 +63,13 @@ def client(monkeypatch):
     return TestClient(app)
 
 def test_routes_bundle(client):
-    resp = client.post("/public/routes_bundle", json={"lang": "en"})
+    resp = client.post("/selected_route", json={"lang": "en"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["forward"]["stops"][0]["name"] == "A_en"
 
 def test_pricelist_bundle(client):
-    resp = client.post("/public/pricelist_bundle", json={"lang": "en"})
+    resp = client.post("/selected_pricelist", json={"lang": "en"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["prices"][0]["departure_name"] == "A_en"
