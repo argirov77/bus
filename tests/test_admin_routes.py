@@ -61,6 +61,7 @@ def test_admin_routes_require_token(client):
         ("post", "/report/"),
         ("get", "/tours/"),
         ("get", "/admin/tickets/"),
+        ("post", "/admin/route_pricelist_bundle/"),
     ]
     for method, path in routes:
         resp = getattr(client, method)(path)
@@ -89,6 +90,7 @@ def test_admin_routes_with_and_without_token(client):
         ("post", "/report/"),
         ("get", "/tours/"),
         ("get", "/admin/tickets/"),
+        ("post", "/admin/route_pricelist_bundle/"),
     ]
     for method, path in routes:
         resp = getattr(client, method)(path, headers=headers)

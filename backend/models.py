@@ -212,3 +212,31 @@ class Sales(BaseModel):
     comment: Optional[str] = None
     class Config:
         from_attributes = True
+
+# --- Дополнительные модели для bundle ---
+class LangRequest(BaseModel):
+    lang: str
+
+class LocalizedStop(BaseModel):
+    id: int
+    name: str
+
+class LocalizedRoute(BaseModel):
+    id: int
+    name: str
+    stops: List[LocalizedStop]
+
+class RoutesBundleOut(BaseModel):
+    forward: LocalizedRoute
+    backward: LocalizedRoute
+
+class PriceLocalized(BaseModel):
+    departure_stop_id: int
+    departure_name: str
+    arrival_stop_id: int
+    arrival_name: str
+    price: float
+
+class PricelistBundleOut(BaseModel):
+    pricelist_id: int
+    prices: List[PriceLocalized]
