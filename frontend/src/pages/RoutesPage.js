@@ -75,6 +75,11 @@ export default function RoutesPage() {
   };
 
   const handleToggleDemo = (route) => {
+    const demoCount = routes.filter((r) => r.is_demo).length;
+    if (!route.is_demo && demoCount >= 2) {
+      alert("Можно выбрать не более двух маршрутов");
+      return;
+    }
     axios
       .put(`${API}/routes/${route.id}/demo`, { is_demo: !route.is_demo })
       .then((res) => {
@@ -175,6 +180,8 @@ export default function RoutesPage() {
     return found ? found.stop_name : "—";
   };
 
+  const demoCount = routes.filter((r) => r.is_demo).length;
+
   return (
     <div className="container">
       <h1>Маршруты</h1>
@@ -192,6 +199,7 @@ export default function RoutesPage() {
               <input
                 type="checkbox"
                 checked={route.is_demo}
+                disabled={!route.is_demo && demoCount >= 2}
                 onChange={() => handleToggleDemo(route)}
               />
               demo
