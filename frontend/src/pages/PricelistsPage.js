@@ -20,6 +20,25 @@ function PricelistPage() {
   const [editingPricelistId, setEditingPricelistId] = useState(null);
   const [editingPricelistName, setEditingPricelistName] = useState("");
 
+  const handleToggleDemo = (pl) => {
+    if (!pl.is_demo && pricelists.some(p => p.is_demo)) {
+      alert("Можно выбрать только один прайс-лист");
+      return;
+    }
+    axios.put(`${API}/pricelists/${pl.id}/demo`, { is_demo: !pl.is_demo })
+      .then(res => {
+        let updated = pricelists.map(p => {
+          if (p.id === pl.id) return res.data;
+          return res.data.is_demo ? { ...p, is_demo: false } : p;
+        });
+        setPricelists(updated);
+        if (selectedPricelist?.id === pl.id) {
+          setSelectedPricelist(res.data);
+        }
+      })
+      .catch(err => alert(err.response?.data?.detail || "Ошибка обновления демо статуса"));
+  };
+
   useEffect(() => {
     fetchPricelists();
     axios.get(`${API}/stops`)
@@ -173,6 +192,15 @@ function PricelistPage() {
                 >
                   {pl.name}
                 </button>
+                <label style={{ marginLeft: '4px' }}>
+                  <input
+                    type="checkbox"
+                    checked={pl.is_demo}
+                    disabled={!pl.is_demo && pricelists.some(p => p.is_demo)}
+                    onChange={() => handleToggleDemo(pl)}
+                  />
+                  demo
+                </label>
                 <button className="icon-btn" onClick={() => handleEditPricelist(pl)}>
                   <img src={editIcon} alt="Редактировать прайс-лист" />
                 </button>

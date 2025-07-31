@@ -57,8 +57,12 @@ class PricelistCreate(PricelistBase):
 
 class Pricelist(PricelistBase):
     id: int
+    is_demo: bool = False
     class Config:
         from_attributes = True
+
+class PricelistDemoUpdate(BaseModel):
+    is_demo: bool
 
 # --- Модели за Prices ---
 class PricesBase(BaseModel):
