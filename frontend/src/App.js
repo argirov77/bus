@@ -9,6 +9,8 @@ import PassengersPage from "./pages/PassengersPage";
 import ReportPage from "./pages/ReportPage";
 import AvailablePage from "./pages/AvailablePage";
 import LoginPage from "./pages/LoginPage";
+import BundlePage from "./pages/BundlePage";
+import PublicBundlePage from "./pages/PublicBundlePage";
 
 import './App.css'; 
 
@@ -68,6 +70,16 @@ function App() {
             </NavLink>
           </li>
           <li>
+            <NavLink to="/bundle" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              Bundle
+            </NavLink>
+          </li>
+          <li>
+            <NavLink to="/public" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              Public
+            </NavLink>
+          </li>
+          <li>
             <NavLink to="/search" className={({ isActive }) => (isActive ? "active" : undefined)}>
               Search
             </NavLink>
@@ -85,6 +97,8 @@ function App() {
         <Route path="/passengers" element={<PassengersPage />} />
         <Route path="/report" element={<ReportPage />} />
         <Route path="/available" element={<AvailablePage />} />
+        <Route path="/bundle" element={<BundlePage />} />
+        <Route path="/public" element={<PublicBundlePage />} />
         <Route path="/search" element={<SearchPage />} />
 
       </Routes>

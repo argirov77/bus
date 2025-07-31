@@ -22,6 +22,7 @@ from .routers import (
     auth,
 )
 from .routers.ticket_admin import router as admin_tickets_router
+from .routers.bundle import admin_router as bundle_admin_router, public_router as bundle_public_router
 
 
 app = FastAPI()
@@ -58,6 +59,8 @@ app.include_router(available.router)
 app.include_router(seat.router)
 app.include_router(search.router)
 app.include_router(admin_tickets_router)
+app.include_router(bundle_admin_router)
+app.include_router(bundle_public_router)
 app.include_router(auth.router)
 
 
