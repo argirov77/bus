@@ -18,12 +18,14 @@ class TicketInfo(BaseModel):
     passenger_name: str
     departure_stop_id: int
     arrival_stop_id: int
+    extra_baggage: bool
 
 
 class TicketUpdate(BaseModel):
     passenger_name: Optional[str]
     departure_stop_id: Optional[int]
     arrival_stop_id: Optional[int]
+    extra_baggage: Optional[bool]
 
 
 class TicketReassign(BaseModel):
@@ -43,7 +45,8 @@ def list_tickets(tour_id: int = Query(..., description="ID рейса")):
             SELECT
               t.id, s.seat_num, t.passenger_id,
               p.name,
-              t.departure_stop_id, t.arrival_stop_id
+              t.departure_stop_id, t.arrival_stop_id,
+              t.extra_baggage
             FROM ticket t
             JOIN seat s      ON s.id = t.seat_id
             JOIN passenger p ON p.id = t.passenger_id
@@ -59,6 +62,7 @@ def list_tickets(tour_id: int = Query(..., description="ID рейса")):
                 passenger_name=r[3],
                 departure_stop_id=r[4],
                 arrival_stop_id=r[5],
+                extra_baggage=bool(r[6]),
             )
             for r in rows
         ]
@@ -101,6 +105,12 @@ def update_ticket(ticket_id: int, data: TicketUpdate):
                 ticket_id
             ))
 
+        if data.extra_baggage is not None:
+            cur.execute(
+                "UPDATE ticket SET extra_baggage=%s WHERE id=%s",
+                (int(data.extra_baggage), ticket_id),
+            )
+
         conn.commit()
 
         # return updated
@@ -109,7 +119,8 @@ def update_ticket(ticket_id: int, data: TicketUpdate):
             SELECT
               t.id, s.seat_num, t.passenger_id,
               p.name,
-              t.departure_stop_id, t.arrival_stop_id
+              t.departure_stop_id, t.arrival_stop_id,
+              t.extra_baggage
             FROM ticket t
             JOIN seat s      ON s.id = t.seat_id
             JOIN passenger p ON p.id = t.passenger_id
@@ -128,6 +139,7 @@ def update_ticket(ticket_id: int, data: TicketUpdate):
             passenger_name=updated[3],
             departure_stop_id=updated[4],
             arrival_stop_id=updated[5],
+            extra_baggage=bool(updated[6]),
         )
 
     except HTTPException:

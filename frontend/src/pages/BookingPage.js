@@ -14,6 +14,7 @@ function BookingPage(props) {
 
   const [selectedSeat, setSelectedSeat] = useState(null);
   const [passengerData, setPassengerData] = useState({ name: "", phone: "", email: "" });
+  const [extraBaggage, setExtraBaggage] = useState(false);
   const [bookingMessage, setBookingMessage] = useState("");
   const [bookingType, setBookingType] = useState("info");
   const [loading, setLoading] = useState(false);
@@ -40,13 +41,15 @@ function BookingPage(props) {
         passenger_phone: passengerData.phone,
         passenger_email: passengerData.email,
         departure_stop_id: departureStopId,
-        arrival_stop_id: arrivalStopId
+        arrival_stop_id: arrivalStopId,
+        extra_baggage: extraBaggage
       })
       .then(function(res) {
         setBookingMessage("Билет успешно забронирован! Ticket ID: " + res.data.ticket_id);
         setBookingType("success");
         setSelectedSeat(null);
         setPassengerData({ name: "", phone: "", email: "" });
+        setExtraBaggage(false);
       })
       .catch(function(err) {
         console.error("Ошибка бронирования:", err);
@@ -95,6 +98,14 @@ function BookingPage(props) {
             value={passengerData.email}
             onChange={(e) => setPassengerData({ ...passengerData, email: e.target.value })}
           />
+          <label style={{display:'flex',alignItems:'center',gap:4}}>
+            <input
+              type="checkbox"
+              checked={extraBaggage}
+              onChange={e => setExtraBaggage(e.target.checked)}
+            />
+            Дополнительный багаж
+          </label>
           <Button variant="contained" type="submit">Забронировать</Button>
         </form>
       </div>

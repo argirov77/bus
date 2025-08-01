@@ -44,7 +44,8 @@ export default function ToursPage() {
     passenger_phone: "",
     passenger_email: "",
     departure_stop_id: "",
-    arrival_stop_id: ""
+    arrival_stop_id: "",
+    extra_baggage: false
   });
 
   // — force‐reload key for SeatAdmin —
@@ -173,7 +174,8 @@ export default function ToursPage() {
       passenger_phone: ticket.passenger_phone,
       passenger_email: ticket.passenger_email,
       departure_stop_id: ticket.departure_stop_id,
-      arrival_stop_id: ticket.arrival_stop_id
+      arrival_stop_id: ticket.arrival_stop_id,
+      extra_baggage: ticket.extra_baggage
     });
   };
   const cancelTicketEdit = () => setEditingTicketId(null);
@@ -337,7 +339,7 @@ export default function ToursPage() {
             <thead>
               <tr>
                 <th>Место</th><th>Имя</th><th>Телефон</th><th>Email</th>
-                <th>Отправление</th><th>Прибытие</th><th>Действия</th>
+                <th>Отправление</th><th>Прибытие</th><th>Багаж</th><th>Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -395,6 +397,16 @@ export default function ToursPage() {
                             {stops.map(s=><option key={s.id} value={s.id}>{s.stop_name}</option>)}
                           </select>
                         : stopsMap[ticket.arrival_stop_id] || ticket.arrival_stop_id
+                      }
+                    </td>
+                    <td>
+                      {isEd
+                        ? <input
+                            type="checkbox"
+                            checked={editingTicketData.extra_baggage}
+                            onChange={e=>setEditingTicketData({...editingTicketData,extra_baggage:e.target.checked})}
+                          />
+                        : (ticket.extra_baggage ? '✔' : '')
                       }
                     </td>
                     <td>
