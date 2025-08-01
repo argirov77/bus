@@ -22,24 +22,7 @@ function PricelistPage() {
 
   const [activePricelistId, setActivePricelistId] = useState(null);
 
-  const handleToggleDemo = (pl) => {
-    if (!pl.is_demo && pricelists.some(p => p.is_demo)) {
-      alert("Можно выбрать только один прайс-лист");
-      return;
-    }
-    axios.put(`${API}/pricelists/${pl.id}/demo`, { is_demo: !pl.is_demo })
-      .then(res => {
-        let updated = pricelists.map(p => {
-          if (p.id === pl.id) return res.data;
-          return res.data.is_demo ? { ...p, is_demo: false } : p;
-        });
-        setPricelists(updated);
-        if (selectedPricelist?.id === pl.id) {
-          setSelectedPricelist(res.data);
-        }
-      })
-      .catch(err => alert(err.response?.data?.detail || "Ошибка обновления демо статуса"));
-  };
+  // Демо статус прайс-листов более не используется
 
   useEffect(() => {
     fetchPricelists();
@@ -203,15 +186,6 @@ function PricelistPage() {
                 >
                   {pl.name}
                 </button>
-                <label style={{ marginLeft: '4px' }}>
-                  <input
-                    type="checkbox"
-                    checked={pl.is_demo}
-                    disabled={!pl.is_demo && pricelists.some(p => p.is_demo)}
-                    onChange={() => handleToggleDemo(pl)}
-                  />
-                  demo
-                </label>
                 <label style={{ marginLeft: '4px' }}>
                   <input
                     type="radio"
