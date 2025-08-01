@@ -40,7 +40,10 @@ export default function RoutesPage() {
     axios.get(`${API}/routes`).then((res) => setRoutes(res.data));
     axios.get(`${API}/stops`).then((res) => setStops(res.data));
     axios.get(`${API}/admin/selected_route`)
-      .then(res => setActiveRouteIds(res.data.routes.map(r => r.id)))
+      .then(res => {
+        const first = res.data.routes[0];
+        setActiveRouteIds(first ? [first.id] : []);
+      })
       .catch(err => console.error(err));
   }, []);
 
@@ -96,18 +99,10 @@ export default function RoutesPage() {
   };
 
   const handleToggleActiveRoute = (routeId) => {
-    let newIds;
-    if (activeRouteIds.includes(routeId)) {
-      newIds = activeRouteIds.filter((id) => id !== routeId);
-    } else {
-      if (activeRouteIds.length >= 2) {
-        alert("Можно выбрать не более двух маршрутов");
-        return;
-      }
-      newIds = [...activeRouteIds, routeId];
-    }
+    const newIds = activeRouteIds.includes(routeId) ? [] : [routeId];
     setActiveRouteIds(newIds);
-    axios.post(`${API}/admin/selected_route`, { routes: newIds })
+    axios
+      .post(`${API}/admin/selected_route`, { routes: newIds })
       .catch(err => console.error(err));
   };
 
