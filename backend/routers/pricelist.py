@@ -12,6 +12,7 @@ router = APIRouter(
 )
 
 @router.get("/", response_model=List[Pricelist])
+@router.get("", response_model=List[Pricelist], include_in_schema=False)
 def get_pricelists():
     """
     Получить все прайс-листы.
