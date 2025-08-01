@@ -26,6 +26,8 @@ export default function RoutesPage() {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [routeStops, setRouteStops] = useState([]);
 
+  const [activeRouteIds, setActiveRouteIds] = useState([]);
+
   const [newRouteName, setNewRouteName] = useState("");
   const [newStop, setNewStop] = useState({
     stop_id: "",
@@ -37,6 +39,9 @@ export default function RoutesPage() {
   useEffect(() => {
     axios.get(`${API}/routes`).then((res) => setRoutes(res.data));
     axios.get(`${API}/stops`).then((res) => setStops(res.data));
+    axios.get(`${API}/admin/selected_route`)
+      .then(res => setActiveRouteIds(res.data.routes.map(r => r.id)))
+      .catch(err => console.error(err));
   }, []);
 
   // 2. Загрузка остановок выбранного маршрута
@@ -88,6 +93,22 @@ export default function RoutesPage() {
       .catch((err) => {
         alert(err.response?.data?.detail || "Ошибка обновления демо статуса");
       });
+  };
+
+  const handleToggleActiveRoute = (routeId) => {
+    let newIds;
+    if (activeRouteIds.includes(routeId)) {
+      newIds = activeRouteIds.filter((id) => id !== routeId);
+    } else {
+      if (activeRouteIds.length >= 2) {
+        alert("Можно выбрать не более двух маршрутов");
+        return;
+      }
+      newIds = [...activeRouteIds, routeId];
+    }
+    setActiveRouteIds(newIds);
+    axios.post(`${API}/admin/selected_route`, { routes: newIds })
+      .catch(err => console.error(err));
   };
 
   // Выбор маршрута
@@ -203,6 +224,14 @@ export default function RoutesPage() {
                 onChange={() => handleToggleDemo(route)}
               />
               demo
+            </label>
+            <label style={{ marginLeft: '4px' }}>
+              <input
+                type="checkbox"
+                checked={activeRouteIds.includes(route.id)}
+                onChange={() => handleToggleActiveRoute(route.id)}
+              />
+              active
             </label>
             <button
               className="icon-btn"
