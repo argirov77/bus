@@ -26,7 +26,6 @@ export default function RoutesPage() {
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [routeStops, setRouteStops] = useState([]);
 
-  const [activeRouteIds, setActiveRouteIds] = useState([]);
 
   const [newRouteName, setNewRouteName] = useState("");
   const [newStop, setNewStop] = useState({
@@ -39,12 +38,6 @@ export default function RoutesPage() {
   useEffect(() => {
     axios.get(`${API}/routes`).then((res) => setRoutes(res.data));
     axios.get(`${API}/stops`).then((res) => setStops(res.data));
-    axios.get(`${API}/admin/selected_route`)
-      .then(res => {
-        const first = res.data.routes[0];
-        setActiveRouteIds(first ? [first.id] : []);
-      })
-      .catch(err => console.error(err));
   }, []);
 
   // 2. Загрузка остановок выбранного маршрута
@@ -98,13 +91,6 @@ export default function RoutesPage() {
       });
   };
 
-  const handleToggleActiveRoute = (routeId) => {
-    const newIds = activeRouteIds.includes(routeId) ? [] : [routeId];
-    setActiveRouteIds(newIds);
-    axios
-      .post(`${API}/admin/selected_route`, { routes: newIds })
-      .catch(err => console.error(err));
-  };
 
   // Выбор маршрута
   const handleSelectRoute = (route) => {
@@ -219,14 +205,6 @@ export default function RoutesPage() {
                 onChange={() => handleToggleDemo(route)}
               />
               demo
-            </label>
-            <label style={{ marginLeft: '4px' }}>
-              <input
-                type="checkbox"
-                checked={activeRouteIds.includes(route.id)}
-                onChange={() => handleToggleActiveRoute(route.id)}
-              />
-              active
             </label>
             <button
               className="icon-btn"
