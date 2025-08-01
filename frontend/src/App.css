@@ -35,6 +35,10 @@ h1, h2, h3, h4 {
   width: 100%;
 }
 
+.stop-location-link {
+  margin-left: 8px;
+}
+
 .stop-actions {
   display: flex;
   gap: 8px;

@@ -109,12 +109,21 @@ function StopsPage() {
                   value={editingStop.description}
                   onChange={(e) => setEditingStop({ ...editingStop, description: e.target.value })}
                 />
+                <input
+                  type="text"
+                  placeholder="Ссылка на карту"
+                  value={editingStop.location}
+                  onChange={(e) => setEditingStop({ ...editingStop, location: e.target.value })}
+                />
                 <button type="submit">Сохранить</button>
                 <button type="button" onClick={() => setEditingStopId(null)}>Отмена</button>
               </form>
             ) : (
               <div className="stop-row">
                 <span>{stop.stop_name}</span>
+                {stop.location && (
+                  <a href={stop.location} target="_blank" rel="noopener noreferrer" className="stop-location-link">Карта</a>
+                )}
                 <div className="stop-actions">
                   <IconButton icon={editIcon} alt="Редактировать" onClick={() => handleEdit(stop)} />
                   <IconButton icon={deleteIcon} alt="Удалить" onClick={() => handleDeleteStop(stop.id)} />
@@ -155,6 +164,12 @@ function StopsPage() {
           placeholder="Описание"
           value={newStop.description}
           onChange={(e) => setNewStop({ ...newStop, description: e.target.value })}
+        />
+        <input
+          type="text"
+          placeholder="Ссылка на карту"
+          value={newStop.location}
+          onChange={(e) => setNewStop({ ...newStop, location: e.target.value })}
         />
         <IconButton icon={addIcon} alt="Добавить" onClick={handleCreateStop} />
       </form>
