@@ -105,6 +105,7 @@ def get_report(filters: ReportFilters):
                 p.name AS passenger_name,
                 p.phone AS passenger_phone,
                 p.email AS passenger_email,
+                t.extra_baggage,
                 tr.date AS tour_date,
                 r.name AS route_name,
                 ds.stop_name AS dep_stop_name,
@@ -133,10 +134,11 @@ def get_report(filters: ReportFilters):
                 "passenger_name": row[4],
                 "passenger_phone": row[5],
                 "passenger_email": row[6],
-                "tour_date": row[7].isoformat(),
-                "route_name": row[8],
-                "departure_stop_name": row[9],
-                "arrival_stop_name": row[10]
+                "extra_baggage": bool(row[7]),
+                "tour_date": row[8].isoformat(),
+                "route_name": row[9],
+                "departure_stop_name": row[10],
+                "arrival_stop_name": row[11]
             })
 
         return {"summary": summary, "tickets": tickets}

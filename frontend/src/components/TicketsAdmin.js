@@ -42,6 +42,7 @@ export default function TicketsAdmin({ tourId }) {
             <th>Телефон</th>
             <th>Email</th>
             <th>Откуда → Куда</th>
+            <th>Багаж</th>
           </tr>
         </thead>
         <tbody>
@@ -71,6 +72,13 @@ export default function TicketsAdmin({ tourId }) {
                 {stopsMap[t.departure_stop_id]||t.departure_stop_id}
                 {" → "}
                 {stopsMap[t.arrival_stop_id]  ||t.arrival_stop_id}
+              </td>
+              <td>
+                <input
+                  type="checkbox"
+                  checked={t.extra_baggage}
+                  onChange={e=>updateField(t.ticket_id,"extra_baggage",e.target.checked)}
+                />
               </td>
             </tr>
           ))}

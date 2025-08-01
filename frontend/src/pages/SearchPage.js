@@ -26,6 +26,7 @@ export default function SearchPage() {
   const [passengerData, setPassengerData] = useState({
     name: "", phone: "", email: ""
   });
+  const [extraBaggage, setExtraBaggage] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [loading, setLoading] = useState(false);
@@ -137,7 +138,8 @@ export default function SearchPage() {
       passenger_phone:    passengerData.phone,
       passenger_email:    passengerData.email,
       departure_stop_id:  Number(selectedDeparture),
-      arrival_stop_id:    Number(selectedArrival)
+      arrival_stop_id:    Number(selectedArrival),
+      extra_baggage:      extraBaggage
     })
     .then(res => {
       setMessage(`Билет забронирован! Ticket ID: ${res.data.ticket_id}`);
@@ -145,6 +147,7 @@ export default function SearchPage() {
       // сброс полей и перезагрузка схемы мест
       setSelectedSeat(null);
       setPassengerData({ name:"", phone:"", email:"" });
+      setExtraBaggage(false);
     })
     .catch(err => {
       console.error(err);
@@ -248,6 +251,14 @@ export default function SearchPage() {
               value={passengerData.email}
               onChange={e => setPassengerData({ ...passengerData, email: e.target.value })}
             />
+            <label style={{display:'flex',alignItems:'center',gap:4}}>
+              <input
+                type="checkbox"
+                checked={extraBaggage}
+                onChange={e => setExtraBaggage(e.target.checked)}
+              />
+              Дополнительный багаж
+            </label>
             <button type="submit">Забронировать</button>
           </form>
         </>
