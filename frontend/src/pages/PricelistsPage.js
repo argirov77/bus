@@ -20,6 +20,8 @@ function PricelistPage() {
   const [editingPricelistId, setEditingPricelistId] = useState(null);
   const [editingPricelistName, setEditingPricelistName] = useState("");
 
+  const [activePricelistId, setActivePricelistId] = useState(null);
+
   const handleToggleDemo = (pl) => {
     if (!pl.is_demo && pricelists.some(p => p.is_demo)) {
       alert("Можно выбрать только один прайс-лист");
@@ -43,6 +45,9 @@ function PricelistPage() {
     fetchPricelists();
     axios.get(`${API}/stops`)
       .then(res => setStops(res.data))
+      .catch(err => console.error(err));
+    axios.get(`${API}/admin/selected_pricelist`)
+      .then(res => setActivePricelistId(res.data.pricelist.id))
       .catch(err => console.error(err));
   }, []);
 
@@ -103,6 +108,12 @@ function PricelistPage() {
         }
         handleCancelEditPricelist();
       })
+      .catch(err => console.error(err));
+  };
+
+  const handleSetActivePricelist = (id) => {
+    setActivePricelistId(id);
+    axios.post(`${API}/admin/selected_pricelist`, { pricelist_id: id })
       .catch(err => console.error(err));
   };
 
@@ -200,6 +211,15 @@ function PricelistPage() {
                     onChange={() => handleToggleDemo(pl)}
                   />
                   demo
+                </label>
+                <label style={{ marginLeft: '4px' }}>
+                  <input
+                    type="radio"
+                    name="activePricelist"
+                    checked={activePricelistId === pl.id}
+                    onChange={() => handleSetActivePricelist(pl.id)}
+                  />
+                  active
                 </label>
                 <button className="icon-btn" onClick={() => handleEditPricelist(pl)}>
                   <img src={editIcon} alt="Редактировать прайс-лист" />
