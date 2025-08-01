@@ -41,8 +41,6 @@ export default function ToursPage() {
   const [editingTicketId, setEditingTicketId] = useState(null);
   const [editingTicketData, setEditingTicketData] = useState({
     passenger_name: "",
-    passenger_phone: "",
-    passenger_email: "",
     departure_stop_id: "",
     arrival_stop_id: "",
     extra_baggage: false
@@ -171,8 +169,6 @@ export default function ToursPage() {
     setEditingTicketId(ticket.ticket_id);
     setEditingTicketData({
       passenger_name: ticket.passenger_name,
-      passenger_phone: ticket.passenger_phone,
-      passenger_email: ticket.passenger_email,
       departure_stop_id: ticket.departure_stop_id,
       arrival_stop_id: ticket.arrival_stop_id,
       extra_baggage: ticket.extra_baggage
@@ -338,8 +334,12 @@ export default function ToursPage() {
           <table className="styled-table">
             <thead>
               <tr>
-                <th>Место</th><th>Имя</th><th>Телефон</th><th>Email</th>
-                <th>Отправление</th><th>Прибытие</th><th>Багаж</th><th>Действия</th>
+                <th>Место</th>
+                <th>Имя</th>
+                <th>Отправление</th>
+                <th>Прибытие</th>
+                <th>Багаж</th>
+                <th>Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -355,24 +355,6 @@ export default function ToursPage() {
                             onChange={e=>setEditingTicketData({...editingTicketData,passenger_name:e.target.value})}
                           />
                         : ticket.passenger_name
-                      }
-                    </td>
-                    <td>
-                      {isEd
-                        ? <input
-                            value={editingTicketData.passenger_phone}
-                            onChange={e=>setEditingTicketData({...editingTicketData,passenger_phone:e.target.value})}
-                          />
-                        : ticket.passenger_phone
-                      }
-                    </td>
-                    <td>
-                      {isEd
-                        ? <input
-                            value={editingTicketData.passenger_email}
-                            onChange={e=>setEditingTicketData({...editingTicketData,passenger_email:e.target.value})}
-                          />
-                        : ticket.passenger_email
                       }
                     </td>
                     <td>
