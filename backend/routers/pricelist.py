@@ -26,6 +26,7 @@ def get_pricelists():
     return [{"id": r[0], "name": r[1], "is_demo": r[2]} for r in rows]
 
 @router.post("/", response_model=Pricelist, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=Pricelist, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def create_pricelists(item: PricelistCreate):
     """
     Создать новый прайс-лист.
