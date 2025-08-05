@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime, date
 from typing import Optional, List
+from enum import Enum
 
 # --- Модели за Stop ---
 class StopBase(BaseModel):
@@ -95,13 +96,21 @@ class RoutePricelistBundle(RoutePricelistBundleBase):
 
 # --- Модели за Tour ---
 # За вход при създаване използваме layout_variant и active_seats, а общият брой места се пресмята на бекенда
+class BookingTermsEnum(int, Enum):
+    """Варианты условий бронирования."""
+
+    EXPIRE_AFTER_48H = 0  # бронь сгорает через 48 часов после оформления
+    EXPIRE_BEFORE_48H = 1  # бронь сгорает за 48 часов до выезда
+    NO_EXPIRY = 2          # бронь не сгорает, оплата при посадке
+    NO_BOOKING = 3         # бронирование недоступно, только оплата
+
+
 class TourBase(BaseModel):
     route_id: int
     pricelist_id: int
     date: date
     layout_variant: int  # избран вариант на разположение (напр. 1 – Neoplan, 2 – Travego)
-    # количество дней до отправления, в течение которых действует бронь
-    booking_terms: int = 0
+    booking_terms: BookingTermsEnum = BookingTermsEnum.EXPIRE_AFTER_48H
 
 class TourCreate(TourBase):
     active_seats: List[int]  # номера на активните места за продажба

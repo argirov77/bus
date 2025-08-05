@@ -6,6 +6,7 @@ from typing import List
 from datetime import date
 from ..database import get_connection
 from ..auth import require_admin_token
+from ..models import BookingTermsEnum
 
 router = APIRouter(
     prefix="/tours",
@@ -20,8 +21,7 @@ class TourCreate(BaseModel):
     date: date
     layout_variant: int
     active_seats: List[int]
-    # параметр бронировки в днях до отправления; в БД smallint NOT NULL
-    booking_terms: int = 0
+    booking_terms: BookingTermsEnum = BookingTermsEnum.EXPIRE_AFTER_48H
 
 
 class TourOut(BaseModel):
@@ -30,6 +30,7 @@ class TourOut(BaseModel):
     pricelist_id: int
     date: date
     layout_variant: int
+    booking_terms: BookingTermsEnum
 
     class Config:
         from_attributes = True
@@ -41,10 +42,17 @@ def get_tours():
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, route_id, pricelist_id, date, layout_variant FROM tour ORDER BY date;"
+            "SELECT id, route_id, pricelist_id, date, layout_variant, booking_terms FROM tour ORDER BY date;"
         )
         return [
-            {"id": r[0], "route_id": r[1], "pricelist_id": r[2], "date": r[3], "layout_variant": r[4]}
+            {
+                "id": r[0],
+                "route_id": r[1],
+                "pricelist_id": r[2],
+                "date": r[3],
+                "layout_variant": r[4],
+                "booking_terms": r[5],
+            }
             for r in cur.fetchall()
         ]
     finally:
