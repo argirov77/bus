@@ -20,7 +20,8 @@ class TourCreate(BaseModel):
     date: date
     layout_variant: int
     active_seats: List[int]
-    booking_terms: str | None = None
+    # параметр бронировки в днях до отправления; в БД smallint NOT NULL
+    booking_terms: int = 0
 
 
 class TourOut(BaseModel):

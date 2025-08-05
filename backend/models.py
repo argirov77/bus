@@ -100,7 +100,8 @@ class TourBase(BaseModel):
     pricelist_id: int
     date: date
     layout_variant: int  # избран вариант на разположение (напр. 1 – Neoplan, 2 – Travego)
-    booking_terms: str | None = None
+    # количество дней до отправления, в течение которых действует бронь
+    booking_terms: int = 0
 
 class TourCreate(TourBase):
     active_seats: List[int]  # номера на активните места за продажба
