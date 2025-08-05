@@ -11,7 +11,7 @@ class DummyCursor:
         self.query = args[0] if args else ""
 
     def fetchone(self):
-        if "FROM users" in self.query:
+        if "from users" in self.query.lower():
             # hashed 'admin'
             return ["8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918", "admin"]
         return None
@@ -40,6 +40,9 @@ class DummyConn:
 @pytest.fixture()
 def client(monkeypatch):
     monkeypatch.setattr("psycopg2.connect", lambda *a, **kw: DummyConn())
+    monkeypatch.setattr("backend.database.get_connection", lambda: DummyConn())
+    import backend.routers.auth as auth_router
+    monkeypatch.setattr(auth_router, "get_connection", lambda: DummyConn())
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
     if "backend.main" in sys.modules:
         importlib.reload(sys.modules["backend.main"])

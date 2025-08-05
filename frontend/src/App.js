@@ -10,6 +10,7 @@ import PassengersPage from "./pages/PassengersPage";
 import ReportPage from "./pages/ReportPage";
 import AvailablePage from "./pages/AvailablePage";
 import LoginPage from "./pages/LoginPage";
+import PurchasesPage from "./pages/PurchasesPage";
 
 import './App.css'; 
 
@@ -87,6 +88,11 @@ function App() {
             </NavLink>
           </li>
           <li>
+            <NavLink to="/purchases" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              Purchases
+            </NavLink>
+          </li>
+          <li>
             <button onClick={handleLogout}>Logout</button>
           </li>
         </ul>
@@ -100,6 +106,7 @@ function App() {
         <Route path="/report" element={<ReportPage />} />
         <Route path="/available" element={<AvailablePage />} />
         <Route path="/search" element={<SearchPage />} />
+        <Route path="/purchases" element={<PurchasesPage />} />
 
       </Routes>
     </Router>

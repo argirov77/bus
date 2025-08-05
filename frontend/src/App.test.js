@@ -1,8 +1,9 @@
 import { render, screen } from '@testing-library/react';
+jest.mock('axios', () => ({ get: jest.fn(), post: jest.fn() }));
 import App from './App';
 
-test('renders learn react link', () => {
+test('renders login', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  const heading = screen.getByRole('heading', { name: /Login/i });
+  expect(heading).toBeInTheDocument();
 });
