@@ -18,6 +18,7 @@ function BookingPage(props) {
   const [bookingMessage, setBookingMessage] = useState("");
   const [bookingType, setBookingType] = useState("info");
   const [loading, setLoading] = useState(false);
+  const [purchaseId, setPurchaseId] = useState(null);
 
   const handleSeatSelect = function(seat) {
     setSelectedSeat(seat.seat_number);
@@ -34,7 +35,7 @@ function BookingPage(props) {
     setBookingType("info");
     setLoading(true);
     axios
-      .post(`${API}/tickets`, {
+      .post(`${API}/book`, {
         tour_id: tourId,
         seat_num: selectedSeat,
         passenger_name: passengerData.name,
@@ -45,7 +46,8 @@ function BookingPage(props) {
         extra_baggage: extraBaggage
       })
       .then(function(res) {
-        setBookingMessage("Билет успешно забронирован! Ticket ID: " + res.data.ticket_id);
+        setBookingMessage(`Билет успешно забронирован! Purchase ID: ${res.data.purchase_id}`);
+        setPurchaseId(res.data.purchase_id);
         setBookingType("success");
         setSelectedSeat(null);
         setPassengerData({ name: "", phone: "", email: "" });
