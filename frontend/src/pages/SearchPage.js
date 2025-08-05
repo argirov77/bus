@@ -115,7 +115,7 @@ export default function SearchPage() {
     setMessage("");
   };
 
-   6. Сабмит формы бронирования
+  // 6. Сабмит формы бронирования
   const handleAction = (action) => {
     if (!selectedTour) {
       setMessage("Сначала выберите рейс");
@@ -172,24 +172,52 @@ export default function SearchPage() {
           ))}
         </select>
 
-        <select
-          value={selectedArrival}
-          onChange={e => setSelectedArrival(e.target.value)}
-          disabled={!selectedDeparture}
-        >
-          <option value="">Куда</option>
-@@ -208,61 +209,66 @@ export default function SearchPage() {
-              <button style={{ marginLeft:8 }} onClick={() => handleTourSelect(t)}>
-                Выбрать
-              </button>
-            </div>
-          ))}
-        </>
-      )}
+      <select
+        value={selectedArrival}
+        onChange={e => setSelectedArrival(e.target.value)}
+        disabled={!selectedDeparture}
+      >
+        <option value="">Куда</option>
+        {arrivalStops.map(s => (
+          <option key={s.id} value={s.id}>{s.stop_name}</option>
+        ))}
+      </select>
 
-      {selectedTour && (
-        <>
-          <h3>Рейс #{selectedTour.id}, дата: {selectedTour.date}</h3>
+      <select
+        value={selectedDate}
+        onChange={e => setSelectedDate(e.target.value)}
+        disabled={!selectedDeparture || !selectedArrival}
+      >
+        <option value="">Дата</option>
+        {dates.map(d => (
+          <option key={d} value={d}>{d}</option>
+        ))}
+      </select>
+
+      <button type="submit">Найти</button>
+    </form>
+
+    {loading && <Loader />}
+
+    <Alert type={messageType} message={message} />
+
+    {tours.length > 0 && (
+      <>
+        <h3>Найденные рейсы:</h3>
+        {tours.map(t => (
+          <div key={t.id} style={{ display:'flex', marginBottom:8 }}>
+            <span>Рейс #{t.id}, дата: {t.date}</span>
+            <button style={{ marginLeft:8 }} onClick={() => handleTourSelect(t)}>
+              Выбрать
+            </button>
+          </div>
+        ))}
+      </>
+    )}
+
+    {selectedTour && (
+      <>
+        <h3>Рейс #{selectedTour.id}, дата: {selectedTour.date}</h3>
           <p>Свободно мест: {selectedTour.seats}</p>
           <p>Выберите место:</p>
 
