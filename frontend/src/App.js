@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, NavLink } from "react-router-dom";
+import axios from "axios";
 import StopsPage from "./pages/StopsPage";
 import RoutesPage from "./pages/RoutesPage";
 import PricelistsPage from "./pages/PricelistsPage";
@@ -23,6 +24,19 @@ function App() {
     localStorage.removeItem("token");
     setToken(null);
   };
+
+  useEffect(() => {
+    const verify = async () => {
+      if (token) {
+        try {
+          await axios.get("/auth/verify");
+        } catch (err) {
+          handleLogout();
+        }
+      }
+    };
+    verify();
+  }, [token]);
 
   if (!token) {
     return <LoginPage onLogin={handleLogin} />;
