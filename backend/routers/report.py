@@ -95,6 +95,7 @@ def get_report(filters: ReportFilters):
         # ДЕТАЛИ:
         # JOIN seat s для seat_num
         # JOIN stop ds/as_ для имён остановок
+        # JOIN purchase pu для контактных данных
         # JOIN prices pr чтобы получить price
         details_query = f"""
             SELECT
@@ -103,8 +104,8 @@ def get_report(filters: ReportFilters):
                 s.seat_num,
                 pr.price,
                 p.name AS passenger_name,
-                p.phone AS passenger_phone,
-                p.email AS passenger_email,
+                pu.customer_phone AS passenger_phone,
+                pu.customer_email AS passenger_email,
                 t.extra_baggage,
                 tr.date AS tour_date,
                 r.name AS route_name,
@@ -115,6 +116,7 @@ def get_report(filters: ReportFilters):
             JOIN route r ON tr.route_id = r.id
             JOIN seat s ON t.seat_id = s.id
             LEFT JOIN passenger p ON t.passenger_id = p.id
+            LEFT JOIN purchase pu ON t.purchase_id = pu.id
             LEFT JOIN stop ds ON ds.id = t.departure_stop_id
             LEFT JOIN stop as_ ON as_.id = t.arrival_stop_id
             JOIN prices pr ON pr.pricelist_id = tr.pricelist_id
