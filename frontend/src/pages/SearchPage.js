@@ -115,9 +115,8 @@ export default function SearchPage() {
     setMessage("");
   };
 
-  // 6. Сабмит формы бронирования
-  const handleBooking = e => {
-    e.preventDefault();
+   6. Сабмит формы бронирования
+  const handleAction = (action) => {
     if (!selectedTour) {
       setMessage("Сначала выберите рейс");
       setMessageType("error");
@@ -128,10 +127,10 @@ export default function SearchPage() {
       setMessageType("error");
       return;
     }
-    setMessage("Бронирование…");
+    setMessage(action === 'purchase' ? "Покупка…" : "Бронирование…");
     setMessageType("info");
     setLoading(true);
-    axios.post(`${API}/tickets`, {
+    axios.post(`${API}/purchase/${action === 'purchase' ? 'purchase' : 'book'}`, {
       tour_id:            selectedTour.id,
       seat_num:           selectedSeat,
       passenger_name:     passengerData.name,
@@ -142,7 +141,9 @@ export default function SearchPage() {
       extra_baggage:      extraBaggage
     })
     .then(res => {
-      setMessage(`Билет забронирован! Ticket ID: ${res.data.ticket_id}`);
+      setMessage(action === 'purchase'
+        ? `Билет куплен! Purchase ID: ${res.data.purchase_id}`
+        : `Билет забронирован! Purchase ID: ${res.data.purchase_id}`);
       setMessageType("success");
       // сброс полей и перезагрузка схемы мест
       setSelectedSeat(null);
@@ -151,7 +152,7 @@ export default function SearchPage() {
     })
     .catch(err => {
       console.error(err);
-      setMessage("Ошибка при бронировании");
+      setMessage(action === 'purchase' ? "Ошибка при покупке" : "Ошибка при бронировании");
       setMessageType("error");
     })
     .finally(() => setLoading(false));
@@ -177,34 +178,7 @@ export default function SearchPage() {
           disabled={!selectedDeparture}
         >
           <option value="">Куда</option>
-          {arrivalStops.map(s => (
-            <option key={s.id} value={s.id}>{s.stop_name}</option>
-          ))}
-        </select>
-
-        <select
-          value={selectedDate}
-          onChange={e => setSelectedDate(e.target.value)}
-          disabled={!selectedArrival}
-        >
-          <option value="">Дата</option>
-          {dates.map(d => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
-
-        <button type="submit">Найти рейсы</button>
-      </form>
-
-      {loading && <Loader />}
-      {message && <Alert type={messageType} message={message} />}
-
-      {!selectedTour && tours.length > 0 && (
-        <>
-          <h3>Доступные рейсы</h3>
-          {tours.map(t => (
-            <div key={t.id} style={{ marginBottom:10 }}>
-              <strong>Рейс #{t.id}</strong>, дата: {t.date}, свободно: {t.seats}
+@@ -208,61 +209,66 @@ export default function SearchPage() {
               <button style={{ marginLeft:8 }} onClick={() => handleTourSelect(t)}>
                 Выбрать
               </button>
@@ -230,7 +204,7 @@ export default function SearchPage() {
 
           {selectedSeat && <p>Вы выбрали место: {selectedSeat}</p>}
 
-          <form onSubmit={handleBooking}
+          <form onSubmit={e => e.preventDefault()}
                 style={{ marginTop:20, display:"flex", flexDirection:"column", gap:8, maxWidth:300 }}>
             <input
               type="text"
@@ -242,12 +216,14 @@ export default function SearchPage() {
             <input
               type="tel"
               placeholder="Телефон"
+              required
               value={passengerData.phone}
               onChange={e => setPassengerData({ ...passengerData, phone: e.target.value })}
             />
             <input
               type="email"
               placeholder="Email"
+              required
               value={passengerData.email}
               onChange={e => setPassengerData({ ...passengerData, email: e.target.value })}
             />
@@ -259,7 +235,10 @@ export default function SearchPage() {
               />
               Дополнительный багаж
             </label>
-            <button type="submit">Забронировать</button>
+            <div style={{display:'flex', gap:8}}>
+              <button type="button" onClick={() => handleAction('book')}>Бронь</button>
+              <button type="button" onClick={() => handleAction('purchase')}>Покупка</button>
+            </div>
           </form>
         </>
       )}
