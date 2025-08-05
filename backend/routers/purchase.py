@@ -27,35 +27,8 @@ def _log_sale(cur, purchase_id: int, category: str, amount: float = 0.0) -> None
     )
 
 
-router = APIRouter(prefix="/purchase", tags=["purchase"])
-# second router exposing simplified endpoints without the /purchase prefix
-actions_router = APIRouter(tags=["purchase"])
-
-class PurchaseCreate(BaseModel):
-    tour_id: int
-    seat_num: int
-    passenger_name: str
-    passenger_phone: str
-    passenger_email: EmailStr
-    departure_stop_id: int
-    arrival_stop_id: int
-    extra_baggage: bool = False
-
-class PurchaseOut(BaseModel):
-    purchase_id: int
-
-def _log_sale(cur, purchase_id: int, category: str, amount: float = 0.0) -> None:
-    cur.execute(
-        "INSERT INTO sales (purchase_id, category, amount) VALUES (%s, %s, %s)",
-        (purchase_id, category, amount),
-    )
-
-
 def _create_purchase(
-    cur,
-    data: PurchaseCreate,
-    status: str,
-    payment_method: str = "online",
+    cur, data: PurchaseCreate, status: str, payment_method: str = "online"
 ) -> int:
     """Helper that inserts passenger, purchase and ticket records."""
     # 1) create passenger
@@ -103,44 +76,16 @@ def _create_purchase(
             data.tour_id,
             seat_id,
             passenger_id,
-@@ -166,51 +172,51 @@ class PayIn(BaseModel):
+            data.departure_stop_id,
+            data.arrival_stop_id,
+            purchase_id,
+            int(data.extra_baggage),
+        ),
+    )
+    cur.fetchone()
 
-@actions_router.post("/book", response_model=PurchaseOut)
-def book_seat(data: PurchaseCreate):
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        purchase_id = _create_purchase(cur, data, "reserved")
-        conn.commit()
-        return {"purchase_id": purchase_id}
-    except HTTPException:
-        conn.rollback()
-        raise
-    except Exception as exc:
-        conn.rollback()
-        raise HTTPException(500, str(exc))
-    finally:
-        cur.close()
-        conn.close()
-
-
-@actions_router.post("/purchase", response_model=PurchaseOut)
-def purchase_and_pay(data: PurchaseCreate):
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        purchase_id = _create_purchase(cur, data, "paid", "offline")
-        conn.commit()
-        return {"purchase_id": purchase_id}
-    except HTTPException:
-        conn.rollback()
-        raise
-    except Exception as exc:
-        conn.rollback()
-        raise HTTPException(500, str(exc))
-    finally:
-        cur.close()
-        conn.close()
+    _log_sale(cur, purchase_id, "ticket_sale", 0)
+    return purchase_id
 
 @router.post("/", response_model=PurchaseOut)
 def create_purchase(data: PurchaseCreate):
@@ -246,7 +191,7 @@ def purchase_and_pay(data: PurchaseCreate):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        purchase_id = _create_purchase(cur, data, "paid")
+        purchase_id = _create_purchase(cur, data, "paid", "offline")
         conn.commit()
         return {"purchase_id": purchase_id}
     except HTTPException:
