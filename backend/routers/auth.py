@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from passlib.context import CryptContext
 
 from ..database import get_connection
 from ..jwt_utils import create_token
+from ..auth import get_current_user
 import hashlib
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -71,3 +72,8 @@ def login(data: LoginIn):
 
     token = create_token({"user_id": user_id, "role": role})
     return {"token": token}
+
+
+@router.get("/verify")
+def verify(_: dict = Depends(get_current_user)):
+    return {"status": "ok"}
