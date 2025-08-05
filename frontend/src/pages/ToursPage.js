@@ -14,6 +14,12 @@ import deleteIcon from "../assets/icons/delete.png";
 import saveIcon   from "../assets/icons/save.png";
 import cancelIcon from "../assets/icons/cancel.png";
 
+const BOOKING_OPTIONS = [
+  { value: 0, label: "Сгорает через 48 ч после бронирования" },
+  { value: 1, label: "Сгорает за 48 ч до выезда" },
+  { value: 2, label: "Не сгорает (оплата при посадке)" },
+  { value: 3, label: "Бронировать нельзя (только оплата)" },
+];
 
 export default function ToursPage() {
   // — reference data —
@@ -25,13 +31,13 @@ export default function ToursPage() {
 
   // — new‐tour form state —
   const [newTour, setNewTour] = useState({
-    route_id: "", pricelist_id: "", date: "", layout_variant: "", activeSeats: []
+    route_id: "", pricelist_id: "", date: "", layout_variant: "", booking_terms: "", activeSeats: []
   });
 
   // — editing a tour (meta + seats) —
   const [editingId, setEditingId]             = useState(null);
   const [editingTourData, setEditingTourData] = useState({
-    route_id: "", pricelist_id: "", date: "", layout_variant: ""
+    route_id: "", pricelist_id: "", date: "", layout_variant: "", booking_terms: ""
   });
   const [initialSeats, setInitialSeats] = useState([]);
   const [seatEdits, setSeatEdits]       = useState({});
@@ -85,12 +91,13 @@ export default function ToursPage() {
       pricelist_id: +newTour.pricelist_id,
       date: newTour.date,
       layout_variant: +newTour.layout_variant,
+      booking_terms: +newTour.booking_terms,
       active_seats: newTour.activeSeats
     })
     .then(()=> axios.get(`${API}/tours`))
     .then(r=>setTours(r.data))
     .catch(console.error)
-    .finally(()=> setNewTour({ route_id:"", pricelist_id:"", date:"", layout_variant:"", activeSeats:[] }));
+    .finally(()=> setNewTour({ route_id:"", pricelist_id:"", date:"", layout_variant:"", booking_terms:"", activeSeats:[] }));
   };
 
   // — delete tour —
@@ -107,7 +114,8 @@ export default function ToursPage() {
       route_id: String(tour.route_id),
       pricelist_id: String(tour.pricelist_id),
       date: tour.date,
-      layout_variant: String(tour.layout_variant)
+      layout_variant: String(tour.layout_variant),
+      booking_terms: String(tour.booking_terms)
     });
     setSeatEdits({});
 
@@ -152,6 +160,7 @@ export default function ToursPage() {
         pricelist_id:+editingTourData.pricelist_id,
         date:editingTourData.date,
         layout_variant:+editingTourData.layout_variant,
+        booking_terms:+editingTourData.booking_terms,
         active_seats: finalActive
       });
 
@@ -230,7 +239,7 @@ export default function ToursPage() {
       <table className="styled-table">
         <thead>
           <tr>
-            <th>Маршрут</th><th>Прайс-лист</th><th>Дата</th><th>Вариант</th><th>Действия</th>
+            <th>Маршрут</th><th>Прайс-лист</th><th>Дата</th><th>Вариант</th><th>Бронь</th><th>Действия</th>
           </tr>
         </thead>
         <tbody>
@@ -283,6 +292,18 @@ export default function ToursPage() {
                         <option value="2">Travego</option>
                       </select>
                     : (t.layout_variant===1 ? "Neoplan":"Travego")
+                  }
+                </td>
+                <td>
+                  {editing
+                    ? <select
+                        value={editingTourData.booking_terms}
+                        onChange={e=>setEditingTourData({...editingTourData,booking_terms:e.target.value})}
+                      >
+                        <option value="">—</option>
+                        {BOOKING_OPTIONS.map(o=>(<option key={o.value} value={o.value}>{o.label}</option>))}
+                      </select>
+                    : (BOOKING_OPTIONS.find(o=>o.value===t.booking_terms)?.label || t.booking_terms)
                   }
                 </td>
                 <td>
@@ -435,6 +456,13 @@ export default function ToursPage() {
           value={newTour.date}
           onChange={e=>setNewTour({...newTour,date:e.target.value})}
         />
+        <select required
+          value={newTour.booking_terms}
+          onChange={e=>setNewTour({...newTour,booking_terms:e.target.value})}
+        >
+          <option value="">Условия брони</option>
+          {BOOKING_OPTIONS.map(o=>(<option key={o.value} value={o.value}>{o.label}</option>))}
+        </select>
         <select required
           value={newTour.layout_variant}
           onChange={e=>setNewTour({...newTour,layout_variant:e.target.value})}
