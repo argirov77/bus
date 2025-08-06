@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from ..database import get_connection
+from ..ticket_utils import free_ticket
 
 router = APIRouter(prefix="/purchase", tags=["purchase"])
 # second router exposing simplified endpoints without the /purchase prefix
@@ -137,17 +138,17 @@ def cancel_purchase(purchase_id: int):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        # find ticket
         cur.execute(
-            "SELECT id, seat_id FROM ticket WHERE purchase_id=%s",
+            "SELECT id FROM ticket WHERE purchase_id=%s",
             (purchase_id,),
         )
-        row = cur.fetchone()
-        if not row:
+        tickets = [row[0] for row in cur.fetchall()]
+        if not tickets:
             raise HTTPException(404, "Purchase not found")
-        ticket_id, seat_id = row
 
-        cur.execute("DELETE FROM ticket WHERE id=%s", (ticket_id,))
+        for t_id in tickets:
+            free_ticket(cur, t_id)
+
         cur.execute(
             "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",
             (purchase_id,),
@@ -239,15 +240,15 @@ def cancel_booking(purchase_id: int):
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, seat_id FROM ticket WHERE purchase_id=%s",
+            "SELECT id FROM ticket WHERE purchase_id=%s",
             (purchase_id,),
         )
-        row = cur.fetchone()
-        if not row:
+        tickets = [row[0] for row in cur.fetchall()]
+        if not tickets:
             raise HTTPException(404, "Purchase not found")
-        ticket_id, _seat_id = row
 
-        cur.execute("DELETE FROM ticket WHERE id=%s", (ticket_id,))
+        for t_id in tickets:
+            free_ticket(cur, t_id)
 
         cur.execute(
             "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",

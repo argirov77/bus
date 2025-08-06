@@ -20,6 +20,8 @@ class DummyCursor:
             return [self.status_resp]
         return [1]
     def fetchall(self):
+        if "SELECT id FROM ticket WHERE purchase_id" in self.query:
+            return [(1,)]
         return []
     def close(self):
         pass
@@ -49,6 +51,8 @@ def client(monkeypatch):
     import importlib
     import backend.database
     monkeypatch.setattr('backend.database.get_connection', fake_get_connection)
+    monkeypatch.setattr('backend.ticket_utils.free_ticket', lambda *a, **k: None)
+    monkeypatch.setattr('backend.routers.purchase.free_ticket', lambda *a, **k: None)
     if 'backend.main' in sys.modules:
         importlib.reload(sys.modules['backend.main'])
     else:
