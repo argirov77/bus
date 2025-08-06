@@ -14,13 +14,23 @@ class DummyCursor:
         self.query = query
         self.queries.append((query, params))
     def fetchone(self):
-        if "SELECT id, seat_id FROM ticket" in self.query:
+        q = self.query.lower()
+        if "select id, seat_id from ticket" in q:
             return [1, 1]
-        if "SELECT status FROM purchase" in self.query:
+        if "select status from purchase" in q:
             return [self.status_resp]
+        if "select route_id, pricelist_id from tour" in q:
+            return [1, 1]
+        if "select id, available from seat" in q:
+            return [1, "1234"]
+        if "select price from prices" in q:
+            return [10]
         return [1]
     def fetchall(self):
-        if "SELECT id FROM ticket WHERE purchase_id" in self.query:
+        q = self.query.lower()
+        if "select stop_id from routestop" in q:
+            return [(1,), (2,), (3,), (4,)]
+        if "select id from ticket where purchase_id" in q:
             return [(1,)]
         return []
     def close(self):
