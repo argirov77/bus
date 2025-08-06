@@ -9,12 +9,23 @@
 }
 
 #calendar .header {
-  text-align: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-size: 1.3em;
   font-weight: 600;
   color: #2676e0;
   margin-bottom: 12px;
   letter-spacing: 1px;
+}
+
+#calendar .header .nav {
+  background: none;
+  border: none;
+  color: #2676e0;
+  cursor: pointer;
+  font-size: 1em;
+  padding: 4px 8px;
 }
 
 #calendar .weekdays, #calendar .days {
@@ -41,6 +52,19 @@
 
 #calendar .days .inactive {
   color: #ddd;
+}
+
+#calendar .days .selected {
+  background: #ff9800;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 8px rgba(255,152,0,0.15);
+}
+
+#calendar .days .empty {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 #calendar .days .active {
