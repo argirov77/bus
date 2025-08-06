@@ -163,7 +163,12 @@ def create_tour(tour: TourCreate):
         if len(stops) < 2:
             raise HTTPException(400, "Route must have at least 2 stops")
 
-        # список сегментов больше не нужен здесь
+        # Формируем все возможные сегменты маршрута (i < j)
+        all_segments = [
+            (stops[i], stops[j])
+            for i in range(len(stops) - 1)
+            for j in range(i + 1, len(stops))
+        ]
 
         # Выбираем только те сегменты, что есть в данном прайслисте
         cur.execute(
