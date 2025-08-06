@@ -6,6 +6,7 @@ import axios from "axios";
 import SeatClient from "../components/SeatClient";
 import Loader from "../components/Loader";
 import Alert from "../components/Alert";
+import Calendar from "../components/Calendar";
 
 import { API } from "../config";
 
@@ -60,6 +61,7 @@ export default function SearchPage() {
       setDates([]);
       setTours([]);
       setSelectedTour(null);
+      setSelectedDate("");
     } else {
       axios.get(`${API}/search/dates`, {
         params: {
@@ -209,19 +211,16 @@ export default function SearchPage() {
         ))}
       </select>
 
-      <select
-        value={selectedDate}
-        onChange={e => setSelectedDate(e.target.value)}
-        disabled={!selectedDeparture || !selectedArrival}
-      >
-        <option value="">Дата</option>
-        {dates.map(d => (
-          <option key={d} value={d}>{d}</option>
-        ))}
-      </select>
-
       <button type="submit">Найти</button>
     </form>
+
+    {dates.length > 0 && (
+      <div style={{ marginBottom: 20 }}>
+        <Calendar activeDates={dates} onSelect={setSelectedDate} />
+      </div>
+    )}
+
+    {selectedDate && <p>Выбранная дата: {selectedDate}</p>}
 
     {loading && <Loader />}
 

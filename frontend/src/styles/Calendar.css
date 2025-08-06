@@ -1,0 +1,56 @@
+#calendar {
+  width: 340px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 2px 18px rgba(0,0,0,0.07);
+  padding: 18px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  margin: 0 auto;
+}
+
+#calendar .header {
+  text-align: center;
+  font-size: 1.3em;
+  font-weight: 600;
+  color: #2676e0;
+  margin-bottom: 12px;
+  letter-spacing: 1px;
+}
+
+#calendar .weekdays, #calendar .days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  text-align: center;
+}
+
+#calendar .weekdays div {
+  color: #b0b0b0;
+  font-size: 1em;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+#calendar .days div {
+  padding: 8px 0;
+  border-radius: 50%;
+  font-size: 1.05em;
+  transition: 0.14s;
+  cursor: default;
+}
+
+#calendar .days .inactive {
+  color: #ddd;
+}
+
+#calendar .days .active {
+  background: #2676e0;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 1px 8px rgba(38,118,224,0.10);
+  font-weight: 600;
+}
+
+#calendar .days .active:hover {
+  background: #184a90;
+}
