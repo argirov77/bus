@@ -9,8 +9,8 @@ actions_router = APIRouter(tags=["purchase"])
 
 class PurchaseCreate(BaseModel):
     tour_id: int
-    seat_num: int
-    passenger_name: str
+    seat_nums: list[int]
+    passenger_names: list[str]
     passenger_phone: str
     passenger_email: EmailStr
     departure_stop_id: int
@@ -30,15 +30,12 @@ def _log_sale(cur, purchase_id: int, category: str, amount: float = 0.0) -> None
 def _create_purchase(
     cur, data: PurchaseCreate, status: str, payment_method: str = "online"
 ) -> int:
-    """Helper that inserts passenger, purchase and ticket records."""
-    # 1) create passenger
-    cur.execute(
-        "INSERT INTO passenger (name) VALUES (%s) RETURNING id",
-        (data.passenger_name,),
-    )
-    passenger_id = cur.fetchone()[0]
+    """Helper that inserts passengers, purchase and ticket records."""
 
-    # 2) create purchase record
+    if len(data.seat_nums) != len(data.passenger_names):
+        raise HTTPException(400, "Seat numbers and passenger names count mismatch")
+
+    # 1) create purchase record using first passenger as customer name
     cur.execute(
         f"""
         INSERT INTO purchase
@@ -47,7 +44,7 @@ def _create_purchase(
         RETURNING id
         """,
         (
-            data.passenger_name,
+            data.passenger_names[0] if data.passenger_names else "",
             data.passenger_email,
             data.passenger_phone,
             payment_method,
@@ -55,34 +52,41 @@ def _create_purchase(
     )
     purchase_id = cur.fetchone()[0]
 
-    # 3) delegate to ticket creation logic
-    cur.execute(
-        "SELECT id FROM seat WHERE tour_id=%s AND seat_num=%s",
-        (data.tour_id, data.seat_num),
-    )
-    seat_row = cur.fetchone()
-    if not seat_row:
-        raise HTTPException(404, "Seat not found")
-    seat_id = seat_row[0]
+    # 2) create passenger and ticket for each seat
+    for seat_num, name in zip(data.seat_nums, data.passenger_names):
+        cur.execute(
+            "INSERT INTO passenger (name) VALUES (%s) RETURNING id",
+            (name,),
+        )
+        passenger_id = cur.fetchone()[0]
 
-    cur.execute(
-        """
-        INSERT INTO ticket
-          (tour_id, seat_id, passenger_id, departure_stop_id, arrival_stop_id, purchase_id, extra_baggage)
-        VALUES (%s,%s,%s,%s,%s,%s,%s)
-        RETURNING id
-        """,
-        (
-            data.tour_id,
-            seat_id,
-            passenger_id,
-            data.departure_stop_id,
-            data.arrival_stop_id,
-            purchase_id,
-            int(data.extra_baggage),
-        ),
-    )
-    cur.fetchone()
+        cur.execute(
+            "SELECT id FROM seat WHERE tour_id=%s AND seat_num=%s",
+            (data.tour_id, seat_num),
+        )
+        seat_row = cur.fetchone()
+        if not seat_row:
+            raise HTTPException(404, "Seat not found")
+        seat_id = seat_row[0]
+
+        cur.execute(
+            """
+            INSERT INTO ticket
+              (tour_id, seat_id, passenger_id, departure_stop_id, arrival_stop_id, purchase_id, extra_baggage)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+            """,
+            (
+                data.tour_id,
+                seat_id,
+                passenger_id,
+                data.departure_stop_id,
+                data.arrival_stop_id,
+                purchase_id,
+                int(data.extra_baggage),
+            ),
+        )
+        cur.fetchone()
 
     _log_sale(cur, purchase_id, "ticket_sale", 0)
     return purchase_id

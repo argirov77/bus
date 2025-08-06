@@ -62,8 +62,8 @@ def test_purchase_flow(client):
     cli, store = client
     resp = cli.post('/book', json={
         'tour_id': 1,
-        'seat_num': 1,
-        'passenger_name': 'A',
+        'seat_nums': [1],
+        'passenger_names': ['A'],
         'passenger_phone': '1',
         'passenger_email': 'a@b.com',
         'departure_stop_id': 1,
@@ -83,8 +83,8 @@ def test_purchase_flow(client):
 
     resp = cli.post('/purchase', json={
         'tour_id': 1,
-        'seat_num': 1,
-        'passenger_name': 'B',
+        'seat_nums': [1],
+        'passenger_names': ['B'],
         'passenger_phone': '2',
         'passenger_email': 'b@c.com',
         'departure_stop_id': 1,

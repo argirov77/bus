@@ -68,8 +68,8 @@ def test_booking_flow(client):
     # 1. Booking via /book -> reserved status
     resp = cli.post('/book', json={
         'tour_id': 1,
-        'seat_num': 1,
-        'passenger_name': 'A',
+        'seat_nums': [1],
+        'passenger_names': ['A'],
         'passenger_phone': '1',
         'passenger_email': 'a@b.com',
         'departure_stop_id': 1,
@@ -90,8 +90,8 @@ def test_booking_flow(client):
     # 3. Direct purchase -> paid status
     resp = cli.post('/purchase', json={
         'tour_id': 1,
-        'seat_num': 1,
-        'passenger_name': 'A',
+        'seat_nums': [1],
+        'passenger_names': ['A'],
         'passenger_phone': '1',
         'passenger_email': 'a@b.com',
         'departure_stop_id': 1,
