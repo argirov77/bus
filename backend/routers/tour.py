@@ -280,6 +280,7 @@ def search_tours(
     departure_stop_id: int,
     arrival_stop_id: int,
     date: date,
+    seats: int = 1,
 ):
     conn = get_connection()
     cur = conn.cursor()
@@ -292,9 +293,9 @@ def search_tours(
              WHERE a.departure_stop_id=%s
                AND a.arrival_stop_id=%s
                AND t.date=%s
-               AND a.seats>0
+               AND a.seats>=%s
             """,
-            (departure_stop_id, arrival_stop_id, date),
+            (departure_stop_id, arrival_stop_id, date, seats),
         )
         return [
             {"id": r[0], "date": r[1], "seats": r[2], "layout_variant": r[3]}

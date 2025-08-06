@@ -18,23 +18,26 @@ import { API } from "../config";
  *  - departureStopId
  *  - arrivalStopId
  *  - layoutVariant (1, 2 или 3)
- *  - onSelect(seatNum) — коллбэк при выборе места
+ *  - selectedSeats      — массив выбранных мест
+ *  - maxSeats           — максимально допустимое кол-во мест
+ *  - onChange(seats[])  — коллбэк при выборе мест
  */
 export default function SeatClient({
   tourId,
   departureStopId,
   arrivalStopId,
   layoutVariant,
-  onSelect
+  selectedSeats = [],
+  maxSeats = 1,
+  onChange
 }) {
   const [seats, setSeats] = useState([]); // [{seat_num, status}, ...]
-  const [selectedSeat, setSelectedSeat] = useState(null);
 
   // Загружаем статусы мест
   useEffect(() => {
     if (!tourId || !departureStopId || !arrivalStopId) {
       setSeats([]);
-      setSelectedSeat(null);
+      onChange && onChange([]);
       return;
     }
     axios.get(`${API}/seat`, {
@@ -51,24 +54,30 @@ export default function SeatClient({
         status:   s.status === "available" ? "available" : "blocked"
       }));
       setSeats(arr);
-      setSelectedSeat(null);
+      onChange && onChange([]);
     })
     .catch(console.error);
-  }, [tourId, departureStopId, arrivalStopId]);
+  }, [tourId, departureStopId, arrivalStopId, onChange]);
 
   // Логика клика по месту
   const handleSelect = (num) => {
     const seat = seats.find(s => s.seat_num === num);
     if (!seat || seat.status !== "available") return;
-    setSelectedSeat(num);
-    onSelect && onSelect(num);
+    let newSelection;
+    if (selectedSeats.includes(num)) {
+      newSelection = selectedSeats.filter(s => s !== num);
+    } else {
+      if (selectedSeats.length >= maxSeats) return;
+      newSelection = [...selectedSeats, num];
+    }
+    onChange && onChange(newSelection);
   };
 
   // renderCell для скелетного режима
   const renderCell = (seatNum) => {
     const seat = seats.find(s => s.seat_num === seatNum);
     let status = seat ? seat.status : "blocked";
-    if (seatNum === selectedSeat) {
+    if (selectedSeats.includes(seatNum)) {
       status = "selected";
     }
 
