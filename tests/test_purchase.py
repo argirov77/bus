@@ -74,6 +74,7 @@ def test_purchase_flow(client):
         'arrival_stop_id': 2,
     })
     assert resp.status_code == 200
+    assert 'amount_due' in resp.json()
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
 
     store['cursor'].queries.clear()
@@ -95,6 +96,7 @@ def test_purchase_flow(client):
         'arrival_stop_id': 2,
     })
     assert resp.status_code == 200
+    assert 'amount_due' in resp.json()
     assert any('INSERT INTO purchase' in q[0] for q in store['cursor'].queries)
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
 

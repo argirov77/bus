@@ -20,6 +20,7 @@ class PurchaseCreate(BaseModel):
 
 class PurchaseOut(BaseModel):
     purchase_id: int
+    amount_due: float
 
 def _log_sale(cur, purchase_id: int, category: str, amount: float = 0.0) -> None:
     cur.execute(
@@ -30,24 +31,51 @@ def _log_sale(cur, purchase_id: int, category: str, amount: float = 0.0) -> None
 
 def _create_purchase(
     cur, data: PurchaseCreate, status: str, payment_method: str = "online"
-) -> int:
-    """Helper that inserts passengers, purchase and ticket records."""
+) -> tuple[int, float]:
+    """Helper that inserts passengers, purchase and ticket records.
+
+    Returns tuple of purchase id and calculated price.
+    """
 
     if len(data.seat_nums) != len(data.passenger_names):
         raise HTTPException(400, "Seat numbers and passenger names count mismatch")
+
+    # Determine price for selected segment
+    cur.execute("SELECT pricelist_id FROM tour WHERE id=%s", (data.tour_id,))
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Tour not found")
+    pricelist_id = row[0]
+
+    cur.execute(
+        """
+        SELECT price FROM prices
+         WHERE pricelist_id=%s AND departure_stop_id=%s AND arrival_stop_id=%s
+        """,
+        (pricelist_id, data.departure_stop_id, data.arrival_stop_id),
+    )
+    price_row = cur.fetchone()
+    if not price_row:
+        raise HTTPException(404, "Price not found")
+    base_price = float(price_row[0])
+    total_price = base_price * len(data.seat_nums)
+    if data.extra_baggage:
+        total_price *= 1.1
+    total_price = round(total_price, 2)
 
     # 1) create purchase record using first passenger as customer name
     cur.execute(
         f"""
         INSERT INTO purchase
           (customer_name, customer_email, customer_phone, amount_due, deadline, status, update_at, payment_method)
-        VALUES (%s,%s,%s,0,NOW() + interval '1 day','{status}',NOW(),%s)
+        VALUES (%s,%s,%s,%s,NOW() + interval '1 day','{status}',NOW(),%s)
         RETURNING id
         """,
         (
             data.passenger_names[0] if data.passenger_names else "",
             data.passenger_email,
             data.passenger_phone,
+            total_price,
             payment_method,
         ),
     )
@@ -90,16 +118,16 @@ def _create_purchase(
         cur.fetchone()
 
     _log_sale(cur, purchase_id, "ticket_sale", 0)
-    return purchase_id
+    return purchase_id, total_price
 
 @router.post("/", response_model=PurchaseOut)
 def create_purchase(data: PurchaseCreate):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        purchase_id = _create_purchase(cur, data, "reserved")
+        purchase_id, amount_due = _create_purchase(cur, data, "reserved")
         conn.commit()
-        return {"purchase_id": purchase_id}
+        return {"purchase_id": purchase_id, "amount_due": amount_due}
     except HTTPException:
         conn.rollback()
         raise
@@ -177,9 +205,9 @@ def book_seat(data: PurchaseCreate):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        purchase_id = _create_purchase(cur, data, "reserved")
+        purchase_id, amount_due = _create_purchase(cur, data, "reserved")
         conn.commit()
-        return {"purchase_id": purchase_id}
+        return {"purchase_id": purchase_id, "amount_due": amount_due}
     except HTTPException:
         conn.rollback()
         raise
@@ -196,9 +224,9 @@ def purchase_and_pay(data: PurchaseCreate):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        purchase_id = _create_purchase(cur, data, "paid", "offline")
+        purchase_id, amount_due = _create_purchase(cur, data, "paid", "offline")
         conn.commit()
-        return {"purchase_id": purchase_id}
+        return {"purchase_id": purchase_id, "amount_due": amount_due}
     except HTTPException:
         conn.rollback()
         raise

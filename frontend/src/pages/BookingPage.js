@@ -37,8 +37,8 @@ function BookingPage(props) {
     axios
       .post(`${API}/book`, {
         tour_id: tourId,
-        seat_num: selectedSeat,
-        passenger_name: passengerData.name,
+        seat_nums: [selectedSeat],
+        passenger_names: [passengerData.name],
         passenger_phone: passengerData.phone,
         passenger_email: passengerData.email,
         departure_stop_id: departureStopId,
@@ -46,7 +46,7 @@ function BookingPage(props) {
         extra_baggage: extraBaggage
       })
       .then(function(res) {
-        setBookingMessage(`Билет успешно забронирован! Purchase ID: ${res.data.purchase_id}`);
+        setBookingMessage(`Билет успешно забронирован! Purchase ID: ${res.data.purchase_id}. Сумма: ${res.data.amount_due.toFixed(2)}`);
         setPurchaseId(res.data.purchase_id);
         setBookingType("success");
         setSelectedSeat(null);
