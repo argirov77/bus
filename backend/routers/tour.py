@@ -163,11 +163,7 @@ def create_tour(tour: TourCreate):
         if len(stops) < 2:
             raise HTTPException(400, "Route must have at least 2 stops")
 
-        all_segments = [
-            (stops[i], stops[j])
-            for i in range(len(stops) - 1)
-            for j in range(i + 1, len(stops))
-        ]
+        # список сегментов больше не нужен здесь
 
         # Выбираем только те сегменты, что есть в данном прайслисте
         cur.execute(
@@ -280,46 +276,54 @@ def update_tour(tour_id: int, tour_data: TourCreate):
         stops = [r[0] for r in cur.fetchall()]
         if len(stops) < 2:
             raise HTTPException(400, "Route must have at least 2 stops")
-        all_segments = [
-            (stops[i], stops[j])
-            for i in range(len(stops) - 1)
-            for j in range(i + 1, len(stops))
-        ]
+        # список сегментов больше не используется
 
-        # 3) Считаем новое число активных кресел
-        active_cnt = len(tour_data.active_seats)
+        # 3) Проверяем, что занятые места остаются активными
+        cur.execute(
+            """
+            SELECT DISTINCT s.seat_num
+              FROM ticket t JOIN seat s ON s.id=t.seat_id
+             WHERE t.tour_id=%s
+            """,
+            (tour_id,),
+        )
+        taken_seats = {r[0] for r in cur.fetchall()}
+        inactive_with_tickets = taken_seats - set(tour_data.active_seats)
+        if inactive_with_tickets:
+            raise HTTPException(400, "Cannot deactivate seats with sold tickets")
 
-        # 4) Обновляем seat.available по списку active_seats
+        # 4) Формируем базовые строки доступности
         seg_str = "".join(str(i + 1) for i in range(len(stops) - 1))
         total_seats = {1: 46, 2: 48}[tour_data.layout_variant]
-        for num in range(1, total_seats + 1):
-            avail = seg_str if num in tour_data.active_seats else "0"
+        seat_avail = {
+            num: (seg_str if num in tour_data.active_seats else "0")
+            for num in range(1, total_seats + 1)
+        }
+
+        # 5) Учитываем уже проданные билеты, убирая их сегменты
+        cur.execute(
+            """
+            SELECT s.seat_num, t.departure_stop_id, t.arrival_stop_id
+              FROM ticket t JOIN seat s ON s.id=t.seat_id
+             WHERE t.tour_id=%s
+            """,
+            (tour_id,),
+        )
+        for seat_num, dep, arr in cur.fetchall():
+            idx_from = stops.index(dep)
+            idx_to = stops.index(arr)
+            segs = [str(i + 1) for i in range(idx_from, idx_to)]
+            avail = seat_avail.get(seat_num, "")
+            seat_avail[seat_num] = "".join(ch for ch in avail if ch not in segs) or "0"
+
+        for num, avail in seat_avail.items():
             cur.execute(
                 "UPDATE seat SET available=%s WHERE tour_id=%s AND seat_num=%s",
                 (avail, tour_id, num),
             )
 
-        # 5) Обновляем таблицу available **по всем** валидным сегментам
-        #    сначала — узнаём, какие сегменты вообще есть в прайслисте
-        cur.execute(
-            "SELECT departure_stop_id, arrival_stop_id FROM prices WHERE pricelist_id=%s",
-            (tour_data.pricelist_id,),
-        )
-        valid_segments = set(cur.fetchall())
-
-        #    а затем — для каждого валидного (dep,arr) обновляем seats = active_cnt
-        for dep, arr in all_segments:
-            if (dep, arr) in valid_segments:
-                cur.execute(
-                    """
-                    UPDATE available
-                       SET seats = %s
-                     WHERE tour_id = %s
-                       AND departure_stop_id = %s
-                       AND arrival_stop_id   = %s
-                    """,
-                    (active_cnt, tour_id, dep, arr),
-                )
+        # 6) Пересчитываем таблицу available заново
+        recalc_available(cur, tour_id)
 
         conn.commit()
         return {

@@ -5,6 +5,7 @@ from typing import List, Dict, Optional
 from pydantic import BaseModel
 from ..database import get_connection
 from ..auth import require_admin_token
+from ..ticket_utils import recalc_available
 
 router = APIRouter(prefix="/seat", tags=["seat"])
 
@@ -123,7 +124,38 @@ def block_seat(
     conn = get_connection()
     cur = conn.cursor()
     try:
-        new_value = "0" if block else "1234"  # TODO: здесь можно вычислять полный перечень сегментов
+        cur.execute("SELECT route_id FROM tour WHERE id=%s", (tour_id,))
+        r = cur.fetchone()
+        if not r:
+            raise HTTPException(404, "Tour not found")
+        route_id = r[0]
+        cur.execute(
+            'SELECT stop_id FROM routestop WHERE route_id=%s ORDER BY "order"',
+            (route_id,),
+        )
+        stops = [s[0] for s in cur.fetchall()]
+        seg_str = "".join(str(i + 1) for i in range(len(stops) - 1))
+
+        if block:
+            new_value = "0"
+        else:
+            new_value = seg_str
+            cur.execute(
+                """
+                SELECT t.departure_stop_id, t.arrival_stop_id
+                  FROM ticket t JOIN seat s ON s.id=t.seat_id
+                 WHERE t.tour_id=%s AND s.seat_num=%s
+                """,
+                (tour_id, seat_num),
+            )
+            for dep, arr in cur.fetchall():
+                idx_from = stops.index(dep)
+                idx_to = stops.index(arr)
+                segs = [str(i + 1) for i in range(idx_from, idx_to)]
+                new_value = "".join(ch for ch in new_value if ch not in segs)
+            if not new_value:
+                new_value = "0"
+
         cur.execute(
             """
             UPDATE seat
@@ -131,11 +163,14 @@ def block_seat(
              WHERE tour_id = %s AND seat_num = %s
              RETURNING seat_num, available;
             """,
-            (new_value, tour_id, seat_num)
+            (new_value, tour_id, seat_num),
         )
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "Seat not found")
+
+        recalc_available(cur, tour_id)
+
         conn.commit()
         return {"seat_num": str(row[0]), "available": row[1]}
     except HTTPException:

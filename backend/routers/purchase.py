@@ -44,12 +44,25 @@ def _create_purchase(
     if len(baggage_list) != len(data.seat_nums):
         raise HTTPException(400, "Seat numbers and extra baggage count mismatch")
 
-    # Determine price for selected segment
-    cur.execute("SELECT pricelist_id FROM tour WHERE id=%s", (data.tour_id,))
+    # Determine route/pricelist and ordered stops
+    cur.execute("SELECT route_id, pricelist_id FROM tour WHERE id=%s", (data.tour_id,))
     row = cur.fetchone()
     if not row:
         raise HTTPException(404, "Tour not found")
-    pricelist_id = row[0]
+    route_id, pricelist_id = row
+
+    cur.execute(
+        'SELECT stop_id FROM routestop WHERE route_id=%s ORDER BY "order"',
+        (route_id,),
+    )
+    stops = [r[0] for r in cur.fetchall()]
+    if data.departure_stop_id not in stops or data.arrival_stop_id not in stops:
+        raise HTTPException(400, "Invalid stops for this route")
+    idx_from = stops.index(data.departure_stop_id)
+    idx_to = stops.index(data.arrival_stop_id)
+    if idx_from >= idx_to:
+        raise HTTPException(400, "Arrival must come after departure")
+    segments = [str(i + 1) for i in range(idx_from, idx_to)]
 
     cur.execute(
         """
@@ -94,13 +107,20 @@ def _create_purchase(
         passenger_id = cur.fetchone()[0]
 
         cur.execute(
-            "SELECT id FROM seat WHERE tour_id=%s AND seat_num=%s",
+            "SELECT id, available FROM seat WHERE tour_id=%s AND seat_num=%s",
             (data.tour_id, seat_num),
         )
         seat_row = cur.fetchone()
         if not seat_row:
             raise HTTPException(404, "Seat not found")
-        seat_id = seat_row[0]
+        seat_id, avail_str = seat_row
+        if avail_str == "0":
+            raise HTTPException(400, "Seat is blocked")
+
+        # ensure all required segments are free
+        for seg in segments:
+            if seg not in (avail_str or ""):
+                raise HTTPException(400, "Seat is already occupied on this segment")
 
         cur.execute(
             """
@@ -120,6 +140,37 @@ def _create_purchase(
             ),
         )
         cur.fetchone()
+
+        # update seat availability
+        new_avail = "".join(ch for ch in avail_str if ch not in segments)
+        if not new_avail:
+            new_avail = "0"
+        cur.execute(
+            "UPDATE seat SET available=%s WHERE id=%s",
+            (new_avail, seat_id),
+        )
+
+        # decrement counters in available table for overlapping segments
+        cur.execute(
+            """
+            UPDATE available
+               SET seats = seats - 1
+             WHERE tour_id = %s
+               AND (
+                 (SELECT "order" FROM routestop WHERE route_id=%s AND stop_id=departure_stop_id)
+                 < (SELECT "order" FROM routestop WHERE route_id=%s AND stop_id=%s)
+               )
+               AND (
+                 (SELECT "order" FROM routestop WHERE route_id=%s AND stop_id=arrival_stop_id)
+                 > (SELECT "order" FROM routestop WHERE route_id=%s AND stop_id=%s)
+               );
+            """,
+            (
+                data.tour_id,
+                route_id, route_id, data.arrival_stop_id,
+                route_id, route_id, data.departure_stop_id,
+            ),
+        )
 
     _log_sale(cur, purchase_id, "ticket_sale", 0)
     return purchase_id, total_price
