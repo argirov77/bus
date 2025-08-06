@@ -63,7 +63,10 @@ export default function Calendar({ activeDates = [], selectedDate = '', onSelect
     days.push({ key: `e${i}`, empty: true });
   }
   for (let d = 1; d <= daysInMonth; d++) {
-    const date = new Date(year, month, d).toISOString().slice(0, 10);
+    // Build an ISO date string without local timezone offset. Using Date.UTC
+    // ensures that the day number corresponds to the calendar day shown,
+    // preventing a shift by one day in locales ahead/behind UTC.
+    const date = new Date(Date.UTC(year, month, d)).toISOString().slice(0, 10);
     const isActive = activeDates.includes(date);
     const isSelected = selectedDate === date;
     days.push({ key: date, day: d, date, active: isActive, selected: isSelected });

@@ -301,7 +301,7 @@ export default function SearchPage() {
           readOnly
           placeholder="Дата туда"
           value={selectedDepartDate}
-          onClick={() => setShowDepartCal(v => !v)}
+          onClick={() => { setShowDepartCal(v => !v); setShowReturnCal(false); }}
         />
 
         <input
@@ -309,7 +309,12 @@ export default function SearchPage() {
           readOnly
           placeholder="Дата обратно"
           value={selectedReturnDate}
-          onClick={() => setShowReturnCal(v => !v)}
+          onClick={() => {
+            if (returnDates.length) {
+              setShowReturnCal(v => !v);
+              setShowDepartCal(false);
+            }
+          }}
           disabled={!returnDates.length}
         />
 
