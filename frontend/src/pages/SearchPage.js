@@ -13,14 +13,20 @@ import { API } from "../config";
 export default function SearchPage() {
   const [departureStops, setDepartureStops] = useState([]);
   const [arrivalStops, setArrivalStops]     = useState([]);
-  const [dates, setDates]                   = useState([]);
+  const [departDates, setDepartDates]       = useState([]);
+  const [returnDates, setReturnDates]       = useState([]);
 
   const [selectedDeparture, setSelectedDeparture] = useState("");
   const [selectedArrival, setSelectedArrival]     = useState("");
-  const [selectedDate, setSelectedDate]           = useState("");
+  const [selectedDepartDate, setSelectedDepartDate] = useState("");
+  const [selectedReturnDate, setSelectedReturnDate] = useState("");
+  const [showDepartCal, setShowDepartCal] = useState(false);
+  const [showReturnCal, setShowReturnCal] = useState(false);
 
-  const [tours, setTours]               = useState([]);
-  const [selectedTour, setSelectedTour] = useState(null);
+  const [outboundTours, setOutboundTours] = useState([]);
+  const [returnTours, setReturnTours] = useState([]);
+  const [selectedOutboundTour, setSelectedOutboundTour] = useState(null);
+  const [selectedReturnTour, setSelectedReturnTour] = useState(null);
 
   const [seatCount, setSeatCount] = useState(1);
   const [selectedSeats, setSelectedSeats] = useState([]);
@@ -36,8 +42,10 @@ export default function SearchPage() {
   useEffect(() => {
     setPassengerNames(Array(seatCount).fill(""));
     setSelectedSeats([]);
-    setSelectedDate("");
-    setSelectedTour(null);
+    setSelectedDepartDate("");
+    setSelectedReturnDate("");
+    setSelectedOutboundTour(null);
+    setSelectedReturnTour(null);
   }, [seatCount]);
 
   // 1. Загрузить все отправные остановки
@@ -51,8 +59,10 @@ export default function SearchPage() {
   useEffect(() => {
     if (!selectedDeparture) {
       setArrivalStops([]);
-      setTours([]);
-      setSelectedTour(null);
+      setOutboundTours([]);
+      setReturnTours([]);
+      setSelectedOutboundTour(null);
+      setSelectedReturnTour(null);
     } else {
       axios.get(`${API}/search/arrivals`, {
         params: { departure_stop_id: selectedDeparture, seats: seatCount }
@@ -65,10 +75,14 @@ export default function SearchPage() {
   // 3. При выборе отправной+конечной — подгрузить доступные даты
   useEffect(() => {
     if (!selectedDeparture || !selectedArrival) {
-      setDates([]);
-      setTours([]);
-      setSelectedTour(null);
-      setSelectedDate("");
+      setDepartDates([]);
+      setReturnDates([]);
+      setOutboundTours([]);
+      setReturnTours([]);
+      setSelectedOutboundTour(null);
+      setSelectedReturnTour(null);
+      setSelectedDepartDate("");
+      setSelectedReturnDate("");
     } else {
       axios.get(`${API}/search/dates`, {
         params: {
@@ -77,15 +91,25 @@ export default function SearchPage() {
           seats:             seatCount
         }
       })
-      .then(res => setDates(res.data))
+      .then(res => setDepartDates(res.data))
+      .catch(console.error);
+
+      axios.get(`${API}/search/dates`, {
+        params: {
+          departure_stop_id: selectedArrival,
+          arrival_stop_id:   selectedDeparture,
+          seats:             seatCount
+        }
+      })
+      .then(res => setReturnDates(res.data))
       .catch(console.error);
     }
   }, [selectedDeparture, selectedArrival, seatCount]);
 
-  // 4. Поиск рейсов на выбранную дату
-  const handleSearchTours = e => {
+  // 4. Поиск рейсов на выбранные даты
+  const handleSearchTours = async e => {
     e.preventDefault();
-    if (!selectedDeparture || !selectedArrival || !selectedDate) {
+    if (!selectedDeparture || !selectedArrival || !selectedDepartDate) {
       setMessage("Заполните все поля поиска");
       setMessageType("error");
       return;
@@ -93,44 +117,63 @@ export default function SearchPage() {
     setMessage("Идёт поиск…");
     setMessageType("info");
     setLoading(true);
-    axios.get(`${API}/tours/search`, {
-      params: {
-        departure_stop_id: selectedDeparture,
-        arrival_stop_id:   selectedArrival,
-        date:              selectedDate,
-        seats:             seatCount
-      }
-    })
-    .then(res => {
-      setTours(res.data);
-      setSelectedTour(null);
+    try {
+      const outReq = axios.get(`${API}/tours/search`, {
+        params: {
+          departure_stop_id: selectedDeparture,
+          arrival_stop_id:   selectedArrival,
+          date:              selectedDepartDate,
+          seats:             seatCount
+        }
+      });
+      const retReq = selectedReturnDate
+        ? axios.get(`${API}/tours/search`, {
+            params: {
+              departure_stop_id: selectedArrival,
+              arrival_stop_id:   selectedDeparture,
+              date:              selectedReturnDate,
+              seats:             seatCount
+            }
+          })
+        : Promise.resolve({ data: [] });
+      const [outRes, retRes] = await Promise.all([outReq, retReq]);
+      setOutboundTours(outRes.data);
+      setReturnTours(retRes.data);
+      setSelectedOutboundTour(null);
+      setSelectedReturnTour(null);
       setSelectedSeats([]);
-      if (res.data.length) {
-        setMessage("");
-      } else {
+      if (!outRes.data.length && (!selectedReturnDate || !retRes.data.length)) {
         setMessage("Рейсы не найдены");
         setMessageType("info");
+      } else {
+        setMessage("");
       }
-    })
-    .catch(err => {
+    } catch (err) {
       console.error(err);
       setMessage("Ошибка поиска рейсов");
       setMessageType("error");
-    })
-    .finally(() => setLoading(false));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // 5. Выбрать конкретный рейс
-  const handleTourSelect = tour => {
-    setSelectedTour(tour);
+  // 5. Выбор рейсов туда и обратно
+  const handleOutboundTourSelect = tour => {
+    setSelectedOutboundTour(tour);
+    setSelectedSeats([]);
+    setMessage("");
+  };
+
+  const handleReturnTourSelect = tour => {
+    setSelectedReturnTour(tour);
     setSelectedSeats([]);
     setMessage("");
   };
 
   // 6. Сабмит формы бронирования
-  const handleAction = (action) => {
-    if (!selectedTour) {
-      setMessage("Сначала выберите рейс");
+  const handleAction = async (action) => {
+    if (!selectedOutboundTour || (selectedReturnDate && !selectedReturnTour)) {
+      setMessage("Сначала выберите рейсы");
       setMessageType("error");
       return;
     }
@@ -152,36 +195,49 @@ export default function SearchPage() {
     setMessage(action === 'purchase' ? "Покупка…" : "Бронирование…");
     setMessageType("info");
     setLoading(true);
-    axios.post(`${API}/${action === 'purchase' ? 'purchase' : 'book'}`, {
-      tour_id:            selectedTour.id,
-      seat_nums:          selectedSeats,
-      passenger_names:    passengerNames,
-      passenger_phone:    phone,
-      passenger_email:    email,
-      departure_stop_id:  Number(selectedDeparture),
-      arrival_stop_id:    Number(selectedArrival),
-      extra_baggage:      extraBaggage
-    })
-    .then(res => {
+    try {
+      const endpoint = action === 'purchase' ? 'purchase' : 'book';
+      const basePayload = {
+        seat_nums:       selectedSeats,
+        passenger_names: passengerNames,
+        passenger_phone: phone,
+        passenger_email: email,
+        extra_baggage:   extraBaggage
+      };
+      const outRes = await axios.post(`${API}/${endpoint}`, {
+        ...basePayload,
+        tour_id:           selectedOutboundTour.id,
+        departure_stop_id: Number(selectedDeparture),
+        arrival_stop_id:   Number(selectedArrival)
+      });
+      let ids = [outRes.data.purchase_id];
+      if (selectedReturnTour) {
+        const retRes = await axios.post(`${API}/${endpoint}`, {
+          ...basePayload,
+          tour_id:           selectedReturnTour.id,
+          departure_stop_id: Number(selectedArrival),
+          arrival_stop_id:   Number(selectedDeparture)
+        });
+        ids.push(retRes.data.purchase_id);
+      }
       const msg = action === 'purchase'
-        ? `Билет куплен! Purchase ID: ${res.data.purchase_id}`
-        : `Билет забронирован! Purchase ID: ${res.data.purchase_id}`;
-      setPurchaseId(res.data.purchase_id);
+        ? `Билеты куплены! Purchase ID: ${ids.join(', ')}`
+        : `Билеты забронированы! Purchase ID: ${ids.join(', ')}`;
+      setPurchaseId(ids[ids.length - 1]);
       setMessage(msg);
       setMessageType("success");
-      // сброс полей и перезагрузка схемы мест
       setSelectedSeats([]);
       setPassengerNames(Array(seatCount).fill(""));
       setPhone("");
       setEmail("");
       setExtraBaggage(false);
-    })
-    .catch(err => {
+    } catch (err) {
       console.error(err);
       setMessage(action === 'purchase' ? "Ошибка при покупке" : "Ошибка при бронировании");
       setMessageType("error");
-    })
-    .finally(() => setLoading(false));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handlePay = () => {
@@ -210,7 +266,7 @@ export default function SearchPage() {
   return (
     <div className="container" style={{ padding: 20 }}>
       <h2>Поиск рейсов</h2>
-      <form onSubmit={handleSearchTours} style={{ display:"flex", gap:8, marginBottom:20 }}>
+      <form onSubmit={handleSearchTours} style={{ display:"flex", gap:8, marginBottom:20, flexWrap:'wrap' }}>
         <select
           value={selectedDeparture}
           onChange={e => setSelectedDeparture(e.target.value)}
@@ -221,51 +277,79 @@ export default function SearchPage() {
           ))}
         </select>
 
-      <select
-        value={selectedArrival}
-        onChange={e => setSelectedArrival(e.target.value)}
-        disabled={!selectedDeparture}
-      >
-        <option value="">Куда</option>
-        {arrivalStops.map(s => (
-          <option key={s.id} value={s.id}>{s.stop_name}</option>
-        ))}
-      </select>
+        <select
+          value={selectedArrival}
+          onChange={e => setSelectedArrival(e.target.value)}
+          disabled={!selectedDeparture}
+        >
+          <option value="">Куда</option>
+          {arrivalStops.map(s => (
+            <option key={s.id} value={s.id}>{s.stop_name}</option>
+          ))}
+        </select>
 
-      <input
-        type="number"
-        min="1"
-        value={seatCount}
-        onChange={e => setSeatCount(Number(e.target.value))}
-        style={{ width: 60 }}
-      />
-
-      <button type="submit">Найти</button>
-    </form>
-
-    {dates.length > 0 && (
-      <div style={{ marginBottom: 20 }}>
-        <Calendar
-          activeDates={dates}
-          selectedDate={selectedDate}
-          onSelect={setSelectedDate}
+        <input
+          type="number"
+          min="1"
+          value={seatCount}
+          onChange={e => setSeatCount(Number(e.target.value))}
+          style={{ width: 60 }}
         />
-      </div>
-    )}
 
-    {selectedDate && <p>Выбранная дата: {selectedDate}</p>}
+        <input
+          type="text"
+          readOnly
+          placeholder="Дата туда"
+          value={selectedDepartDate}
+          onClick={() => setShowDepartCal(v => !v)}
+        />
+
+        <input
+          type="text"
+          readOnly
+          placeholder="Дата обратно"
+          value={selectedReturnDate}
+          onClick={() => setShowReturnCal(v => !v)}
+          disabled={!returnDates.length}
+        />
+
+        <button type="submit">Найти</button>
+      </form>
+
+      {showDepartCal && (
+        <div style={{ marginBottom: 20 }}>
+          <Calendar
+            activeDates={departDates}
+            selectedDate={selectedDepartDate}
+            onSelect={d => { setSelectedDepartDate(d); setShowDepartCal(false); }}
+          />
+        </div>
+      )}
+
+      {showReturnCal && (
+        <div style={{ marginBottom: 20 }}>
+          <Calendar
+            activeDates={returnDates}
+            selectedDate={selectedReturnDate}
+            onSelect={d => { setSelectedReturnDate(d); setShowReturnCal(false); }}
+          />
+        </div>
+      )}
+
+      {selectedDepartDate && <p>Выбранная дата туда: {selectedDepartDate}</p>}
+      {selectedReturnDate && <p>Выбранная дата обратно: {selectedReturnDate}</p>}
 
     {loading && <Loader />}
 
     <Alert type={messageType} message={message} />
 
-    {tours.length > 0 && (
+    {outboundTours.length > 0 && (
       <>
-        <h3>Найденные рейсы:</h3>
-        {tours.map(t => (
+        <h3>Рейсы туда:</h3>
+        {outboundTours.map(t => (
           <div key={t.id} style={{ display:'flex', marginBottom:8 }}>
             <span>Рейс #{t.id}, дата: {t.date}</span>
-            <button style={{ marginLeft:8 }} onClick={() => handleTourSelect(t)}>
+            <button style={{ marginLeft:8 }} onClick={() => handleOutboundTourSelect(t)}>
               Выбрать
             </button>
           </div>
@@ -273,75 +357,91 @@ export default function SearchPage() {
       </>
     )}
 
-    {selectedTour && (
+    {selectedReturnDate && returnTours.length > 0 && (
       <>
-        <h3>Рейс #{selectedTour.id}, дата: {selectedTour.date}</h3>
-          <p>Свободно мест: {selectedTour.seats}</p>
-          <p>Выберите место:</p>
+        <h3>Рейсы обратно:</h3>
+        {returnTours.map(t => (
+          <div key={t.id} style={{ display:'flex', marginBottom:8 }}>
+            <span>Рейс #{t.id}, дата: {t.date}</span>
+            <button style={{ marginLeft:8 }} onClick={() => handleReturnTourSelect(t)}>
+              Выбрать
+            </button>
+          </div>
+        ))}
+      </>
+    )}
 
-          {/* здесь рендерим клиентскую обёртку SeatClient */}
-          <SeatClient
-            tourId={selectedTour.id}
-            departureStopId={selectedDeparture}
-            arrivalStopId={selectedArrival}
-            layoutVariant={selectedTour.layout_variant}
-            selectedSeats={selectedSeats}
-            maxSeats={seatCount}
-            onChange={setSelectedSeats}
+    {selectedOutboundTour && (!selectedReturnDate || selectedReturnTour) && (
+      <>
+        <h3>Рейс туда #{selectedOutboundTour.id}, дата: {selectedOutboundTour.date}</h3>
+        {selectedReturnTour && (
+          <h3>Рейс обратно #{selectedReturnTour.id}, дата: {selectedReturnTour.date}</h3>
+        )}
+        <p>Свободно мест: {selectedOutboundTour.seats}</p>
+        <p>Выберите место:</p>
+
+        <SeatClient
+          tourId={selectedOutboundTour.id}
+          departureStopId={selectedDeparture}
+          arrivalStopId={selectedArrival}
+          layoutVariant={selectedOutboundTour.layout_variant}
+          selectedSeats={selectedSeats}
+          maxSeats={seatCount}
+          onChange={setSelectedSeats}
+        />
+
+        {selectedSeats.length > 0 && (
+          <p>Вы выбрали места: {selectedSeats.join(", ")}</p>
+        )}
+
+        <form onSubmit={e => e.preventDefault()}
+              style={{ marginTop:20, display:"flex", flexDirection:"column", gap:8, maxWidth:300 }}>
+          {passengerNames.map((name, idx) => (
+            <input
+              key={idx}
+              type="text"
+              placeholder={`Имя пассажира ${idx + 1}`}
+              required
+              value={name}
+              onChange={e => {
+                const arr = [...passengerNames];
+                arr[idx] = e.target.value;
+                setPassengerNames(arr);
+              }}
+            />
+          ))}
+          <input
+            type="tel"
+            placeholder="Телефон"
+            required
+            value={phone}
+            onChange={e => setPhone(e.target.value)}
           />
-
-          {selectedSeats.length > 0 && (
-            <p>Вы выбрали места: {selectedSeats.join(", ")}</p>
-          )}
-
-          <form onSubmit={e => e.preventDefault()}
-                style={{ marginTop:20, display:"flex", flexDirection:"column", gap:8, maxWidth:300 }}>
-            {passengerNames.map((name, idx) => (
-              <input
-                key={idx}
-                type="text"
-                placeholder={`Имя пассажира ${idx + 1}`}
-                required
-                value={name}
-                onChange={e => {
-                  const arr = [...passengerNames];
-                  arr[idx] = e.target.value;
-                  setPassengerNames(arr);
-                }}
-              />
-            ))}
+          <input
+            type="email"
+            placeholder="Email"
+            required
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+          />
+          <label style={{display:'flex',alignItems:'center',gap:4}}>
             <input
-              type="tel"
-              placeholder="Телефон"
-              required
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
+              type="checkbox"
+              checked={extraBaggage}
+              onChange={e => setExtraBaggage(e.target.checked)}
             />
-            <input
-              type="email"
-              placeholder="Email"
-              required
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-            />
-            <label style={{display:'flex',alignItems:'center',gap:4}}>
-              <input
-                type="checkbox"
-                checked={extraBaggage}
-                onChange={e => setExtraBaggage(e.target.checked)}
-              />
-              Дополнительный багаж
-            </label>
-            <div style={{display:'flex', gap:8}}>
-              <button type="button" onClick={() => handleAction('book')}>Бронь</button>
-              <button type="button" onClick={() => handleAction('purchase')}>Покупка</button>
-              {purchaseId && (
-                <button type="button" onClick={handlePay}>Оплатить</button>
-              )}
-            </div>
-          </form>
-        </>
-      )}
+            Дополнительный багаж
+          </label>
+          <div style={{display:'flex', gap:8}}>
+            <button type="button" onClick={() => handleAction('book')}>Бронь</button>
+            <button type="button" onClick={() => handleAction('purchase')}>Покупка</button>
+            {purchaseId && (
+              <button type="button" onClick={handlePay}>Оплатить</button>
+            )}
+          </div>
+        </form>
+      </>
+    )}
     </div>
   );
 }
