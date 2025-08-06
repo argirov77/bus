@@ -1,4 +1,61 @@
 from typing import List
+from fastapi import HTTPException
+
+
+def occupy_segments(
+    cur,
+    tour_id: int,
+    route_id: int,
+    seat_id: int,
+    avail_str: str,
+    segments: List[str],
+    departure_stop_id: int,
+    arrival_stop_id: int,
+) -> None:
+    """Reserve seat segments and update availability counters."""
+
+    for seg in segments:
+        if seg not in avail_str:
+            raise HTTPException(400, "Seat is already occupied on this segment")
+
+    new_avail = "".join(ch for ch in avail_str if ch not in segments) or "0"
+    cur.execute(
+        "UPDATE seat SET available = %s WHERE id = %s",
+        (new_avail, seat_id),
+    )
+
+    cur.execute(
+        """
+        UPDATE available
+           SET seats = seats - 1
+         WHERE tour_id = %s
+           -- position of available start < position of ticket end
+           AND (
+             (SELECT "order" FROM routestop
+              WHERE route_id=%s AND stop_id=departure_stop_id)
+             <
+             (SELECT "order" FROM routestop
+              WHERE route_id=%s AND stop_id=%s)
+           )
+           -- position of available end > position of ticket start
+           AND (
+             (SELECT "order" FROM routestop
+              WHERE route_id=%s AND stop_id=arrival_stop_id)
+             >
+             (SELECT "order" FROM routestop
+              WHERE route_id=%s AND stop_id=%s)
+           );
+        """,
+        (
+            tour_id,
+            route_id,
+            route_id,
+            arrival_stop_id,
+            route_id,
+            route_id,
+            departure_stop_id,
+        ),
+    )
 
 
 def free_ticket(cur, ticket_id: int) -> None:

@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from ..database import get_connection
+from ..ticket_utils import occupy_segments
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
@@ -49,8 +50,14 @@ def create_ticket(data: TicketCreate):
         seat_row = cur.fetchone()
         if not seat_row:
             raise HTTPException(404, "Seat not found")
-        seat_id, avail_str = seat_row
-        if avail_str == "0":
+        if len(seat_row) == 1:
+            seat_id = seat_row[0]
+            cur.execute("SELECT available FROM seat WHERE id = %s", (seat_id,))
+            r = cur.fetchone()
+            avail_str = str(r[0]) if r else ""
+        else:
+            seat_id, avail_str = seat_row
+        if str(avail_str) == "0":
             raise HTTPException(400, "Seat is blocked")
 
         # --- 3) Получаем список остановок по порядку для маршрута ---
@@ -66,11 +73,8 @@ def create_ticket(data: TicketCreate):
         if idx_from >= idx_to:
             raise HTTPException(400, "Arrival must come after departure")
 
-        # --- 4) Проверяем, что все нужные сегменты свободны в seat.available ---
+        # --- 4) Формируем список сегментов для выбранного отрезка ---
         segments = [str(i + 1) for i in range(idx_from, idx_to)]
-        for seg in segments:
-            if seg not in avail_str:
-                raise HTTPException(400, "Seat is already occupied on this segment")
 
         # --- 5) Создаём запись в passenger ---
         cur.execute(
@@ -99,45 +103,16 @@ def create_ticket(data: TicketCreate):
         )
         ticket_id = cur.fetchone()[0]
 
-        # --- 7) Обновляем seat.available, убирая из строки занятые сегменты ---
-        new_avail = "".join(ch for ch in avail_str if ch not in segments)
-        if not new_avail:
-            new_avail = "0"
-        cur.execute(
-            "UPDATE seat SET available = %s WHERE id = %s",
-            (new_avail, seat_id),
-        )
-
-        # --- 8) Единым UPDATE уменьшаем seats в таблице available
-        #     для всех комбинированных поездок, чьи от–до остановки
-        #     пересекаются с купленным отрезком ---
-        cur.execute(
-            """
-            UPDATE available
-               SET seats = seats - 1
-             WHERE tour_id = %s
-               -- позиция начала available < позиция конца билета
-               AND (
-                 (SELECT "order" FROM routestop
-                  WHERE route_id=%s AND stop_id=departure_stop_id)
-                 <
-                 (SELECT "order" FROM routestop
-                  WHERE route_id=%s AND stop_id=%s)
-               )
-               -- позиция конца available > позиция начала билета
-               AND (
-                 (SELECT "order" FROM routestop
-                  WHERE route_id=%s AND stop_id=arrival_stop_id)
-                 >
-                 (SELECT "order" FROM routestop
-                  WHERE route_id=%s AND stop_id=%s)
-               );
-            """,
-            (
-                data.tour_id,
-                route_id, route_id, data.arrival_stop_id,
-                route_id, route_id, data.departure_stop_id,
-            ),
+        # --- 7) Обновляем seat.available и таблицу available ---
+        occupy_segments(
+            cur,
+            data.tour_id,
+            route_id,
+            seat_id,
+            avail_str,
+            segments,
+            data.departure_stop_id,
+            data.arrival_stop_id,
         )
 
         conn.commit()

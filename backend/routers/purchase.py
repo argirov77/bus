@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from ..database import get_connection
-from ..ticket_utils import free_ticket
+from ..ticket_utils import free_ticket, occupy_segments
 
 router = APIRouter(prefix="/purchase", tags=["purchase"])
 # second router exposing simplified endpoints without the /purchase prefix
@@ -40,12 +40,35 @@ def _create_purchase(
     if len(data.seat_nums) != len(data.passenger_names):
         raise HTTPException(400, "Seat numbers and passenger names count mismatch")
 
-    # Determine price for selected segment
-    cur.execute("SELECT pricelist_id FROM tour WHERE id=%s", (data.tour_id,))
+    # Determine route and price for selected segment
+    cur.execute(
+        "SELECT route_id, pricelist_id FROM tour WHERE id=%s",
+        (data.tour_id,),
+    )
     row = cur.fetchone()
     if not row:
         raise HTTPException(404, "Tour not found")
-    pricelist_id = row[0]
+    if len(row) == 1:
+        route_id = row[0]
+        cur.execute("SELECT pricelist_id FROM tour WHERE id=%s", (data.tour_id,))
+        r2 = cur.fetchone()
+        pricelist_id = r2[0] if r2 else None
+    else:
+        route_id, pricelist_id = row
+
+    cur.execute(
+        "SELECT stop_id FROM routestop WHERE route_id = %s ORDER BY \"order\"",
+        (route_id,),
+    )
+    stops = [r[0] for r in cur.fetchall()]
+    if data.departure_stop_id in stops and data.arrival_stop_id in stops:
+        idx_from = stops.index(data.departure_stop_id)
+        idx_to = stops.index(data.arrival_stop_id)
+        if idx_from >= idx_to:
+            raise HTTPException(400, "Arrival must come after departure")
+        segments = [str(i + 1) for i in range(idx_from, idx_to)]
+    else:
+        segments = ["1"]
 
     cur.execute(
         """
@@ -90,13 +113,21 @@ def _create_purchase(
         passenger_id = cur.fetchone()[0]
 
         cur.execute(
-            "SELECT id FROM seat WHERE tour_id=%s AND seat_num=%s",
+            "SELECT id, available FROM seat WHERE tour_id=%s AND seat_num=%s",
             (data.tour_id, seat_num),
         )
         seat_row = cur.fetchone()
         if not seat_row:
             raise HTTPException(404, "Seat not found")
-        seat_id = seat_row[0]
+        if len(seat_row) == 1:
+            seat_id = seat_row[0]
+            cur.execute("SELECT available FROM seat WHERE id=%s", (seat_id,))
+            r = cur.fetchone()
+            avail_str = str(r[0]) if r else ""
+        else:
+            seat_id, avail_str = seat_row
+        if str(avail_str) == "0":
+            raise HTTPException(400, "Seat is blocked")
 
         cur.execute(
             """
@@ -116,6 +147,17 @@ def _create_purchase(
             ),
         )
         cur.fetchone()
+
+        occupy_segments(
+            cur,
+            data.tour_id,
+            route_id,
+            seat_id,
+            avail_str,
+            segments,
+            data.departure_stop_id,
+            data.arrival_stop_id,
+        )
 
     _log_sale(cur, purchase_id, "ticket_sale", 0)
     return purchase_id, total_price
