@@ -16,7 +16,7 @@ class PurchaseCreate(BaseModel):
     passenger_email: EmailStr
     departure_stop_id: int
     arrival_stop_id: int
-    extra_baggage: bool = False
+    extra_baggage: list[bool] | None = None
 
 class PurchaseOut(BaseModel):
     purchase_id: int
@@ -40,6 +40,10 @@ def _create_purchase(
     if len(data.seat_nums) != len(data.passenger_names):
         raise HTTPException(400, "Seat numbers and passenger names count mismatch")
 
+    baggage_list = data.extra_baggage or [False] * len(data.seat_nums)
+    if len(baggage_list) != len(data.seat_nums):
+        raise HTTPException(400, "Seat numbers and extra baggage count mismatch")
+
     # Determine price for selected segment
     cur.execute("SELECT pricelist_id FROM tour WHERE id=%s", (data.tour_id,))
     row = cur.fetchone()
@@ -58,9 +62,9 @@ def _create_purchase(
     if not price_row:
         raise HTTPException(404, "Price not found")
     base_price = float(price_row[0])
-    total_price = base_price * len(data.seat_nums)
-    if data.extra_baggage:
-        total_price *= 1.1
+    total_price = base_price * (
+        len(data.seat_nums) + 0.1 * sum(1 for b in baggage_list if b)
+    )
     total_price = round(total_price, 2)
 
     # 1) create purchase record using first passenger as customer name
@@ -82,7 +86,7 @@ def _create_purchase(
     purchase_id = cur.fetchone()[0]
 
     # 2) create passenger and ticket for each seat
-    for seat_num, name in zip(data.seat_nums, data.passenger_names):
+    for seat_num, name, bag in zip(data.seat_nums, data.passenger_names, baggage_list):
         cur.execute(
             "INSERT INTO passenger (name) VALUES (%s) RETURNING id",
             (name,),
@@ -112,7 +116,7 @@ def _create_purchase(
                 data.departure_stop_id,
                 data.arrival_stop_id,
                 purchase_id,
-                int(data.extra_baggage),
+                int(bag),
             ),
         )
         cur.fetchone()

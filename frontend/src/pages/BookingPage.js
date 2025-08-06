@@ -43,7 +43,7 @@ function BookingPage(props) {
         passenger_email: passengerData.email,
         departure_stop_id: departureStopId,
         arrival_stop_id: arrivalStopId,
-        extra_baggage: extraBaggage
+        extra_baggage: [extraBaggage]
       })
       .then(function(res) {
         setBookingMessage(`Билет успешно забронирован! Purchase ID: ${res.data.purchase_id}. Сумма: ${res.data.amount_due.toFixed(2)}`);
