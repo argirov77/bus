@@ -81,6 +81,7 @@ def test_booking_flow(client):
     })
     assert any('reserved' in q[0].lower() for q in store['cursor'].queries)
     assert any('insert into sales' in q[0].lower() for q in store['cursor'].queries)
+    assert 'amount_due' in resp.json()
 
     store['cursor'].queries.clear()
 
@@ -103,6 +104,7 @@ def test_booking_flow(client):
     })
     assert any('paid' in q[0].lower() for q in store['cursor'].queries)
     assert any('insert into sales' in q[0].lower() for q in store['cursor'].queries)
+    assert 'amount_due' in resp.json()
 
     store['cursor'].queries.clear()
 

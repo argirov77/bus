@@ -218,6 +218,7 @@ export default function SearchPage() {
         departure_stop_id: Number(selectedDeparture),
         arrival_stop_id:   Number(selectedArrival)
       });
+      let total = outRes.data.amount_due;
       let ids = [outRes.data.purchase_id];
       if (selectedReturnTour) {
         const retRes = await axios.post(`${API}/${endpoint}`, {
@@ -227,11 +228,12 @@ export default function SearchPage() {
           departure_stop_id: Number(selectedArrival),
           arrival_stop_id:   Number(selectedDeparture)
         });
+        total += retRes.data.amount_due;
         ids.push(retRes.data.purchase_id);
       }
       const msg = action === 'purchase'
-        ? `Билеты куплены! Purchase ID: ${ids.join(', ')}`
-        : `Билеты забронированы! Purchase ID: ${ids.join(', ')}`;
+        ? `Билеты куплены! Purchase ID: ${ids.join(', ')}. Сумма: ${total.toFixed(2)}`
+        : `Билеты забронированы! Purchase ID: ${ids.join(', ')}. Сумма: ${total.toFixed(2)}`;
       setPurchaseId(ids[ids.length - 1]);
       setMessage(msg);
       setMessageType("success");
