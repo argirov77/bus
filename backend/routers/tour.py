@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import date
 from ..database import get_connection
 from ..auth import require_admin_token
@@ -36,6 +36,11 @@ class TourOut(BaseModel):
         from_attributes = True
 
 
+class TourListOut(BaseModel):
+    items: List[TourOut]
+    total: int
+
+
 @router.get("/", response_model=List[TourOut])
 def get_tours():
     conn = get_connection()
@@ -55,6 +60,68 @@ def get_tours():
             }
             for r in cur.fetchall()
         ]
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.get("/list", response_model=TourListOut)
+def list_tours(
+    show_past: bool = Query(False, description="Show past tours instead of upcoming"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1),
+    date: Optional[date] = None,
+    route_id: Optional[int] = None,
+    booking_terms: Optional[BookingTermsEnum] = None,
+):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        conditions = []
+        params: List = []
+
+        if show_past:
+            conditions.append("date < CURRENT_DATE")
+        else:
+            conditions.append("date >= CURRENT_DATE")
+
+        if date:
+            conditions.append("date = %s")
+            params.append(date)
+        if route_id is not None:
+            conditions.append("route_id = %s")
+            params.append(route_id)
+        if booking_terms is not None:
+            conditions.append("booking_terms = %s")
+            params.append(booking_terms)
+
+        where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+
+        cur.execute(f"SELECT COUNT(*) FROM tour{where_clause}", tuple(params))
+        total = cur.fetchone()[0]
+
+        query = (
+            "SELECT id, route_id, pricelist_id, date, layout_variant, booking_terms FROM tour"
+            f"{where_clause} ORDER BY date"
+        )
+        query_params = list(params)
+        query += " LIMIT %s OFFSET %s"
+        query_params.extend([page_size, (page - 1) * page_size])
+
+        cur.execute(query, tuple(query_params))
+        items = [
+            {
+                "id": r[0],
+                "route_id": r[1],
+                "pricelist_id": r[2],
+                "date": r[3],
+                "layout_variant": r[4],
+                "booking_terms": r[5],
+            }
+            for r in cur.fetchall()
+        ]
+
+        return {"items": items, "total": total}
     finally:
         cur.close()
         conn.close()
