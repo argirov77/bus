@@ -29,6 +29,16 @@ export default function ToursPage() {
   const [stops, setStops]           = useState([]);
   const stopsMap = Object.fromEntries(stops.map(s => [s.id, s.stop_name]));
 
+  const PAGE_SIZE = 10;
+  const [tab, setTab]       = useState('upcoming');
+  const [page, setPage]     = useState(1);
+  const [total, setTotal]   = useState(0);
+  const [filterDate, setFilterDate]       = useState("");
+  const [filterRoute, setFilterRoute]     = useState("");
+  const [filterBooking, setFilterBooking] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
   // — new‐tour form state —
   const [newTour, setNewTour] = useState({
     route_id: "", pricelist_id: "", date: "", layout_variant: "", booking_terms: "", activeSeats: []
@@ -65,13 +75,43 @@ export default function ToursPage() {
   };
   const iconImg = { width:20, height:20 };
 
-  // — load reference data + tours —
+  const fetchTours = (pageParam = page) => {
+    const params = {
+      page: pageParam,
+      page_size: PAGE_SIZE,
+      show_past: tab === 'past'
+    };
+    if (filterDate) params.date = filterDate;
+    if (filterRoute) params.route_id = filterRoute;
+    if (filterBooking) params.booking_terms = filterBooking;
+    return axios.get(`${API}/tours/list`, { params })
+      .then(r=>{ setTours(r.data.items); setTotal(r.data.total); })
+      .catch(console.error);
+  };
+
+  const applyFilters = e => {
+    e.preventDefault();
+    setPage(1);
+    fetchTours(1);
+  };
+
+  const switchTab = t => {
+    setTab(t);
+    setPage(1);
+  };
+
+  // — load reference data on mount —
   useEffect(() => {
-    axios.get(`${API}/tours`).then(r=>setTours(r.data)).catch(console.error);
     axios.get(`${API}/routes`).then(r=>setRoutes(r.data)).catch(console.error);
     axios.get(`${API}/pricelists`).then(r=>setPricelists(r.data)).catch(console.error);
     axios.get(`${API}/stops`).then(r=>setStops(r.data)).catch(console.error);
+    fetchTours(1);
   }, []);
+
+  // — refetch tours when tab/page changes —
+  useEffect(() => {
+    fetchTours();
+  }, [tab, page]);
 
   // — new‐tour seat toggler —
   const toggleSeatNew = seatNum => {
@@ -94,16 +134,19 @@ export default function ToursPage() {
       booking_terms: +newTour.booking_terms,
       active_seats: newTour.activeSeats
     })
-    .then(()=> axios.get(`${API}/tours`))
-    .then(r=>setTours(r.data))
+    .then(()=> fetchTours(1))
     .catch(console.error)
-    .finally(()=> setNewTour({ route_id:"", pricelist_id:"", date:"", layout_variant:"", booking_terms:"", activeSeats:[] }));
+    .finally(()=> {
+      setNewTour({ route_id:"", pricelist_id:"", date:"", layout_variant:"", booking_terms:"", activeSeats:[] });
+      setShowForm(false);
+      setPage(1);
+    });
   };
 
   // — delete tour —
   const handleDelete = id => {
     axios.delete(`${API}/tours/${id}`)
-      .then(()=> setTours(ts=>ts.filter(t=>t.id!==id)))
+      .then(()=> fetchTours())
       .catch(console.error);
   };
 
@@ -164,8 +207,7 @@ export default function ToursPage() {
         active_seats: finalActive
       });
 
-      const r = await axios.get(`${API}/tours`);
-      setTours(r.data);
+      await fetchTours();
       setEditingId(null);
     } catch(err) {
       console.error("Ошибка сохранения тура:",err);
@@ -234,6 +276,24 @@ export default function ToursPage() {
   return (
     <div className="container">
       <h2>Рейсы</h2>
+
+      <div style={{ margin: '16px 0' }}>
+        <button onClick={()=>switchTab('upcoming')} disabled={tab==='upcoming'}>Предстоящие</button>
+        <button onClick={()=>switchTab('past')} disabled={tab==='past'} style={{marginLeft:8}}>Прошедшие</button>
+      </div>
+
+      <form onSubmit={applyFilters} style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:20 }}>
+        <input type="date" value={filterDate} onChange={e=>setFilterDate(e.target.value)} />
+        <select value={filterRoute} onChange={e=>setFilterRoute(e.target.value)}>
+          <option value="">Маршрут</option>
+          {routes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+        <select value={filterBooking} onChange={e=>setFilterBooking(e.target.value)}>
+          <option value="">Условия брони</option>
+          {BOOKING_OPTIONS.map(o=>(<option key={o.value} value={o.value}>{o.label}</option>))}
+        </select>
+        <button type="submit">Поиск</button>
+      </form>
 
       {/* — Tours list — */}
       <table className="styled-table">
@@ -331,6 +391,19 @@ export default function ToursPage() {
           })}
         </tbody>
       </table>
+
+      <div style={{ margin: '16px 0' }}>
+        <button disabled={page===1} onClick={()=>setPage(p=>p-1)}>Назад</button>
+        {Array.from({length: totalPages}, (_, i) => (
+          <button
+            key={i+1}
+            disabled={page===i+1}
+            onClick={()=>setPage(i+1)}
+            style={{ marginLeft:4 }}
+          >{i+1}</button>
+        ))}
+        <button disabled={page===totalPages || totalPages===0} onClick={()=>setPage(p=>p+1)} style={{marginLeft:4}}>Вперёд</button>
+      </div>
 
       {/* — SeatAdmin with drag‐n‐drop — */}
       {editingId && (
@@ -435,66 +508,72 @@ export default function ToursPage() {
         </div>
       )}
 
-      {/* — new‐tour creation form — */}
-      <h3 style={{ marginTop:40 }}>Создать новый рейс</h3>
-      <form onSubmit={handleCreate} style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-        <select required
-          value={newTour.route_id}
-          onChange={e=>setNewTour({...newTour,route_id:e.target.value})}
-        >
-          <option value="">Маршрут</option>
-          {routes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
-        </select>
-        <select required
-          value={newTour.pricelist_id}
-          onChange={e=>setNewTour({...newTour,pricelist_id:e.target.value})}
-        >
-          <option value="">Прайс-лист</option>
-          {pricelists.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <input required type="date"
-          value={newTour.date}
-          onChange={e=>setNewTour({...newTour,date:e.target.value})}
-        />
-        <select required
-          value={newTour.booking_terms}
-          onChange={e=>setNewTour({...newTour,booking_terms:e.target.value})}
-        >
-          <option value="">Условия брони</option>
-          {BOOKING_OPTIONS.map(o=>(<option key={o.value} value={o.value}>{o.label}</option>))}
-        </select>
-        <select required
-          value={newTour.layout_variant}
-          onChange={e=>setNewTour({...newTour,layout_variant:e.target.value})}
-        >
-          <option value="">Вариант</option>
-          <option value="1">Neoplan</option>
-          <option value="2">Travego</option>
-        </select>
-        {newTour.layout_variant && (
-          <div style={{ width:"100%", marginTop:8 }}>
-            {+newTour.layout_variant===1
-              ? <BusLayoutNeoplan
-                  seats={[]}
-                  selectedSeats={newTour.activeSeats}
-                  toggleSeat={toggleSeatNew}
-                  interactive
+        <div style={{ marginTop:40 }}>
+          <button onClick={()=>setShowForm(s=>!s)}>{showForm ? 'Скрыть форму' : 'Добавить рейс'}</button>
+          {showForm && (
+            <>
+              <h3 style={{ marginTop:20 }}>Создать новый рейс</h3>
+              <form onSubmit={handleCreate} style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                <select required
+                  value={newTour.route_id}
+                  onChange={e=>setNewTour({...newTour,route_id:e.target.value})}
+                >
+                  <option value="">Маршрут</option>
+                  {routes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+                <select required
+                  value={newTour.pricelist_id}
+                  onChange={e=>setNewTour({...newTour,pricelist_id:e.target.value})}
+                >
+                  <option value="">Прайс-лист</option>
+                  {pricelists.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <input required type="date"
+                  value={newTour.date}
+                  onChange={e=>setNewTour({...newTour,date:e.target.value})}
                 />
-              : <BusLayoutTravego
-                  seats={[]}
-                  selectedSeats={newTour.activeSeats}
-                  toggleSeat={toggleSeatNew}
-                  interactive
-                />}
-          </div>
-        )}
-        <button type="submit" style={{
-          padding:"8px 16px", backgroundColor:"#4caf50",
-          color:"#fff", border:"none", borderRadius:4, cursor:"pointer"
-        }}>
-          Создать рейс
-        </button>
-      </form>
+                <select required
+                  value={newTour.booking_terms}
+                  onChange={e=>setNewTour({...newTour,booking_terms:e.target.value})}
+                >
+                  <option value="">Условия брони</option>
+                  {BOOKING_OPTIONS.map(o=>(<option key={o.value} value={o.value}>{o.label}</option>))}
+                </select>
+                <select required
+                  value={newTour.layout_variant}
+                  onChange={e=>setNewTour({...newTour,layout_variant:e.target.value})}
+                >
+                  <option value="">Вариант</option>
+                  <option value="1">Neoplan</option>
+                  <option value="2">Travego</option>
+                </select>
+                {newTour.layout_variant && (
+                  <div style={{ width:"100%", marginTop:8 }}>
+                    {+newTour.layout_variant===1
+                      ? <BusLayoutNeoplan
+                          seats={[]}
+                          selectedSeats={newTour.activeSeats}
+                          toggleSeat={toggleSeatNew}
+                          interactive
+                        />
+                      : <BusLayoutTravego
+                          seats={[]}
+                          selectedSeats={newTour.activeSeats}
+                          toggleSeat={toggleSeatNew}
+                          interactive
+                        />}
+                  </div>
+                )}
+                <button type="submit" style={{
+                  padding:"8px 16px", backgroundColor:"#4caf50",
+                  color:"#fff", border:"none", borderRadius:4, cursor:"pointer"
+                }}>
+                  Создать рейс
+                </button>
+              </form>
+            </>
+          )}
+        </div>
     </div>
   );
 }
