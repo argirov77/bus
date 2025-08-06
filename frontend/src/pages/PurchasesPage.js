@@ -2,6 +2,15 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { API } from "../config";
 
+const formatDeadline = (deadline) => {
+  if (!deadline) return "";
+  const d = new Date(deadline);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(
+    d.getMonth() + 1
+  )}/${d.getFullYear()}`;
+};
+
 export default function PurchasesPage() {
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState("");
@@ -75,7 +84,7 @@ export default function PurchasesPage() {
               <td>{(p.seats || []).join(", ")}</td>
               <td>{p.amount_due}</td>
               <td>{p.status}</td>
-              <td>{p.deadline || ""}</td>
+              <td>{formatDeadline(p.deadline)}</td>
               <td>{p.payment_method}</td>
               <td>
                 {p.status === "reserved" && (
