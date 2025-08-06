@@ -216,7 +216,11 @@ export default function SearchPage() {
 
     {dates.length > 0 && (
       <div style={{ marginBottom: 20 }}>
-        <Calendar activeDates={dates} onSelect={setSelectedDate} />
+        <Calendar
+          activeDates={dates}
+          selectedDate={selectedDate}
+          onSelect={setSelectedDate}
+        />
       </div>
     )}
 
