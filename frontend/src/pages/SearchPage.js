@@ -29,7 +29,8 @@ export default function SearchPage() {
   const [selectedReturnTour, setSelectedReturnTour] = useState(null);
 
   const [seatCount, setSeatCount] = useState(1);
-  const [selectedSeats, setSelectedSeats] = useState([]);
+  const [selectedOutboundSeats, setSelectedOutboundSeats] = useState([]);
+  const [selectedReturnSeats, setSelectedReturnSeats] = useState([]);
   const [passengerNames, setPassengerNames] = useState([""]);
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -41,7 +42,8 @@ export default function SearchPage() {
 
   useEffect(() => {
     setPassengerNames(Array(seatCount).fill(""));
-    setSelectedSeats([]);
+    setSelectedOutboundSeats([]);
+    setSelectedReturnSeats([]);
     setSelectedDepartDate("");
     setSelectedReturnDate("");
     setSelectedOutboundTour(null);
@@ -141,7 +143,8 @@ export default function SearchPage() {
       setReturnTours(retRes.data);
       setSelectedOutboundTour(null);
       setSelectedReturnTour(null);
-      setSelectedSeats([]);
+      setSelectedOutboundSeats([]);
+      setSelectedReturnSeats([]);
       if (!outRes.data.length && (!selectedReturnDate || !retRes.data.length)) {
         setMessage("Рейсы не найдены");
         setMessageType("info");
@@ -160,13 +163,15 @@ export default function SearchPage() {
   // 5. Выбор рейсов туда и обратно
   const handleOutboundTourSelect = tour => {
     setSelectedOutboundTour(tour);
-    setSelectedSeats([]);
+    setSelectedOutboundSeats([]);
+    setSelectedReturnSeats([]);
     setMessage("");
   };
 
   const handleReturnTourSelect = tour => {
     setSelectedReturnTour(tour);
-    setSelectedSeats([]);
+    setSelectedOutboundSeats([]);
+    setSelectedReturnSeats([]);
     setMessage("");
   };
 
@@ -177,7 +182,10 @@ export default function SearchPage() {
       setMessageType("error");
       return;
     }
-    if (selectedSeats.length !== seatCount) {
+    if (
+      selectedOutboundSeats.length !== seatCount ||
+      (selectedReturnTour && selectedReturnSeats.length !== seatCount)
+    ) {
       setMessage("Выберите нужное количество мест");
       setMessageType("error");
       return;
@@ -198,7 +206,6 @@ export default function SearchPage() {
     try {
       const endpoint = action === 'purchase' ? 'purchase' : 'book';
       const basePayload = {
-        seat_nums:       selectedSeats,
         passenger_names: passengerNames,
         passenger_phone: phone,
         passenger_email: email,
@@ -206,7 +213,8 @@ export default function SearchPage() {
       };
       const outRes = await axios.post(`${API}/${endpoint}`, {
         ...basePayload,
-        tour_id:           selectedOutboundTour.id,
+        seat_nums:       selectedOutboundSeats,
+        tour_id:         selectedOutboundTour.id,
         departure_stop_id: Number(selectedDeparture),
         arrival_stop_id:   Number(selectedArrival)
       });
@@ -214,7 +222,8 @@ export default function SearchPage() {
       if (selectedReturnTour) {
         const retRes = await axios.post(`${API}/${endpoint}`, {
           ...basePayload,
-          tour_id:           selectedReturnTour.id,
+          seat_nums:       selectedReturnSeats,
+          tour_id:         selectedReturnTour.id,
           departure_stop_id: Number(selectedArrival),
           arrival_stop_id:   Number(selectedDeparture)
         });
@@ -226,7 +235,8 @@ export default function SearchPage() {
       setPurchaseId(ids[ids.length - 1]);
       setMessage(msg);
       setMessageType("success");
-      setSelectedSeats([]);
+      setSelectedOutboundSeats([]);
+      setSelectedReturnSeats([]);
       setPassengerNames(Array(seatCount).fill(""));
       setPhone("");
       setEmail("");
@@ -379,9 +389,6 @@ export default function SearchPage() {
     {selectedOutboundTour && (!selectedReturnDate || selectedReturnTour) && (
       <>
         <h3>Рейс туда #{selectedOutboundTour.id}, дата: {selectedOutboundTour.date}</h3>
-        {selectedReturnTour && (
-          <h3>Рейс обратно #{selectedReturnTour.id}, дата: {selectedReturnTour.date}</h3>
-        )}
         <p>Свободно мест: {selectedOutboundTour.seats}</p>
         <p>Выберите место:</p>
 
@@ -390,13 +397,33 @@ export default function SearchPage() {
           departureStopId={selectedDeparture}
           arrivalStopId={selectedArrival}
           layoutVariant={selectedOutboundTour.layout_variant}
-          selectedSeats={selectedSeats}
+          selectedSeats={selectedOutboundSeats}
           maxSeats={seatCount}
-          onChange={setSelectedSeats}
+          onChange={setSelectedOutboundSeats}
         />
 
-        {selectedSeats.length > 0 && (
-          <p>Вы выбрали места: {selectedSeats.join(", ")}</p>
+        {selectedOutboundSeats.length > 0 && (
+          <p>Вы выбрали места: {selectedOutboundSeats.join(", ")}</p>
+        )}
+
+        {selectedReturnTour && (
+          <>
+            <h3>Рейс обратно #{selectedReturnTour.id}, дата: {selectedReturnTour.date}</h3>
+            <p>Свободно мест: {selectedReturnTour.seats}</p>
+            <p>Выберите место:</p>
+            <SeatClient
+              tourId={selectedReturnTour.id}
+              departureStopId={selectedArrival}
+              arrivalStopId={selectedDeparture}
+              layoutVariant={selectedReturnTour.layout_variant}
+              selectedSeats={selectedReturnSeats}
+              maxSeats={seatCount}
+              onChange={setSelectedReturnSeats}
+            />
+            {selectedReturnSeats.length > 0 && (
+              <p>Вы выбрали места обратно: {selectedReturnSeats.join(", ")}</p>
+            )}
+          </>
         )}
 
         <form onSubmit={e => e.preventDefault()}
