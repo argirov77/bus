@@ -30,6 +30,7 @@ export default function SearchPage() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [loading, setLoading] = useState(false);
+  const [purchaseId, setPurchaseId] = useState(null);
 
   // 1. Загрузить все отправные остановки
   useEffect(() => {
@@ -130,7 +131,7 @@ export default function SearchPage() {
     setMessage(action === 'purchase' ? "Покупка…" : "Бронирование…");
     setMessageType("info");
     setLoading(true);
-    axios.post(`${API}/purchase/${action === 'purchase' ? 'purchase' : 'book'}`, {
+    axios.post(`${API}/${action === 'purchase' ? 'purchase' : 'book'}`, {
       tour_id:            selectedTour.id,
       seat_num:           selectedSeat,
       passenger_name:     passengerData.name,
@@ -141,9 +142,11 @@ export default function SearchPage() {
       extra_baggage:      extraBaggage
     })
     .then(res => {
-      setMessage(action === 'purchase'
+      const msg = action === 'purchase'
         ? `Билет куплен! Purchase ID: ${res.data.purchase_id}`
-        : `Билет забронирован! Purchase ID: ${res.data.purchase_id}`);
+        : `Билет забронирован! Purchase ID: ${res.data.purchase_id}`;
+      setPurchaseId(res.data.purchase_id);
+      setMessage(msg);
       setMessageType("success");
       // сброс полей и перезагрузка схемы мест
       setSelectedSeat(null);
@@ -156,6 +159,29 @@ export default function SearchPage() {
       setMessageType("error");
     })
     .finally(() => setLoading(false));
+  };
+
+  const handlePay = () => {
+    if (!purchaseId) {
+      setMessage("Нет бронирования для оплаты");
+      setMessageType("error");
+      return;
+    }
+    setMessage("Оплата…");
+    setMessageType("info");
+    setLoading(true);
+    axios.post(`${API}/pay`, { purchase_id: purchaseId })
+      .then(() => {
+        setMessage("Бронирование оплачено!");
+        setMessageType("success");
+        setPurchaseId(null);
+      })
+      .catch(err => {
+        console.error(err);
+        setMessage("Ошибка при оплате");
+        setMessageType("error");
+      })
+      .finally(() => setLoading(false));
   };
 
   return (
@@ -266,6 +292,9 @@ export default function SearchPage() {
             <div style={{display:'flex', gap:8}}>
               <button type="button" onClick={() => handleAction('book')}>Бронь</button>
               <button type="button" onClick={() => handleAction('purchase')}>Покупка</button>
+              {purchaseId && (
+                <button type="button" onClick={handlePay}>Оплатить</button>
+              )}
             </div>
           </form>
         </>
