@@ -34,7 +34,8 @@ export default function SearchPage() {
   const [passengerNames, setPassengerNames] = useState([""]);
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [extraBaggage, setExtraBaggage] = useState(false);
+  const [extraBaggageOutbound, setExtraBaggageOutbound] = useState([false]);
+  const [extraBaggageReturn, setExtraBaggageReturn] = useState([false]);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [loading, setLoading] = useState(false);
@@ -48,6 +49,8 @@ export default function SearchPage() {
     setSelectedReturnDate("");
     setSelectedOutboundTour(null);
     setSelectedReturnTour(null);
+    setExtraBaggageOutbound(Array(seatCount).fill(false));
+    setExtraBaggageReturn(Array(seatCount).fill(false));
   }, [seatCount]);
 
   // 1. Загрузить все отправные остановки
@@ -208,12 +211,12 @@ export default function SearchPage() {
       const basePayload = {
         passenger_names: passengerNames,
         passenger_phone: phone,
-        passenger_email: email,
-        extra_baggage:   extraBaggage
+        passenger_email: email
       };
       const outRes = await axios.post(`${API}/${endpoint}`, {
         ...basePayload,
         seat_nums:       selectedOutboundSeats,
+        extra_baggage:   extraBaggageOutbound,
         tour_id:         selectedOutboundTour.id,
         departure_stop_id: Number(selectedDeparture),
         arrival_stop_id:   Number(selectedArrival)
@@ -224,6 +227,7 @@ export default function SearchPage() {
         const retRes = await axios.post(`${API}/${endpoint}`, {
           ...basePayload,
           seat_nums:       selectedReturnSeats,
+          extra_baggage:   extraBaggageReturn,
           tour_id:         selectedReturnTour.id,
           departure_stop_id: Number(selectedArrival),
           arrival_stop_id:   Number(selectedDeparture)
@@ -242,7 +246,8 @@ export default function SearchPage() {
       setPassengerNames(Array(seatCount).fill(""));
       setPhone("");
       setEmail("");
-      setExtraBaggage(false);
+      setExtraBaggageOutbound(Array(seatCount).fill(false));
+      setExtraBaggageReturn(Array(seatCount).fill(false));
     } catch (err) {
       console.error(err);
       setMessage(action === 'purchase' ? "Ошибка при покупке" : "Ошибка при бронировании");
@@ -431,18 +436,45 @@ export default function SearchPage() {
         <form onSubmit={e => e.preventDefault()}
               style={{ marginTop:20, display:"flex", flexDirection:"column", gap:8, maxWidth:300 }}>
           {passengerNames.map((name, idx) => (
-            <input
-              key={idx}
-              type="text"
-              placeholder={`Имя пассажира ${idx + 1}`}
-              required
-              value={name}
-              onChange={e => {
-                const arr = [...passengerNames];
-                arr[idx] = e.target.value;
-                setPassengerNames(arr);
-              }}
-            />
+            <div key={idx} style={{display:'flex',alignItems:'center',gap:4}}>
+              <input
+                type="text"
+                placeholder={`Имя пассажира ${idx + 1}`}
+                required
+                value={name}
+                onChange={e => {
+                  const arr = [...passengerNames];
+                  arr[idx] = e.target.value;
+                  setPassengerNames(arr);
+                }}
+              />
+              <label style={{display:'flex',alignItems:'center',gap:2}}>
+                <input
+                  type="checkbox"
+                  checked={extraBaggageOutbound[idx]}
+                  onChange={e => {
+                    const arr = [...extraBaggageOutbound];
+                    arr[idx] = e.target.checked;
+                    setExtraBaggageOutbound(arr);
+                  }}
+                />
+                Багаж туда
+              </label>
+              {selectedReturnTour && (
+                <label style={{display:'flex',alignItems:'center',gap:2}}>
+                  <input
+                    type="checkbox"
+                    checked={extraBaggageReturn[idx]}
+                    onChange={e => {
+                      const arr = [...extraBaggageReturn];
+                      arr[idx] = e.target.checked;
+                      setExtraBaggageReturn(arr);
+                    }}
+                  />
+                  Багаж обратно
+                </label>
+              )}
+            </div>
           ))}
           <input
             type="tel"
@@ -458,14 +490,6 @@ export default function SearchPage() {
             value={email}
             onChange={e => setEmail(e.target.value)}
           />
-          <label style={{display:'flex',alignItems:'center',gap:4}}>
-            <input
-              type="checkbox"
-              checked={extraBaggage}
-              onChange={e => setExtraBaggage(e.target.checked)}
-            />
-            Дополнительный багаж
-          </label>
           <div style={{display:'flex', gap:8}}>
             <button type="button" onClick={() => handleAction('book')}>Бронь</button>
             <button type="button" onClick={() => handleAction('purchase')}>Покупка</button>
