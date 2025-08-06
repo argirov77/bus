@@ -69,22 +69,66 @@ def _cancel_expired_loop():
     while True:
         time.sleep(60)
         from .database import get_connection
+        from .ticket_utils import free_ticket
+
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT id FROM purchase WHERE status='reserved' AND deadline < NOW()",
+            )
+            purchase_ids = [row[0] for row in cur.fetchall()]
+
+            for pid in purchase_ids:
+                cur.execute(
+                    "SELECT id FROM ticket WHERE purchase_id=%s",
+                    (pid,),
+                )
+                for t_row in cur.fetchall():
+                    free_ticket(cur, t_row[0])
+
+                cur.execute(
+                    "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",
+                    (pid,),
+                )
+                cur.execute(
+                    "INSERT INTO sales (purchase_id, category, amount) VALUES (%s, 'refund', 0)",
+                    (pid,),
+                )
+
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            cur.close()
+            conn.close()
+
+
+def _finish_departed_tours_loop():
+    while True:
+        time.sleep(60)
+        from .database import get_connection
+
         conn = get_connection()
         cur = conn.cursor()
         try:
             cur.execute(
                 """
-                UPDATE purchase
-                   SET status='cancelled', update_at=NOW()
-                 WHERE status='reserved'
-                   AND deadline < NOW()
-                 RETURNING id
+                SELECT t.id
+                  FROM tour t
+                  JOIN routestop rs ON rs.route_id = t.route_id AND rs."order" = 1
+                 WHERE (t.date + rs.departure_time) <= NOW()
                 """
             )
-            for row in cur.fetchall():
+            tour_ids = [r[0] for r in cur.fetchall()]
+            if tour_ids:
                 cur.execute(
-                    "INSERT INTO sales (purchase_id, category, amount) VALUES (%s, 'refund', 0)",
-                    (row[0],),
+                    "UPDATE available SET seats = 0 WHERE tour_id = ANY(%s)",
+                    (tour_ids,),
+                )
+                cur.execute(
+                    "UPDATE seat SET available = '0' WHERE tour_id = ANY(%s)",
+                    (tour_ids,),
                 )
             conn.commit()
         except Exception:
@@ -95,6 +139,7 @@ def _cancel_expired_loop():
 
 
 threading.Thread(target=_cancel_expired_loop, daemon=True).start()
+threading.Thread(target=_finish_departed_tours_loop, daemon=True).start()
 
 # Serve React static files
 # app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
