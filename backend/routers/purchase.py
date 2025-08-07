@@ -17,6 +17,7 @@ class PurchaseCreate(BaseModel):
     departure_stop_id: int
     arrival_stop_id: int
     extra_baggage: list[bool] | None = None
+    purchase_id: int | None = None
 
 class PurchaseOut(BaseModel):
     purchase_id: int
@@ -80,23 +81,42 @@ def _create_purchase(
     )
     total_price = round(total_price, 2)
 
-    # 1) create purchase record using first passenger as customer name
-    cur.execute(
-        f"""
-        INSERT INTO purchase
-          (customer_name, customer_email, customer_phone, amount_due, deadline, status, update_at, payment_method)
-        VALUES (%s,%s,%s,%s,NOW() + interval '1 day','{status}',NOW(),%s)
-        RETURNING id
-        """,
-        (
-            data.passenger_names[0] if data.passenger_names else "",
-            data.passenger_email,
-            data.passenger_phone,
-            total_price,
-            payment_method,
-        ),
-    )
-    purchase_id = cur.fetchone()[0]
+    # 1) create new purchase or append to existing one
+    if data.purchase_id:
+        cur.execute(
+            "SELECT amount_due, status FROM purchase WHERE id=%s",
+            (data.purchase_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Purchase not found")
+        current_amount, current_status = row
+        new_amount = float(current_amount or 0) + total_price
+        new_status = current_status
+        if status == "paid" and current_status != "paid":
+            new_status = "paid"
+        cur.execute(
+            "UPDATE purchase SET amount_due=%s, update_at=NOW(), status=%s WHERE id=%s",
+            (new_amount, new_status, data.purchase_id),
+        )
+        purchase_id = data.purchase_id
+    else:
+        cur.execute(
+            f"""
+            INSERT INTO purchase
+              (customer_name, customer_email, customer_phone, amount_due, deadline, status, update_at, payment_method)
+            VALUES (%s,%s,%s,%s,NOW() + interval '1 day','{status}',NOW(),%s)
+            RETURNING id
+            """,
+            (
+                data.passenger_names[0] if data.passenger_names else "",
+                data.passenger_email,
+                data.passenger_phone,
+                total_price,
+                payment_method,
+            ),
+        )
+        purchase_id = cur.fetchone()[0]
 
     # 2) create passenger and ticket for each seat
     for seat_num, name, bag in zip(data.seat_nums, data.passenger_names, baggage_list):
