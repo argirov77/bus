@@ -36,7 +36,9 @@ class DummyCursor:
                 1,
                 10,
                 5,
+                12,
                 2,
+                "Ivan",
                 1,
                 2,
                 1,
@@ -111,5 +113,7 @@ def test_admin_purchase_info(client):
     data = resp.json()
     assert len(data['tickets']) == 1
     assert data['tickets'][0]['id'] == 1
+    assert data['tickets'][0]['seat_num'] == 12
+    assert data['tickets'][0]['passenger_name'] == 'Ivan'
     assert len(data['sales']) == 2
     assert data['sales'][0]['category'] == 'ticket_sale'
