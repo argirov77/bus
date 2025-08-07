@@ -227,7 +227,7 @@ export default function SearchPage() {
         arrival_stop_id:   Number(selectedArrival)
       });
       let total = outRes.data.amount_due;
-      let ids = [outRes.data.purchase_id];
+      let pId = outRes.data.purchase_id;
       if (selectedReturnTour) {
         const retRes = await axios.post(`${API}/${endpoint}`, {
           ...basePayload,
@@ -235,15 +235,16 @@ export default function SearchPage() {
           extra_baggage:   extraBaggageReturn,
           tour_id:         selectedReturnTour.id,
           departure_stop_id: Number(selectedArrival),
-          arrival_stop_id:   Number(selectedDeparture)
+          arrival_stop_id:   Number(selectedDeparture),
+          purchase_id:     pId
         });
-        total += retRes.data.amount_due;
-        ids.push(retRes.data.purchase_id);
+        total = retRes.data.amount_due;
+        pId = retRes.data.purchase_id;
       }
       const msg = action === 'purchase'
-        ? `Билеты куплены! Purchase ID: ${ids.join(', ')}. Сумма: ${total.toFixed(2)}`
-        : `Билеты забронированы! Purchase ID: ${ids.join(', ')}. Сумма: ${total.toFixed(2)}`;
-      setPurchaseId(ids[ids.length - 1]);
+        ? `Билеты куплены! Purchase ID: ${pId}. Сумма: ${total.toFixed(2)}`
+        : `Билеты забронированы! Purchase ID: ${pId}. Сумма: ${total.toFixed(2)}`;
+      setPurchaseId(pId);
       setMessage(msg);
       setMessageType("success");
       setSelectedOutboundSeats([]);
@@ -280,6 +281,29 @@ export default function SearchPage() {
       .catch(err => {
         console.error(err);
         setMessage("Ошибка при оплате");
+        setMessageType("error");
+      })
+      .finally(() => setLoading(false));
+  };
+
+  const handleCancel = () => {
+    if (!purchaseId) {
+      setMessage("Нет бронирования для отмены");
+      setMessageType("error");
+      return;
+    }
+    setMessage("Отмена…");
+    setMessageType("info");
+    setLoading(true);
+    axios.post(`${API}/cancel/${purchaseId}`)
+      .then(() => {
+        setMessage("Бронирование отменено!");
+        setMessageType("success");
+        setPurchaseId(null);
+      })
+      .catch(err => {
+        console.error(err);
+        setMessage("Ошибка при отмене");
         setMessageType("error");
       })
       .finally(() => setLoading(false));
@@ -507,7 +531,10 @@ export default function SearchPage() {
             <button type="button" onClick={() => handleAction('book')}>Бронь</button>
             <button type="button" onClick={() => handleAction('purchase')}>Покупка</button>
             {purchaseId && (
-              <button type="button" onClick={handlePay}>Оплатить</button>
+              <>
+                <button type="button" onClick={handlePay}>Оплатить</button>
+                <button type="button" onClick={handleCancel}>Отменить</button>
+              </>
             )}
           </div>
         </form>
