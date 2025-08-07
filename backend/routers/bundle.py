@@ -134,9 +134,8 @@ def _get_route(cur, route_id: int, col: str):
     return {"id": route_id, "name": name, "stops": stops}
 
 
-@router.post("/selected_route", response_model=RoutesBundleOut)
-def selected_route(data: LangRequest):
-    lang = data.lang.lower()
+def _selected_route_impl(lang: str):
+    lang = (lang or "").lower()
     col = f"stop_{lang}" if lang in {"en", "bg", "ua"} else "stop_name"
     conn = get_connection()
     cur = conn.cursor()
@@ -156,9 +155,18 @@ def selected_route(data: LangRequest):
         conn.close()
 
 
-@router.post("/selected_pricelist", response_model=PricelistBundleOut)
-def selected_pricelist(data: LangRequest):
-    lang = data.lang.lower()
+@router.post("/selected_route", response_model=RoutesBundleOut)
+def selected_route(data: LangRequest):
+    return _selected_route_impl(data.lang)
+
+
+@router.get("/selected_route", response_model=RoutesBundleOut)
+def selected_route_get(lang: str):
+    return _selected_route_impl(lang)
+
+
+def _selected_pricelist_impl(lang: str):
+    lang = (lang or "").lower()
     col = f"stop_{lang}" if lang in {"en", "bg", "ua"} else "stop_name"
     conn = get_connection()
     cur = conn.cursor()
@@ -197,3 +205,13 @@ def selected_pricelist(data: LangRequest):
     finally:
         cur.close()
         conn.close()
+
+
+@router.post("/selected_pricelist", response_model=PricelistBundleOut)
+def selected_pricelist(data: LangRequest):
+    return _selected_pricelist_impl(data.lang)
+
+
+@router.get("/selected_pricelist", response_model=PricelistBundleOut)
+def selected_pricelist_get(lang: str):
+    return _selected_pricelist_impl(lang)
