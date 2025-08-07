@@ -7,6 +7,7 @@ from datetime import date
 from ..database import get_connection
 from ..auth import require_admin_token
 from ..models import BookingTermsEnum
+from ..ticket_utils import recalc_available
 
 router = APIRouter(
     prefix="/tours",
