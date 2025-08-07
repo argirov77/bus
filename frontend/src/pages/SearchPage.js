@@ -41,6 +41,11 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [purchaseId, setPurchaseId] = useState(null);
 
+  const today = new Date().toISOString().slice(0, 10);
+  const returnMinDate = selectedDepartDate
+    ? new Date(new Date(selectedDepartDate).getTime() + 86400000).toISOString().slice(0, 10)
+    : today;
+
   useEffect(() => {
     setPassengerNames(Array(seatCount).fill(""));
     setSelectedOutboundSeats([]);
@@ -343,7 +348,14 @@ export default function SearchPage() {
           <Calendar
             activeDates={departDates}
             selectedDate={selectedDepartDate}
-            onSelect={d => { setSelectedDepartDate(d); setShowDepartCal(false); }}
+            minDate={today}
+            onSelect={d => {
+              setSelectedDepartDate(d);
+              setShowDepartCal(false);
+              if (selectedReturnDate && selectedReturnDate <= d) {
+                setSelectedReturnDate('');
+              }
+            }}
           />
         </div>
       )}
@@ -353,6 +365,7 @@ export default function SearchPage() {
           <Calendar
             activeDates={returnDates}
             selectedDate={selectedReturnDate}
+            minDate={returnMinDate}
             onSelect={d => { setSelectedReturnDate(d); setShowReturnCal(false); }}
           />
         </div>
