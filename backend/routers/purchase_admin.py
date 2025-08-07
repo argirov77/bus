@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from ..database import get_connection
 from ..auth import require_admin_token
+from ..models import Ticket, Sales
 
 router = APIRouter(
     prefix="/admin/purchases",
@@ -104,6 +105,66 @@ def list_purchases(
                 }
             )
         return purchases
+    finally:
+        cur.close()
+        conn.close()
+
+
+class PurchaseInfo(BaseModel):
+    tickets: List[Ticket]
+    sales: List[Sales]
+
+
+@router.get("/{purchase_id}", response_model=PurchaseInfo)
+def purchase_info(purchase_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT id, tour_id, seat_id, passenger_id,
+                   departure_stop_id, arrival_stop_id,
+                   purchase_id, extra_baggage
+            FROM ticket WHERE purchase_id=%s
+            """,
+            (purchase_id,),
+        )
+        t_rows = cur.fetchall()
+        tickets = [
+            {
+                "id": r[0],
+                "tour_id": r[1],
+                "seat_id": r[2],
+                "passenger_id": r[3],
+                "departure_stop_id": r[4],
+                "arrival_stop_id": r[5],
+                "purchase_id": r[6],
+                "extra_baggage": r[7],
+            }
+            for r in t_rows
+        ]
+
+        cur.execute(
+            """
+            SELECT id, date, category, amount, purchase_id, comment
+            FROM sales WHERE purchase_id=%s ORDER BY date
+            """,
+            (purchase_id,),
+        )
+        s_rows = cur.fetchall()
+        sales = [
+            {
+                "id": r[0],
+                "date": r[1],
+                "category": r[2],
+                "amount": float(r[3]),
+                "purchase_id": r[4],
+                "comment": r[5],
+            }
+            for r in s_rows
+        ]
+
+        return {"tickets": tickets, "sales": sales}
     finally:
         cur.close()
         conn.close()

@@ -31,6 +31,36 @@ class DummyCursor:
                 datetime(2025, 8, 9, 12, 0, 0),
                 "online",
             )]
+        if "FROM ticket" in self.query:
+            return [(
+                1,
+                10,
+                5,
+                2,
+                1,
+                2,
+                1,
+                0,
+            )]
+        if "FROM sales" in self.query:
+            return [
+                (
+                    1,
+                    datetime(2025, 8, 9, 12, 0, 0),
+                    "ticket_sale",
+                    52.0,
+                    1,
+                    None,
+                ),
+                (
+                    2,
+                    datetime(2025, 8, 9, 13, 0, 0),
+                    "refund",
+                    0.0,
+                    1,
+                    None,
+                ),
+            ]
         return []
     def close(self):
         pass
@@ -73,3 +103,13 @@ def test_admin_purchase_list(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data and data[0]['id'] == 1
+
+
+def test_admin_purchase_info(client):
+    resp = client.get('/admin/purchases/1')
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data['tickets']) == 1
+    assert data['tickets'][0]['id'] == 1
+    assert len(data['sales']) == 2
+    assert data['sales'][0]['category'] == 'ticket_sale'
