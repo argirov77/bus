@@ -121,7 +121,7 @@ export default function PurchasesPage() {
                     <ul>
                       {info[p.id].sales.map((s) => (
                         <li key={s.id}>
-                          {new Date(s.date).toLocaleString()} {s.category} {s.amount}
+                          {new Date(s.date).toLocaleString('ru-RU')} - {s.category} {s.amount}
                         </li>
                       ))}
                     </ul>
@@ -129,7 +129,7 @@ export default function PurchasesPage() {
                     <ul>
                       {info[p.id].tickets.map((t) => (
                         <li key={t.id}>
-                          Ticket {t.id}: seat {t.seat_id}, passenger {t.passenger_id}
+                          Ticket {t.id}: seat {t.seat_num}, passenger {t.passenger_name}
                         </li>
                       ))}
                     </ul>

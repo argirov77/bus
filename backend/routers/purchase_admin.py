@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from ..database import get_connection
 from ..auth import require_admin_token
-from ..models import Ticket, Sales
+from ..models import Sales
 
 router = APIRouter(
     prefix="/admin/purchases",
@@ -110,8 +110,21 @@ def list_purchases(
         conn.close()
 
 
+class TicketInfo(BaseModel):
+    id: int
+    tour_id: int
+    seat_id: int
+    seat_num: int
+    passenger_id: int
+    passenger_name: str
+    departure_stop_id: int
+    arrival_stop_id: int
+    purchase_id: int
+    extra_baggage: int
+
+
 class PurchaseInfo(BaseModel):
-    tickets: List[Ticket]
+    tickets: List[TicketInfo]
     sales: List[Sales]
 
 
@@ -122,10 +135,13 @@ def purchase_info(purchase_id: int):
     try:
         cur.execute(
             """
-            SELECT id, tour_id, seat_id, passenger_id,
-                   departure_stop_id, arrival_stop_id,
-                   purchase_id, extra_baggage
-            FROM ticket WHERE purchase_id=%s
+            SELECT t.id, t.tour_id, t.seat_id, s.seat_num, t.passenger_id, p.name,
+                   t.departure_stop_id, t.arrival_stop_id,
+                   t.purchase_id, t.extra_baggage
+            FROM ticket t
+            LEFT JOIN seat s ON s.id = t.seat_id
+            LEFT JOIN passenger p ON p.id = t.passenger_id
+            WHERE t.purchase_id=%s
             """,
             (purchase_id,),
         )
@@ -135,11 +151,13 @@ def purchase_info(purchase_id: int):
                 "id": r[0],
                 "tour_id": r[1],
                 "seat_id": r[2],
-                "passenger_id": r[3],
-                "departure_stop_id": r[4],
-                "arrival_stop_id": r[5],
-                "purchase_id": r[6],
-                "extra_baggage": r[7],
+                "seat_num": r[3],
+                "passenger_id": r[4],
+                "passenger_name": r[5],
+                "departure_stop_id": r[6],
+                "arrival_stop_id": r[7],
+                "purchase_id": r[8],
+                "extra_baggage": r[9],
             }
             for r in t_rows
         ]
