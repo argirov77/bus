@@ -5,7 +5,8 @@ import '../styles/Calendar.css';
 // `activeDates` - array of ISO date strings that are selectable.
 // `selectedDate` - currently chosen date (ISO string).
 // `onSelect` - callback when user chooses a date.
-export default function Calendar({ activeDates = [], selectedDate = '', onSelect }) {
+// `minDate` - ISO date string that acts as the earliest selectable day.
+export default function Calendar({ activeDates = [], selectedDate = '', onSelect, minDate }) {
   // initial month/year based on selected date or first active date
   const initial = selectedDate
     ? new Date(selectedDate)
@@ -67,7 +68,8 @@ export default function Calendar({ activeDates = [], selectedDate = '', onSelect
     // ensures that the day number corresponds to the calendar day shown,
     // preventing a shift by one day in locales ahead/behind UTC.
     const date = new Date(Date.UTC(year, month, d)).toISOString().slice(0, 10);
-    const isActive = activeDates.includes(date);
+    const isAfterMin = !minDate || date >= minDate;
+    const isActive = activeDates.includes(date) && isAfterMin;
     const isSelected = selectedDate === date;
     days.push({ key: date, day: d, date, active: isActive, selected: isSelected });
   }
