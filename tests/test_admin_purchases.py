@@ -35,6 +35,7 @@ class DummyCursor:
             return [(
                 1,
                 10,
+                datetime(2025, 8, 10).date(),
                 5,
                 12,
                 2,

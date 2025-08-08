@@ -113,6 +113,7 @@ def list_purchases(
 class TicketInfo(BaseModel):
     id: int
     tour_id: int
+    tour_date: Optional[str]
     seat_id: int
     seat_num: int
     passenger_id: int
@@ -135,12 +136,13 @@ def purchase_info(purchase_id: int):
     try:
         cur.execute(
             """
-            SELECT t.id, t.tour_id, t.seat_id, s.seat_num, t.passenger_id, p.name,
+            SELECT t.id, t.tour_id, tr.date, t.seat_id, s.seat_num, t.passenger_id, p.name,
                    t.departure_stop_id, t.arrival_stop_id,
                    t.purchase_id, t.extra_baggage
             FROM ticket t
             LEFT JOIN seat s ON s.id = t.seat_id
             LEFT JOIN passenger p ON p.id = t.passenger_id
+            LEFT JOIN tour tr ON tr.id = t.tour_id
             WHERE t.purchase_id=%s
             """,
             (purchase_id,),
@@ -150,14 +152,15 @@ def purchase_info(purchase_id: int):
             {
                 "id": r[0],
                 "tour_id": r[1],
-                "seat_id": r[2],
-                "seat_num": r[3],
-                "passenger_id": r[4],
-                "passenger_name": r[5],
-                "departure_stop_id": r[6],
-                "arrival_stop_id": r[7],
-                "purchase_id": r[8],
-                "extra_baggage": r[9],
+                "tour_date": r[2].isoformat() if r[2] else None,
+                "seat_id": r[3],
+                "seat_num": r[4],
+                "passenger_id": r[5],
+                "passenger_name": r[6],
+                "departure_stop_id": r[7],
+                "arrival_stop_id": r[8],
+                "purchase_id": r[9],
+                "extra_baggage": r[10],
             }
             for r in t_rows
         ]
