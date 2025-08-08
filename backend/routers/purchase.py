@@ -24,9 +24,29 @@ class PurchaseOut(BaseModel):
     amount_due: float
 
 def _log_sale(cur, purchase_id: int, category: str, amount: float = 0.0) -> None:
+    """Insert or update sales record for a purchase.
+
+    If a sales record with the same purchase and category already exists we
+    simply increment the amount instead of creating a duplicate entry. This
+    mirrors a typical ``INSERT ... ON CONFLICT`` without relying on a
+    database-side unique constraint which may not be present in older
+    deployments.
+    """
+    # First try to update existing sale amount
     cur.execute(
-        "INSERT INTO sales (purchase_id, category, amount) VALUES (%s, %s, %s)",
-        (purchase_id, category, amount),
+        "UPDATE sales SET amount = amount + %s WHERE purchase_id=%s AND category=%s",
+        (amount, purchase_id, category),
+    )
+    # Then insert a new record only if one does not already exist
+    cur.execute(
+        """
+        INSERT INTO sales (purchase_id, category, amount)
+        SELECT %s, %s, %s
+         WHERE NOT EXISTS (
+            SELECT 1 FROM sales WHERE purchase_id=%s AND category=%s
+         )
+        """,
+        (purchase_id, category, amount, purchase_id, category),
     )
 
 
@@ -192,7 +212,12 @@ def _create_purchase(
             ),
         )
 
-    _log_sale(cur, purchase_id, "ticket_sale", 0)
+    _log_sale(
+        cur,
+        purchase_id,
+        "ticket_sale",
+        total_price if status == "paid" else 0,
+    )
     return purchase_id, new_amount
 
 @router.post("/", response_model=PurchaseOut)
@@ -219,12 +244,19 @@ def pay_purchase(purchase_id: int):
     cur = conn.cursor()
     try:
         cur.execute(
+            "SELECT amount_due FROM purchase WHERE id=%s",
+            (purchase_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Purchase not found")
+        amount_due = float(row[0])
+
+        cur.execute(
             "UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
-        if cur.rowcount == 0:
-            raise HTTPException(404, "Purchase not found")
-        _log_sale(cur, purchase_id, "ticket_sale", 0)
+        _log_sale(cur, purchase_id, "ticket_sale", amount_due)
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -319,12 +351,19 @@ def pay_booking(data: PayIn):
     cur = conn.cursor()
     try:
         cur.execute(
+            "SELECT amount_due FROM purchase WHERE id=%s",
+            (data.purchase_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Purchase not found")
+        amount_due = float(row[0])
+
+        cur.execute(
             "UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s",
             (data.purchase_id,),
         )
-        if cur.rowcount == 0:
-            raise HTTPException(404, "Purchase not found")
-        _log_sale(cur, data.purchase_id, "ticket_sale", 0)
+        _log_sale(cur, data.purchase_id, "ticket_sale", amount_due)
         conn.commit()
     except HTTPException:
         conn.rollback()
