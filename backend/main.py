@@ -35,12 +35,13 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 # Настраиваем CORS с помощью переменной окружения
-cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:3000")
+cors_origins = os.environ.get(
+    "CORS_ORIGINS", "http://localhost:3000,http://localhost:3001"
+)
 origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origins=["http://localhost:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -146,7 +147,6 @@ threading.Thread(target=_finish_departed_tours_loop, daemon=True).start()
 # app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
 
 if __name__ == "__main__":
-    import os
     import uvicorn
 
     port = int(os.environ.get("BACKEND_PORT", 8000))
