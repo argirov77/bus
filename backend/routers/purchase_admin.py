@@ -17,11 +17,9 @@ class PurchaseRow(BaseModel):
     customer_name: str
     customer_email: str
     customer_phone: str
-    tour_date: Optional[str]
-    route_name: Optional[str]
-    departure_stop: Optional[str]
-    arrival_stop: Optional[str]
-    seats: List[int]
+    passenger_count: int
+    ticket_count: int
+    tour_dates: List[str]
     amount_due: float
     status: str
     deadline: Optional[str]
@@ -59,25 +57,18 @@ def list_purchases(
               pu.customer_name,
               pu.customer_email,
               pu.customer_phone,
-              tr.date,
-              r.name,
-              ds.stop_name,
-              as_.stop_name,
-              ARRAY_AGG(s.seat_num) AS seats,
+              COUNT(DISTINCT t.passenger_id) AS passenger_count,
+              COUNT(t.id) AS ticket_count,
+              ARRAY_AGG(DISTINCT tr.date) AS tour_dates,
               pu.amount_due,
               pu.status,
               pu.deadline,
               pu.payment_method
             FROM purchase pu
             LEFT JOIN ticket t ON t.purchase_id = pu.id
-            LEFT JOIN seat s ON s.id = t.seat_id
             LEFT JOIN tour tr ON tr.id = t.tour_id
-            LEFT JOIN route r ON r.id = tr.route_id
-            LEFT JOIN stop ds ON ds.id = t.departure_stop_id
-            LEFT JOIN stop as_ ON as_.id = t.arrival_stop_id
             {where_clause}
             GROUP BY pu.id, pu.update_at, pu.customer_name, pu.customer_email, pu.customer_phone,
-                     tr.date, r.name, ds.stop_name, as_.stop_name,
                      pu.amount_due, pu.status, pu.deadline, pu.payment_method
             ORDER BY pu.id DESC
             """,
@@ -93,15 +84,13 @@ def list_purchases(
                     "customer_name": r[2],
                     "customer_email": r[3],
                     "customer_phone": r[4],
-                    "tour_date": r[5].isoformat() if r[5] else None,
-                    "route_name": r[6],
-                    "departure_stop": r[7],
-                    "arrival_stop": r[8],
-                    "seats": r[9] if r[9] is not None else [],
-                    "amount_due": float(r[10]) if r[10] is not None else 0.0,
-                    "status": r[11],
-                    "deadline": r[12].isoformat() if r[12] else None,
-                    "payment_method": r[13],
+                    "passenger_count": r[5],
+                    "ticket_count": r[6],
+                    "tour_dates": [d.isoformat() for d in r[7]] if r[7] else [],
+                    "amount_due": float(r[8]) if r[8] is not None else 0.0,
+                    "status": r[9],
+                    "deadline": r[10].isoformat() if r[10] else None,
+                    "payment_method": r[11],
                 }
             )
         return purchases
@@ -113,6 +102,7 @@ def list_purchases(
 class TicketInfo(BaseModel):
     id: int
     tour_id: int
+    tour_date: Optional[str]
     seat_id: int
     seat_num: int
     passenger_id: int
@@ -135,12 +125,13 @@ def purchase_info(purchase_id: int):
     try:
         cur.execute(
             """
-            SELECT t.id, t.tour_id, t.seat_id, s.seat_num, t.passenger_id, p.name,
+            SELECT t.id, t.tour_id, tr.date, t.seat_id, s.seat_num, t.passenger_id, p.name,
                    t.departure_stop_id, t.arrival_stop_id,
                    t.purchase_id, t.extra_baggage
             FROM ticket t
             LEFT JOIN seat s ON s.id = t.seat_id
             LEFT JOIN passenger p ON p.id = t.passenger_id
+            LEFT JOIN tour tr ON tr.id = t.tour_id
             WHERE t.purchase_id=%s
             """,
             (purchase_id,),
@@ -150,14 +141,15 @@ def purchase_info(purchase_id: int):
             {
                 "id": r[0],
                 "tour_id": r[1],
-                "seat_id": r[2],
-                "seat_num": r[3],
-                "passenger_id": r[4],
-                "passenger_name": r[5],
-                "departure_stop_id": r[6],
-                "arrival_stop_id": r[7],
-                "purchase_id": r[8],
-                "extra_baggage": r[9],
+                "tour_date": r[2].isoformat() if r[2] else None,
+                "seat_id": r[3],
+                "seat_num": r[4],
+                "passenger_id": r[5],
+                "passenger_name": r[6],
+                "departure_stop_id": r[7],
+                "arrival_stop_id": r[8],
+                "purchase_id": r[9],
+                "extra_baggage": r[10],
             }
             for r in t_rows
         ]
