@@ -88,12 +88,9 @@ export default function PurchasesPage() {
               <tr>
                 <td>{p.id}</td>
                 <td>
-                  {(() => {
-                    const passengers = info[p.id]
-                      ? Array.from(new Set(info[p.id].tickets.map((t) => t.passenger_name)))
-                      : [];
-                    return passengers.join(", ");
-                  })()}
+                  <div>{p.customer_name}</div>
+                  {p.customer_phone && <div>{p.customer_phone}</div>}
+                  {p.customer_email && <div>{p.customer_email}</div>}
                 </td>
                 <td>
                   {info[p.id]
@@ -111,7 +108,20 @@ export default function PurchasesPage() {
                     : ""}
                 </td>
                 <td>{p.amount_due}</td>
-                <td>{p.status}</td>
+                <td
+                  style={{
+                    color:
+                      p.status === "paid"
+                        ? "green"
+                        : p.status === "reserved"
+                        ? "goldenrod"
+                        : p.status === "refunded"
+                        ? "red"
+                        : "inherit",
+                  }}
+                >
+                  {p.status}
+                </td>
                 <td>{p.payment_method}</td>
                 <td>
                   <button onClick={() => toggleInfo(p.id)}>
@@ -180,14 +190,24 @@ export default function PurchasesPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {info[p.id].sales.map((s) => (
-                            <tr key={s.id}>
-                              <td>{s.category}</td>
-                              <td>{new Date(s.date).toLocaleString('ru-RU')}</td>
-                              <td>{s.comment || ""}</td>
-                              <td>{s.amount}</td>
-                            </tr>
-                          ))}
+                          {info[p.id].sales.map((s) => {
+                            const icons = {
+                              ticket_sale: "⏳",
+                              paid: "💵",
+                              refunded: "🔙",
+                            };
+                            return (
+                              <tr key={s.id}>
+                                <td>
+                                  {icons[s.category] ? icons[s.category] + " " : ""}
+                                  {s.category}
+                                </td>
+                                <td>{new Date(s.date).toLocaleString('ru-RU')}</td>
+                                <td>{s.comment || ""}</td>
+                                <td>{s.amount}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
