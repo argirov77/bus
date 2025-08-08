@@ -92,6 +92,7 @@ def _create_purchase(
         if not row:
             raise HTTPException(404, "Purchase not found")
         current_amount, current_status = row
+        current_amount = float(current_amount)
         if current_status != status:
             raise HTTPException(400, "Mismatched purchase status")
         new_amount = round(current_amount + total_price, 2)
