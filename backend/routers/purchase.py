@@ -113,13 +113,20 @@ def _create_purchase(
             raise HTTPException(404, "Purchase not found")
         current_amount, current_status = row
         current_amount = float(current_amount)
-        if current_status != status:
-            raise HTTPException(400, "Mismatched purchase status")
         new_amount = round(current_amount + total_price, 2)
-        cur.execute(
-            "UPDATE purchase SET amount_due=%s, update_at=NOW() WHERE id=%s",
-            (new_amount, purchase_id),
-        )
+        if current_status != status:
+            if current_status == "reserved" and status == "paid":
+                cur.execute(
+                    "UPDATE purchase SET amount_due=%s, status=%s, update_at=NOW() WHERE id=%s",
+                    (new_amount, status, purchase_id),
+                )
+            else:
+                raise HTTPException(400, "Mismatched purchase status")
+        else:
+            cur.execute(
+                "UPDATE purchase SET amount_due=%s, update_at=NOW() WHERE id=%s",
+                (new_amount, purchase_id),
+            )
     else:
         # 1) create purchase record using first passenger as customer name
         cur.execute(
