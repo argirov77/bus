@@ -9,10 +9,13 @@ from ..auth import require_admin_token
 from ..models import BookingTermsEnum
 from ..ticket_utils import recalc_available
 
+# Основные административные действия над рейсами требуют токен администратора.
+# Эндпоинт поиска рейсов используется на публичной странице покупки билета,
+# поэтому роутер объявляется без зависимости, а проверка токена выполняется
+# отдельно для админских методов.
 router = APIRouter(
     prefix="/tours",
     tags=["tours"],
-    dependencies=[Depends(require_admin_token)],
 )
 
 
@@ -43,7 +46,7 @@ class TourListOut(BaseModel):
 
 
 @router.get("/", response_model=List[TourOut])
-def get_tours():
+def get_tours(current_admin: dict = Depends(require_admin_token)):
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -68,6 +71,7 @@ def get_tours():
 
 @router.get("/list", response_model=TourListOut)
 def list_tours(
+    current_admin: dict = Depends(require_admin_token),
     show_past: bool = Query(False, description="Show past tours instead of upcoming"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1),
@@ -129,7 +133,7 @@ def list_tours(
 
 
 @router.post("/", response_model=TourOut)
-def create_tour(tour: TourCreate):
+def create_tour(tour: TourCreate, current_admin: dict = Depends(require_admin_token)):
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -215,7 +219,11 @@ def create_tour(tour: TourCreate):
 
 
 @router.delete("/{tour_id}")
-def delete_tour(tour_id: int, force: bool = Query(False)):
+def delete_tour(
+    tour_id: int,
+    force: bool = Query(False),
+    current_admin: dict = Depends(require_admin_token),
+):
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -250,7 +258,11 @@ def delete_tour(tour_id: int, force: bool = Query(False)):
 
 
 @router.put("/{tour_id}", response_model=TourOut)
-def update_tour(tour_id: int, tour_data: TourCreate):
+def update_tour(
+    tour_id: int,
+    tour_data: TourCreate,
+    current_admin: dict = Depends(require_admin_token),
+):
     conn = get_connection()
     cur = conn.cursor()
     try:
