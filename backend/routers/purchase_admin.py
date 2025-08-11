@@ -12,16 +12,20 @@ router = APIRouter(
 )
 
 class PurchaseRow(BaseModel):
+    """Summary information about a purchase.
+
+    Earlier the admin purchase list combined ticket details directly in the SQL
+    query which led to multiple rows being returned for a single purchase when
+    the order contained tickets for different tours (e.g. a return trip).
+    To present the information ergonomically we now return one row per purchase
+    and load ticket details separately.
+    """
+
     id: int
     created_at: Optional[str]
     customer_name: str
     customer_email: str
     customer_phone: str
-    tour_date: Optional[str]
-    route_name: Optional[str]
-    departure_stop: Optional[str]
-    arrival_stop: Optional[str]
-    seats: List[int]
     amount_due: float
     status: str
     deadline: Optional[str]
@@ -59,26 +63,12 @@ def list_purchases(
               pu.customer_name,
               pu.customer_email,
               pu.customer_phone,
-              tr.date,
-              r.name,
-              ds.stop_name,
-              as_.stop_name,
-              ARRAY_AGG(s.seat_num) AS seats,
               pu.amount_due,
               pu.status,
               pu.deadline,
               pu.payment_method
             FROM purchase pu
-            LEFT JOIN ticket t ON t.purchase_id = pu.id
-            LEFT JOIN seat s ON s.id = t.seat_id
-            LEFT JOIN tour tr ON tr.id = t.tour_id
-            LEFT JOIN route r ON r.id = tr.route_id
-            LEFT JOIN stop ds ON ds.id = t.departure_stop_id
-            LEFT JOIN stop as_ ON as_.id = t.arrival_stop_id
             {where_clause}
-            GROUP BY pu.id, pu.update_at, pu.customer_name, pu.customer_email, pu.customer_phone,
-                     tr.date, r.name, ds.stop_name, as_.stop_name,
-                     pu.amount_due, pu.status, pu.deadline, pu.payment_method
             ORDER BY pu.id DESC
             """,
             tuple(params),
@@ -93,15 +83,10 @@ def list_purchases(
                     "customer_name": r[2],
                     "customer_email": r[3],
                     "customer_phone": r[4],
-                    "tour_date": r[5].isoformat() if r[5] else None,
-                    "route_name": r[6],
-                    "departure_stop": r[7],
-                    "arrival_stop": r[8],
-                    "seats": r[9] if r[9] is not None else [],
-                    "amount_due": float(r[10]) if r[10] is not None else 0.0,
-                    "status": r[11],
-                    "deadline": r[12].isoformat() if r[12] else None,
-                    "payment_method": r[13],
+                    "amount_due": float(r[5]) if r[5] is not None else 0.0,
+                    "status": r[6],
+                    "deadline": r[7].isoformat() if r[7] else None,
+                    "payment_method": r[8],
                 }
             )
         return purchases

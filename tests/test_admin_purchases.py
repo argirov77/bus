@@ -15,17 +15,14 @@ class DummyCursor:
         return None
     def fetchall(self):
         if "FROM purchase" in self.query:
+            # The admin purchase list now returns one row per purchase without
+            # joining ticket data. The dummy row mimics the new column order.
             return [(
                 1,
                 datetime(2025, 8, 10, 10, 0, 0),
                 "Ivan",
                 "ivan@example.com",
                 "+123",
-                datetime(2025, 8, 10).date(),
-                "Route",
-                "A",
-                "B",
-                [12],
                 52.0,
                 "reserved",
                 datetime(2025, 8, 9, 12, 0, 0),
