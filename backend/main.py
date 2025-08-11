@@ -34,11 +34,16 @@ def health() -> dict[str, str]:
     """Simple health check returning API status."""
     return {"status": "ok"}
 
-# Настраиваем CORS с помощью переменной окружения
-cors_origins = os.environ.get(
+# Настраиваем CORS из переменной окружения. Значение может быть
+# списком адресов через запятую либо "*" для разрешения всех источников.
+cors_origins = os.getenv(
     "CORS_ORIGINS", "http://localhost:3000,http://localhost:3001"
 )
-origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+if cors_origins.strip() == "*":
+    origins = ["*"]
+else:
+    origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
