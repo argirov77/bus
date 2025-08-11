@@ -125,7 +125,7 @@ export default function PurchasesPage() {
                 <td>{p.payment_method}</td>
                 <td>
                   <button onClick={() => toggleInfo(p.id)}>
-                    {expanded[p.id] ? "Скрыть" : "Детали"}
+                    {expanded[p.id] ? "Скрыть" : "Инфо"}
                   </button>
                   {p.status === "reserved" && (
                     <>
@@ -142,72 +142,62 @@ export default function PurchasesPage() {
                 <tr>
                   <td colSpan="9">
                     <div>
-                      <strong>Пассажиры и билеты:</strong>
+                      <strong>Билеты:</strong>
                       <table border="1" cellPadding="4">
                         <thead>
                           <tr>
                             <th>Пассажир</th>
-                            <th>Туда</th>
-                            <th>Обратно</th>
+                            <th>Дата</th>
+                            <th>Место</th>
+                            <th>Багаж</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {(() => {
-                            const byPassenger = {};
-                            info[p.id].tickets.forEach((t) => {
-                              if (!byPassenger[t.passenger_name]) byPassenger[t.passenger_name] = [];
-                              byPassenger[t.passenger_name].push(t);
-                            });
-                            return Object.entries(byPassenger).map(([name, tickets]) => {
-                              tickets.sort(
-                                (a, b) => new Date(a.tour_date) - new Date(b.tour_date)
-                              );
-                              const formatTicket = (tt) =>
-                                tt
-                                  ? `${formatDateShort(tt.tour_date)}, ${tt.seat_num}, багаж ${
-                                      tt.extra_baggage ? "✓" : "✗"
-                                    }`
-                                  : "";
-                              return (
-                                <tr key={name}>
-                                  <td>{name}</td>
-                                  <td>{formatTicket(tickets[0])}</td>
-                                  <td>{formatTicket(tickets[1])}</td>
-                                </tr>
-                              );
-                            });
-                          })()}
+                          {info[p.id].tickets.map((t) => (
+                            <tr key={t.id}>
+                              <td>{t.passenger_name}</td>
+                              <td>{formatDateShort(t.tour_date)}</td>
+                              <td>{t.seat_num}</td>
+                              <td>{t.extra_baggage ? "✓" : "✗"}</td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
-                      <strong>Логи (sales):</strong>
+                      <strong>Логи заказа:</strong>
                       <table border="1" cellPadding="4">
                         <thead>
                           <tr>
-                            <th>Событие</th>
+                            <th>Действие</th>
                             <th>Дата/время</th>
                             <th>Способ оплаты</th>
                             <th>Сумма</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {info[p.id].sales.map((s) => {
-                            const icons = {
-                              ticket_sale: "⏳",
-                              paid: "💵",
-                              refunded: "🔙",
-                            };
-                            return (
-                              <tr key={s.id}>
-                                <td>
-                                  {icons[s.category] ? icons[s.category] + " " : ""}
-                                  {s.category}
-                                </td>
-                                <td>{new Date(s.date).toLocaleString('ru-RU')}</td>
-                                <td>{s.comment || ""}</td>
-                                <td>{s.amount}</td>
-                              </tr>
-                            );
-                          })}
+                          {info[p.id].sales.length ? (
+                            info[p.id].sales.map((s) => {
+                              const icons = {
+                                ticket_sale: "⏳",
+                                paid: "💵",
+                                refunded: "🔙",
+                              };
+                              return (
+                                <tr key={s.id}>
+                                  <td>
+                                    {icons[s.category] ? icons[s.category] + " " : ""}
+                                    {s.category}
+                                  </td>
+                                  <td>{new Date(s.date).toLocaleString('ru-RU')}</td>
+                                  <td>{s.comment || ""}</td>
+                                  <td>{s.amount}</td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan="4">Нет действий</td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
                     </div>
