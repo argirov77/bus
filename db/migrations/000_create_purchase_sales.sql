@@ -3,7 +3,7 @@
 -- Enums needed for purchase and sales
 CREATE TYPE IF NOT EXISTS purchase_status AS ENUM ('reserved','paid','cancelled','refunded');
 CREATE TYPE IF NOT EXISTS payment_method_type AS ENUM ('online','offline');
-CREATE TYPE IF NOT EXISTS sales_category AS ENUM ('ticket_sale','refund','part_refund');
+CREATE TYPE IF NOT EXISTS sales_category AS ENUM ('reserved','paid','cancelled','refunded','ticket_sale','part_refund');
 
 -- Purchase table
 CREATE TABLE IF NOT EXISTS public.purchase (
@@ -25,5 +25,7 @@ CREATE TABLE IF NOT EXISTS public.sales (
     category sales_category NOT NULL,
     amount DECIMAL NOT NULL,
     purchase_id INTEGER REFERENCES public.purchase(id),
+    actor TEXT,
+    method payment_method_type,
     comment TEXT
 );

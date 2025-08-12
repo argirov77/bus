@@ -38,7 +38,7 @@ ALTER TABLE purchase
     ADD COLUMN IF NOT EXISTS payment_method payment_method_type DEFAULT 'online';
 
 -- Enum for sales categories
-CREATE TYPE IF NOT EXISTS sales_category AS ENUM ('ticket_sale','refund','part_refund');
+CREATE TYPE IF NOT EXISTS sales_category AS ENUM ('reserved','paid','cancelled','refunded','ticket_sale','part_refund');
 
 -- Update sales table
 ALTER TABLE sales
@@ -48,4 +48,6 @@ ALTER TABLE sales
     ADD COLUMN IF NOT EXISTS category sales_category,
     ADD COLUMN IF NOT EXISTS amount DECIMAL NOT NULL DEFAULT 0,
     ALTER COLUMN purchase_id DROP NOT NULL,
+    ADD COLUMN IF NOT EXISTS actor TEXT,
+    ADD COLUMN IF NOT EXISTS method payment_method_type,
     ADD COLUMN IF NOT EXISTS comment TEXT;

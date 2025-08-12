@@ -23,30 +23,19 @@ class PurchaseOut(BaseModel):
     purchase_id: int
     amount_due: float
 
-def _log_sale(cur, purchase_id: int, category: str, amount: float = 0.0) -> None:
-    """Insert or update sales record for a purchase.
+def _log_action(
+    cur,
+    purchase_id: int,
+    action: str,
+    amount: float = 0.0,
+    by: str = "system",
+    method: str | None = None,
+) -> None:
+    """Record an action for the purchase in the sales log."""
 
-    If a sales record with the same purchase and category already exists we
-    simply increment the amount instead of creating a duplicate entry. This
-    mirrors a typical ``INSERT ... ON CONFLICT`` without relying on a
-    database-side unique constraint which may not be present in older
-    deployments.
-    """
-    # First try to update existing sale amount
     cur.execute(
-        "UPDATE sales SET amount = amount + %s WHERE purchase_id=%s AND category=%s",
-        (amount, purchase_id, category),
-    )
-    # Then insert a new record only if one does not already exist
-    cur.execute(
-        """
-        INSERT INTO sales (purchase_id, category, amount)
-        SELECT %s, %s, %s
-         WHERE NOT EXISTS (
-            SELECT 1 FROM sales WHERE purchase_id=%s AND category=%s
-         )
-        """,
-        (purchase_id, category, amount, purchase_id, category),
+        "INSERT INTO sales (purchase_id, category, amount, actor, method) VALUES (%s,%s,%s,%s,%s)",
+        (purchase_id, action, amount, by, method),
     )
 
 
@@ -220,11 +209,12 @@ def _create_purchase(
             ),
         )
 
-    _log_sale(
+    _log_action(
         cur,
         purchase_id,
-        "ticket_sale",
+        status,
         total_price if status == "paid" else 0,
+        method=payment_method,
     )
     return purchase_id, new_amount
 
@@ -264,7 +254,7 @@ def pay_purchase(purchase_id: int):
             "UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
-        _log_sale(cur, purchase_id, "ticket_sale", amount_due)
+        _log_action(cur, purchase_id, "paid", amount_due, method="offline")
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -296,7 +286,7 @@ def cancel_purchase(purchase_id: int):
             "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
-        _log_sale(cur, purchase_id, "refund", 0)
+        _log_action(cur, purchase_id, "cancelled", 0)
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -371,7 +361,7 @@ def pay_booking(data: PayIn):
             "UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s",
             (data.purchase_id,),
         )
-        _log_sale(cur, data.purchase_id, "ticket_sale", amount_due)
+        _log_action(cur, data.purchase_id, "paid", amount_due, method="online")
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -404,7 +394,7 @@ def cancel_booking(purchase_id: int):
             "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
-        _log_sale(cur, purchase_id, "refund", 0)
+        _log_action(cur, purchase_id, "cancelled", 0)
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -434,7 +424,7 @@ def refund_purchase(purchase_id: int):
             "UPDATE purchase SET status='refunded', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
-        _log_sale(cur, purchase_id, "refund", 0)
+        _log_action(cur, purchase_id, "refunded", 0)
         conn.commit()
     except HTTPException:
         conn.rollback()

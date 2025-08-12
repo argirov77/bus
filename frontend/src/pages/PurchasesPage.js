@@ -134,6 +134,8 @@ export default function PurchasesPage() {
                           <thead>
                             <tr>
                               <th>Пассажир</th>
+                              <th>Откуда</th>
+                              <th>Куда</th>
                               <th>Дата</th>
                               <th>Место</th>
                               <th>Багаж</th>
@@ -143,6 +145,8 @@ export default function PurchasesPage() {
                             {info[p.id].tickets.map((t) => (
                               <tr key={t.id}>
                                 <td>{t.passenger_name}</td>
+                                <td>{t.from_stop_name}</td>
+                                <td>{t.to_stop_name}</td>
                                 <td>{formatDateShort(t.tour_date)}</td>
                                 <td>{t.seat_num}</td>
                                 <td>{t.extra_baggage ? "Да" : "—"}</td>
@@ -158,23 +162,25 @@ export default function PurchasesPage() {
                             <tr>
                               <th>Действие</th>
                               <th>Дата/время</th>
-                              <th>Способ оплаты</th>
+                              <th>Пользователь</th>
+                              <th>Способ</th>
                               <th>Сумма</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {info[p.id].sales.length ? (
-                              info[p.id].sales.map((s) => (
-                                <tr key={s.id}>
-                                  <td>{s.category}</td>
-                                  <td>{new Date(s.date).toLocaleString('ru-RU')}</td>
-                                  <td>{s.comment || ""}</td>
-                                  <td>{s.amount}</td>
+                            {info[p.id].logs.length ? (
+                              info[p.id].logs.map((l) => (
+                                <tr key={l.id}>
+                                  <td>{l.action}</td>
+                                  <td>{new Date(l.at).toLocaleString('ru-RU')}</td>
+                                  <td>{l.by || '—'}</td>
+                                  <td>{l.method || '—'}</td>
+                                  <td>{l.amount}</td>
                                 </tr>
                               ))
                             ) : (
                               <tr>
-                                <td colSpan="4">Нет действий</td>
+                                <td colSpan="5">Нет действий</td>
                               </tr>
                             )}
                           </tbody>

@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from ..database import get_connection
 from ..auth import require_admin_token
-from ..models import Sales
+from ..models import PurchaseLog
 
 router = APIRouter(
     prefix="/admin/purchases",
@@ -104,14 +104,16 @@ class TicketInfo(BaseModel):
     passenger_id: int
     passenger_name: str
     departure_stop_id: int
+    from_stop_name: Optional[str]
     arrival_stop_id: int
+    to_stop_name: Optional[str]
     purchase_id: int
     extra_baggage: int
 
 
 class PurchaseInfo(BaseModel):
     tickets: List[TicketInfo]
-    sales: List[Sales]
+    logs: List[PurchaseLog]
 
 
 @router.get("/{purchase_id}", response_model=PurchaseInfo)
@@ -122,12 +124,14 @@ def purchase_info(purchase_id: int):
         cur.execute(
             """
             SELECT t.id, t.tour_id, tr.date, t.seat_id, s.seat_num, t.passenger_id, p.name,
-                   t.departure_stop_id, t.arrival_stop_id,
+                   t.departure_stop_id, ds.stop_name, t.arrival_stop_id, ar.stop_name,
                    t.purchase_id, t.extra_baggage
             FROM ticket t
             LEFT JOIN seat s ON s.id = t.seat_id
             LEFT JOIN passenger p ON p.id = t.passenger_id
             LEFT JOIN tour tr ON tr.id = t.tour_id
+            LEFT JOIN stop ds ON ds.id = t.departure_stop_id
+            LEFT JOIN stop ar ON ar.id = t.arrival_stop_id
             WHERE t.purchase_id=%s
             """,
             (purchase_id,),
@@ -143,34 +147,37 @@ def purchase_info(purchase_id: int):
                 "passenger_id": r[5],
                 "passenger_name": r[6],
                 "departure_stop_id": r[7],
-                "arrival_stop_id": r[8],
-                "purchase_id": r[9],
-                "extra_baggage": r[10],
+                "from_stop_name": r[8],
+                "arrival_stop_id": r[9],
+                "to_stop_name": r[10],
+                "purchase_id": r[11],
+                "extra_baggage": r[12],
             }
             for r in t_rows
         ]
 
         cur.execute(
             """
-            SELECT id, date, category, amount, purchase_id, comment
+            SELECT id, date, category, amount, purchase_id, actor, method
             FROM sales WHERE purchase_id=%s ORDER BY date
             """,
             (purchase_id,),
         )
         s_rows = cur.fetchall()
-        sales = [
+        logs = [
             {
                 "id": r[0],
-                "date": r[1],
-                "category": r[2],
+                "at": r[1],
+                "action": r[2],
                 "amount": float(r[3]),
                 "purchase_id": r[4],
-                "comment": r[5],
+                "by": r[5],
+                "method": r[6],
             }
             for r in s_rows
         ]
 
-        return {"tickets": tickets, "sales": sales}
+        return {"tickets": tickets, "logs": logs}
     finally:
         cur.close()
         conn.close()
