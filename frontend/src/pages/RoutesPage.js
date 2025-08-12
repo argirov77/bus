@@ -18,8 +18,6 @@ import {
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-import deleteIcon from "../assets/icons/delete.png";
-
 export default function RoutesPage() {
   const [routes, setRoutes] = useState([]);
   const [stops, setStops] = useState([]);
@@ -73,6 +71,20 @@ export default function RoutesPage() {
         setRouteStops([]);
       }
     });
+  };
+
+  const handleRenameRoute = (route) => {
+    const name = prompt("Новое название", route.name);
+    if (!name || !name.trim() || name === route.name) return;
+    axios
+      .put(`${API}/routes/${route.id}`, { name, is_demo: route.is_demo })
+      .then((res) => {
+        setRoutes(routes.map((r) => (r.id === route.id ? res.data : r)));
+        if (selectedRoute && selectedRoute.id === route.id) {
+          setSelectedRoute(res.data);
+        }
+      })
+      .catch((err) => console.error("Ошибка переименования маршрута:", err));
   };
 
   const handleToggleDemo = (route) => {
@@ -188,16 +200,17 @@ export default function RoutesPage() {
     <div className="container">
       <h1>Маршруты</h1>
   
-      <div className="routes-wrapper">
+      <ul className="routes-wrapper" style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {routes.map((route) => (
-          <div key={route.id} className="route-item">
-            <button
-              className={`route-btn ${selectedRoute?.id === route.id ? "active" : ""}`}
+          <li key={route.id} className="card-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span
+              className="chip chip--route"
+              style={{ cursor: 'pointer' }}
               onClick={() => handleSelectRoute(route)}
             >
               {route.name}
-            </button>
-            <label style={{ marginLeft: '4px' }}>
+            </span>
+            <label className="chip chip--muted">
               <input
                 type="checkbox"
                 checked={route.is_demo}
@@ -206,26 +219,25 @@ export default function RoutesPage() {
               />
               demo
             </label>
-            <button
-              className="icon-btn"
-              onClick={() => handleDeleteRoute(route.id)}
-            >
-              <img src={deleteIcon} alt="Удалить маршрут" width={20} />
-            </button>
-          </div>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              <button className="btn btn--primary btn--sm" onClick={() => handleRenameRoute(route)}>Переименовать</button>
+              <button className="btn btn--danger btn--sm" onClick={() => handleDeleteRoute(route.id)}>Удалить</button>
+            </div>
+          </li>
         ))}
-      </div>
+      </ul>
 
   
-      <div style={{ marginBottom: "2rem", display: 'flex', gap: '8px' }}>
+      <form onSubmit={e => { e.preventDefault(); handleCreateRoute(); }} style={{ marginBottom: "2rem", display: 'flex', gap: '8px' }}>
         <input
+          className="input"
           type="text"
           placeholder="Название маршрута"
           value={newRouteName}
           onChange={(e) => setNewRouteName(e.target.value)}
         />
-        <button onClick={handleCreateRoute}>Создать</button>
-      </div>
+        <button className="btn btn--success">Создать</button>
+      </form>
   
       {selectedRoute && (
         <>
@@ -256,6 +268,7 @@ export default function RoutesPage() {
           <h3>Добавить остановку</h3>
           <form onSubmit={handleAddStop} className="add-stop-form">
             <select
+              className="input"
               value={newStop.stop_id}
               onChange={(e) => setNewStop({ ...newStop, stop_id: e.target.value })}
             >
@@ -265,16 +278,18 @@ export default function RoutesPage() {
               ))}
             </select>
             <input
+              className="input"
               type="time"
               value={newStop.arrival_time}
               onChange={(e) => setNewStop({ ...newStop, arrival_time: e.target.value })}
             />
             <input
+              className="input"
               type="time"
               value={newStop.departure_time}
               onChange={(e) => setNewStop({ ...newStop, departure_time: e.target.value })}
             />
-            <button type="submit">Добавить остановку</button>
+            <button type="submit" className="btn btn--success btn--sm">Добавить остановку</button>
           </form>
         </>
       )}
@@ -332,9 +347,9 @@ function SortableStop({ id, routeStop, getStopName, onDeleteStop, onUpdateTime }
           e.stopPropagation();
           onDeleteStop(id);
         }}
-        className="icon-btn"
+        className="btn btn--danger btn--sm"
       >
-        <img src={deleteIcon} alt="Удалить" width="20"/>
+        Удалить
       </button>
     </div>
   );

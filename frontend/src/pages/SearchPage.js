@@ -312,8 +312,12 @@ export default function SearchPage() {
   return (
     <div className="container" style={{ padding: 20 }}>
       <h2>Поиск рейсов</h2>
-      <form onSubmit={handleSearchTours} style={{ display:"flex", gap:8, marginBottom:20, flexWrap:'wrap' }}>
+      <form
+        onSubmit={handleSearchTours}
+        style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 20 }}
+      >
         <select
+          className="input"
           value={selectedDeparture}
           onChange={e => setSelectedDeparture(e.target.value)}
         >
@@ -324,6 +328,7 @@ export default function SearchPage() {
         </select>
 
         <select
+          className="input"
           value={selectedArrival}
           onChange={e => setSelectedArrival(e.target.value)}
           disabled={!selectedDeparture}
@@ -335,6 +340,7 @@ export default function SearchPage() {
         </select>
 
         <input
+          className="input"
           type="number"
           min="1"
           value={seatCount}
@@ -343,6 +349,7 @@ export default function SearchPage() {
         />
 
         <input
+          className="input"
           type="text"
           readOnly
           placeholder="Дата туда"
@@ -351,6 +358,7 @@ export default function SearchPage() {
         />
 
         <input
+          className="input"
           type="text"
           readOnly
           placeholder="Дата обратно"
@@ -364,7 +372,7 @@ export default function SearchPage() {
           disabled={!returnDates.length}
         />
 
-        <button type="submit">Найти</button>
+        <button type="submit" className="btn btn--primary">Поиск</button>
       </form>
 
       {showDepartCal && (

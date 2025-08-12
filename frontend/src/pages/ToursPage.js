@@ -9,10 +9,6 @@ import BusLayoutNeoplan from "../components/busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "../components/busLayouts/BusLayoutTravego";
 import SeatAdmin         from "../components/SeatAdmin";
 
-import editIcon   from "../assets/icons/edit.png";
-import deleteIcon from "../assets/icons/delete.png";
-import saveIcon   from "../assets/icons/save.png";
-import cancelIcon from "../assets/icons/cancel.png";
 
 const BOOKING_OPTIONS = [
   { value: 0, label: "Сгорает через 48 ч после бронирования" },
@@ -64,16 +60,6 @@ export default function ToursPage() {
 
   // — force‐reload key for SeatAdmin —
   const [seatReload, setSeatReload] = useState(0);
-
-  // — icon button styles —
-  const iconBtn = {
-    width:40, height:40, margin:"0 4px", padding:0,
-    backgroundColor:"#f0f0f5", border:"1px solid #ccc",
-    borderRadius:4, display:"inline-flex", alignItems:"center",
-    justifyContent:"center", cursor:"pointer",
-    transition:"background-color .2s, transform .1s"
-  };
-  const iconImg = { width:20, height:20 };
 
   const fetchTours = (pageParam = page) => {
     const params = {
@@ -278,21 +264,21 @@ export default function ToursPage() {
       <h2>Рейсы</h2>
 
       <div style={{ margin: '16px 0' }}>
-        <button onClick={()=>switchTab('upcoming')} disabled={tab==='upcoming'}>Предстоящие</button>
-        <button onClick={()=>switchTab('past')} disabled={tab==='past'} style={{marginLeft:8}}>Прошедшие</button>
+        <button className="btn btn--ghost btn--sm" onClick={()=>switchTab('upcoming')} disabled={tab==='upcoming'}>Предстоящие</button>
+        <button className="btn btn--ghost btn--sm" onClick={()=>switchTab('past')} disabled={tab==='past'} style={{marginLeft:8}}>Прошедшие</button>
       </div>
 
       <form onSubmit={applyFilters} style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:20 }}>
-        <input type="date" value={filterDate} onChange={e=>setFilterDate(e.target.value)} />
-        <select value={filterRoute} onChange={e=>setFilterRoute(e.target.value)}>
+        <input className="input" type="date" value={filterDate} onChange={e=>setFilterDate(e.target.value)} />
+        <select className="input" value={filterRoute} onChange={e=>setFilterRoute(e.target.value)}>
           <option value="">Маршрут</option>
           {routes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
         </select>
-        <select value={filterBooking} onChange={e=>setFilterBooking(e.target.value)}>
+        <select className="input" value={filterBooking} onChange={e=>setFilterBooking(e.target.value)}>
           <option value="">Условия брони</option>
           {BOOKING_OPTIONS.map(o=>(<option key={o.value} value={o.value}>{o.label}</option>))}
         </select>
-        <button type="submit">Поиск</button>
+        <button type="submit" className="btn btn--primary btn--sm">Поиск</button>
       </form>
 
       {/* — Tours list — */}
@@ -310,30 +296,33 @@ export default function ToursPage() {
                 <td>
                   {editing
                     ? <select
+                        className="input"
                         value={editingTourData.route_id}
                         onChange={e=>setEditingTourData({...editingTourData,route_id:e.target.value})}
                       >
                         <option value="">—</option>
                         {routes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
                       </select>
-                    : routes.find(r=>r.id===t.route_id)?.name || "-"
+                    : <span className="chip chip--route">{routes.find(r=>r.id===t.route_id)?.name || "-"}</span>
                   }
                 </td>
                 <td>
                   {editing
                     ? <select
+                        className="input"
                         value={editingTourData.pricelist_id}
                         onChange={e=>setEditingTourData({...editingTourData,pricelist_id:e.target.value})}
                       >
                         <option value="">—</option>
                         {pricelists.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
-                    : pricelists.find(p=>p.id===t.pricelist_id)?.name || "-"
+                    : <span className="chip chip--price">{pricelists.find(p=>p.id===t.pricelist_id)?.name || "-"}</span>
                   }
                 </td>
                 <td>
                   {editing
                     ? <input
+                        className="input"
                         type="date"
                         value={editingTourData.date}
                         onChange={e=>setEditingTourData({...editingTourData,date:e.target.value})}
@@ -344,6 +333,7 @@ export default function ToursPage() {
                 <td>
                   {editing
                     ? <select
+                        className="input"
                         value={editingTourData.layout_variant}
                         onChange={e=>setEditingTourData({...editingTourData,layout_variant:e.target.value})}
                       >
@@ -357,6 +347,7 @@ export default function ToursPage() {
                 <td>
                   {editing
                     ? <select
+                        className="input"
                         value={editingTourData.booking_terms}
                         onChange={e=>setEditingTourData({...editingTourData,booking_terms:e.target.value})}
                       >
@@ -369,20 +360,12 @@ export default function ToursPage() {
                 <td>
                   {editing
                     ? <>
-                        <button style={iconBtn} onClick={saveEdit}>
-                          <img style={iconImg} src={saveIcon} alt="Save"/>
-                        </button>
-                        <button style={iconBtn} onClick={cancelEdit}>
-                          <img style={iconImg} src={cancelIcon} alt="Cancel"/>
-                        </button>
+                        <button className="btn btn--primary btn--sm" onClick={saveEdit}>Сохранить</button>
+                        <button className="btn btn--ghost btn--sm" onClick={cancelEdit}>Отмена</button>
                       </>
                     : <>
-                        <button style={iconBtn} onClick={()=>startEdit(t)}>
-                          <img style={iconImg} src={editIcon} alt="Edit"/>
-                        </button>
-                        <button style={iconBtn} onClick={()=>handleDelete(t.id)}>
-                          <img style={iconImg} src={deleteIcon} alt="Delete"/>
-                        </button>
+                        <button className="btn btn--primary btn--sm" onClick={()=>startEdit(t)}>Редактировать</button>
+                        <button className="btn btn--danger btn--sm" onClick={()=>handleDelete(t.id)}>Удалить</button>
                       </>
                   }
                 </td>
@@ -392,17 +375,17 @@ export default function ToursPage() {
         </tbody>
       </table>
 
-      <div style={{ margin: '16px 0' }}>
-        <button disabled={page===1} onClick={()=>setPage(p=>p-1)}>Назад</button>
+      <div style={{ margin: '16px 0', display:'flex', alignItems:'center', gap:4 }}>
+        <button className="btn btn--sm" disabled={page===1} onClick={()=>setPage(p=>p-1)}>Назад</button>
         {Array.from({length: totalPages}, (_, i) => (
           <button
+            className="btn btn--sm"
             key={i+1}
             disabled={page===i+1}
             onClick={()=>setPage(i+1)}
-            style={{ marginLeft:4 }}
           >{i+1}</button>
         ))}
-        <button disabled={page===totalPages || totalPages===0} onClick={()=>setPage(p=>p+1)} style={{marginLeft:4}}>Вперёд</button>
+        <button className="btn btn--sm" disabled={page===totalPages || totalPages===0} onClick={()=>setPage(p=>p+1)}>Вперёд</button>
       </div>
 
       {/* — SeatAdmin with drag‐n‐drop — */}
@@ -488,16 +471,10 @@ export default function ToursPage() {
                     <td>
                       {isEd
                         ? <>
-                            <button style={iconBtn} onClick={saveTicketEdit}>
-                              <img style={iconImg} src={saveIcon} alt="Save"/>
-                            </button>
-                            <button style={iconBtn} onClick={cancelTicketEdit}>
-                              <img style={iconImg} src={cancelIcon} alt="Cancel"/>
-                            </button>
+                            <button className="btn btn--primary btn--sm" onClick={saveTicketEdit}>Сохранить</button>
+                            <button className="btn btn--ghost btn--sm" onClick={cancelTicketEdit}>Отмена</button>
                           </>
-                        : <button style={iconBtn} onClick={()=>startTicketEdit(ticket)}>
-                            <img style={iconImg} src={editIcon} alt="Edit"/>
-                          </button>
+                        : <button className="btn btn--primary btn--sm" onClick={()=>startTicketEdit(ticket)}>Редактировать</button>
                       }
                     </td>
                   </tr>
@@ -509,37 +486,37 @@ export default function ToursPage() {
       )}
 
         <div style={{ marginTop:40 }}>
-          <button onClick={()=>setShowForm(s=>!s)}>{showForm ? 'Скрыть форму' : 'Добавить рейс'}</button>
+          <button className="btn btn--primary" onClick={()=>setShowForm(s=>!s)}>{showForm ? 'Скрыть форму' : 'Добавить рейс'}</button>
           {showForm && (
             <>
               <h3 style={{ marginTop:20 }}>Создать новый рейс</h3>
               <form onSubmit={handleCreate} style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                <select required
+                <select className="input" required
                   value={newTour.route_id}
                   onChange={e=>setNewTour({...newTour,route_id:e.target.value})}
                 >
                   <option value="">Маршрут</option>
                   {routes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
-                <select required
+                <select className="input" required
                   value={newTour.pricelist_id}
                   onChange={e=>setNewTour({...newTour,pricelist_id:e.target.value})}
                 >
                   <option value="">Прайс-лист</option>
                   {pricelists.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
-                <input required type="date"
+                <input className="input" required type="date"
                   value={newTour.date}
                   onChange={e=>setNewTour({...newTour,date:e.target.value})}
                 />
-                <select required
+                <select className="input" required
                   value={newTour.booking_terms}
                   onChange={e=>setNewTour({...newTour,booking_terms:e.target.value})}
                 >
                   <option value="">Условия брони</option>
                   {BOOKING_OPTIONS.map(o=>(<option key={o.value} value={o.value}>{o.label}</option>))}
                 </select>
-                <select required
+                <select className="input" required
                   value={newTour.layout_variant}
                   onChange={e=>setNewTour({...newTour,layout_variant:e.target.value})}
                 >
@@ -564,12 +541,7 @@ export default function ToursPage() {
                         />}
                   </div>
                 )}
-                <button type="submit" style={{
-                  padding:"8px 16px", backgroundColor:"#4caf50",
-                  color:"#fff", border:"none", borderRadius:4, cursor:"pointer"
-                }}>
-                  Создать рейс
-                </button>
+                <button type="submit" className="btn btn--success">Создать рейс</button>
               </form>
             </>
           )}
