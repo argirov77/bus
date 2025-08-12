@@ -6,9 +6,7 @@ import RoutesPage from "./pages/RoutesPage";
 import PricelistsPage from "./pages/PricelistsPage";
 import SearchPage from "./pages/SearchPage";
 import ToursPage from "./pages/ToursPage";
-import PassengersPage from "./pages/PassengersPage";
 import ReportPage from "./pages/ReportPage";
-import AvailablePage from "./pages/AvailablePage";
 import LoginPage from "./pages/LoginPage";
 import PurchasesPage from "./pages/PurchasesPage";
 
@@ -68,18 +66,8 @@ function App() {
             </NavLink>
           </li>
           <li>
-            <NavLink to="/passengers" className={({ isActive }) => (isActive ? "active" : undefined)}>
-              Passengers
-            </NavLink>
-          </li>
-          <li>
             <NavLink to="/report" className={({ isActive }) => (isActive ? "active" : undefined)}>
               Report
-            </NavLink>
-          </li>
-          <li>
-            <NavLink to="/available" className={({ isActive }) => (isActive ? "active" : undefined)}>
-              Available
             </NavLink>
           </li>
           <li>
@@ -102,9 +90,7 @@ function App() {
         <Route path="/routes" element={<RoutesPage />} />
         <Route path="/pricelists" element={<PricelistsPage />} />
         <Route path="/tours" element={<ToursPage />} />
-        <Route path="/passengers" element={<PassengersPage />} />
         <Route path="/report" element={<ReportPage />} />
-        <Route path="/available" element={<AvailablePage />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/purchases" element={<PurchasesPage />} />
 
