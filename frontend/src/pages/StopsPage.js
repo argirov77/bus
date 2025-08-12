@@ -1,180 +1,220 @@
 // src/pages/StopsPage.js
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-
 import { API } from "../config";
 import IconButton from "../components/IconButton";
 import editIcon from "../assets/icons/edit.png";
 import deleteIcon from "../assets/icons/delete.png";
 import addIcon from "../assets/icons/add.png";
 
-function StopsPage() {
+const LANGS = ["ru", "en", "bg", "ua"];
+
+const emptyStop = {
+  stop_name: "",   // ru
+  stop_en: "",
+  stop_bg: "",
+  stop_ua: "",
+  description: "",
+  location: "",
+};
+
+function useLangNames(initial) {
+  const [names, setNames] = useState({
+    ru: initial.stop_name || "",
+    en: initial.stop_en || "",
+    bg: initial.stop_bg || "",
+    ua: initial.stop_ua || "",
+  });
+  const setFor = (lang, val) =>
+    setNames((p) => ({ ...p, [lang]: val }));
+
+  const packToPayload = (extra = {}) => ({
+    stop_name: names.ru,
+    stop_en: names.en,
+    stop_bg: names.bg,
+    stop_ua: names.ua,
+    ...extra,
+  });
+
+  return { names, setFor, packToPayload };
+}
+
+function StopForm({ initial, onSubmit, onCancel, submitText = "Сохранить" }) {
+  const [active, setActive] = useState("ru");
+  const { names, setFor, packToPayload } = useLangNames(initial || emptyStop);
+  const [description, setDescription] = useState(initial.description || "");
+  const [location, setLocation] = useState(initial.location || "");
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const hasAny = Object.values(names).some((v) => v && v.trim().length);
+    if (!hasAny) return;
+    onSubmit(
+      packToPayload({
+        description: description.trim(),
+        location: location.trim(),
+      })
+    );
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="stop-card">
+      <div className="lang-tabs">
+        {LANGS.map((l) => (
+          <button
+            key={l}
+            type="button"
+            className={active === l ? "active" : ""}
+            onClick={() => setActive(l)}
+          >
+            {l.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
+      <div className="field">
+        <label>Название ({active.toUpperCase()})</label>
+        <input
+          type="text"
+          placeholder={`Название (${active.toUpperCase()})`}
+          value={names[active]}
+          onChange={(e) => setFor(active, e.target.value)}
+        />
+      </div>
+
+      <div className="field">
+        <label>Описание</label>
+        <textarea
+          rows="3"
+          placeholder="Короткое описание…"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </div>
+
+      <div className="field">
+        <label>Ссылка на карту</label>
+        <input
+          type="url"
+          placeholder="https://maps.google.com/…"
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+        />
+      </div>
+
+      <div className="actions">
+        <button className="btn primary" type="submit">{submitText}</button>
+        {onCancel && (
+          <button className="btn" type="button" onClick={onCancel}>
+            Отмена
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+export default function StopsPage() {
   const [stops, setStops] = useState([]);
-  const emptyStop = {
-    stop_name: "",
-    stop_en: "",
-    stop_bg: "",
-    stop_ua: "",
-    description: "",
-    location: "",
-  };
-  const [newStop, setNewStop] = useState({ ...emptyStop });
-  const [editingStopId, setEditingStopId] = useState(null);
-  const [editingStop, setEditingStop] = useState({ ...emptyStop });
+  const [editingId, setEditingId] = useState(null);
+  const [creatingOpen, setCreatingOpen] = useState(false);
 
-  useEffect(() => {
-    fetchStops();
-  }, []);
-
-  const fetchStops = () => {
+  useEffect(() => { fetchStops(); }, []);
+  const fetchStops = () =>
     axios.get(`${API}/stops`)
-      .then(res => setStops(res.data))
-      .catch(err => console.error("Ошибка при загрузке остановок:", err));
-  };
+      .then((r) => setStops(r.data))
+      .catch((e) => console.error("Ошибка при загрузке остановок:", e));
 
-  const handleCreateStop = (e) => {
-    e.preventDefault();
-    if (!newStop.stop_name.trim()) return;
-    axios.post(`${API}/stops`, newStop)
-      .then(res => {
-        setStops([...stops, res.data]);
-        setNewStop({ ...emptyStop });
+  const handleCreate = (payload) =>
+    axios.post(`${API}/stops`, payload)
+      .then((r) => {
+        setStops((s) => [...s, r.data]);
+        setCreatingOpen(false);
       })
-      .catch(err => console.error("Ошибка создания остановки:", err));
-  };
+      .catch((e) => console.error("Ошибка создания остановки:", e));
 
-  const handleDeleteStop = (id) => {
+  const handleUpdate = (payload) =>
+    axios.put(`${API}/stops/${editingId}`, payload)
+      .then((r) => {
+        setStops((s) => s.map((x) => (x.id === editingId ? r.data : x)));
+        setEditingId(null);
+      })
+      .catch((e) => console.error("Ошибка обновления остановки:", e));
+
+  const handleDelete = (id) =>
     axios.delete(`${API}/stops/${id}`)
-      .then(() => setStops(stops.filter(s => s.id !== id)))
-      .catch(err => console.error("Ошибка удаления остановки:", err));
-  };
-
-  const handleEdit = (stop) => {
-    setEditingStopId(stop.id);
-    setEditingStop({
-      stop_name: stop.stop_name || "",
-      stop_en: stop.stop_en || "",
-      stop_bg: stop.stop_bg || "",
-      stop_ua: stop.stop_ua || "",
-      description: stop.description || "",
-      location: stop.location || "",
-    });
-  };
-
-  const handleUpdateStop = (e) => {
-    e.preventDefault();
-    axios.put(`${API}/stops/${editingStopId}`, editingStop)
-      .then(res => {
-        setStops(stops.map(stop => stop.id === editingStopId ? res.data : stop));
-        setEditingStopId(null);
-        setEditingStop({ ...emptyStop });
-      })
-      .catch(err => console.error("Ошибка обновления остановки:", err));
-  };
+      .then(() => setStops((s) => s.filter((x) => x.id !== id)))
+      .catch((e) => console.error("Ошибка удаления остановки:", e));
 
   return (
     <div className="container">
       <h2>Остановки</h2>
-      <ul>
-        {stops.map(stop => (
-          <li key={stop.id} className="card">
-            {editingStopId === stop.id ? (
-              <form onSubmit={handleUpdateStop} className="stop-edit-form">
-                <input
-                  type="text"
-                  placeholder="RU"
-                  value={editingStop.stop_name}
-                  onChange={(e) => setEditingStop({ ...editingStop, stop_name: e.target.value })}
-                />
-                <input
-                  type="text"
-                  placeholder="EN"
-                  value={editingStop.stop_en}
-                  onChange={(e) => setEditingStop({ ...editingStop, stop_en: e.target.value })}
-                />
-                <input
-                  type="text"
-                  placeholder="BG"
-                  value={editingStop.stop_bg}
-                  onChange={(e) => setEditingStop({ ...editingStop, stop_bg: e.target.value })}
-                />
-                <input
-                  type="text"
-                  placeholder="UA"
-                  value={editingStop.stop_ua}
-                  onChange={(e) => setEditingStop({ ...editingStop, stop_ua: e.target.value })}
-                />
-                <textarea
-                  placeholder="Описание"
-                  value={editingStop.description}
-                  onChange={(e) => setEditingStop({ ...editingStop, description: e.target.value })}
-                />
-                <input
-                  type="text"
-                  placeholder="Ссылка на карту"
-                  value={editingStop.location}
-                  onChange={(e) => setEditingStop({ ...editingStop, location: e.target.value })}
-                />
-                <button type="submit">Сохранить</button>
-                <button type="button" onClick={() => setEditingStopId(null)}>Отмена</button>
-              </form>
+
+      <ul className="stop-list">
+        {stops.map((stop) => (
+          <li key={stop.id} className="stop-row card-row">
+            {editingId === stop.id ? (
+              <StopForm
+                initial={stop}
+                onSubmit={handleUpdate}
+                onCancel={() => setEditingId(null)}
+                submitText="Сохранить"
+              />
             ) : (
-              <div className="stop-row">
-                <span>{stop.stop_name}</span>
-                {stop.location && (
-                  <a href={stop.location} target="_blank" rel="noopener noreferrer" className="stop-location-link">Карта</a>
-                )}
-                <div className="stop-actions">
-                  <IconButton icon={editIcon} alt="Редактировать" onClick={() => handleEdit(stop)} />
-                  <IconButton icon={deleteIcon} alt="Удалить" onClick={() => handleDeleteStop(stop.id)} />
+              <>
+                <div className="stop-title">
+                  <strong>{stop.stop_name}</strong>
+                  {stop.location && (
+                    <a
+                      href={stop.location}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="stop-location-link"
+                    >
+                      Карта
+                    </a>
+                  )}
+                  {stop.description ? (
+                    <span className="muted"> — {stop.description}</span>
+                  ) : null}
                 </div>
-              </div>
+                <div className="stop-actions">
+                  <IconButton
+                    icon={editIcon}
+                    alt="Редактировать"
+                    onClick={() => setEditingId(stop.id)}
+                  />
+                  <IconButton
+                    icon={deleteIcon}
+                    alt="Удалить"
+                    onClick={() => handleDelete(stop.id)}
+                  />
+                </div>
+              </>
             )}
           </li>
         ))}
       </ul>
 
-      <h3>Добавить новую остановку</h3>
-      <form onSubmit={handleCreateStop} className="stop-edit-form">
-        <input
-          type="text"
-          placeholder="RU"
-          value={newStop.stop_name}
-          onChange={(e) => setNewStop({ ...newStop, stop_name: e.target.value })}
-        />
-        <input
-          type="text"
-          placeholder="EN"
-          value={newStop.stop_en}
-          onChange={(e) => setNewStop({ ...newStop, stop_en: e.target.value })}
-        />
-        <input
-          type="text"
-          placeholder="BG"
-          value={newStop.stop_bg}
-          onChange={(e) => setNewStop({ ...newStop, stop_bg: e.target.value })}
-        />
-        <input
-          type="text"
-          placeholder="UA"
-          value={newStop.stop_ua}
-          onChange={(e) => setNewStop({ ...newStop, stop_ua: e.target.value })}
-        />
-        <textarea
-          placeholder="Описание"
-          value={newStop.description}
-          onChange={(e) => setNewStop({ ...newStop, description: e.target.value })}
-        />
-        <input
-          type="text"
-          placeholder="Ссылка на карту"
-          value={newStop.location}
-          onChange={(e) => setNewStop({ ...newStop, location: e.target.value })}
-        />
-        <IconButton icon={addIcon} alt="Добавить" onClick={handleCreateStop} />
-      </form>
+      <div className="create-wrap">
+        <button
+          className="btn primary"
+          onClick={() => setCreatingOpen((v) => !v)}
+        >
+          {creatingOpen ? "Скрыть" : "Добавить остановку"}
+        </button>
+
+        {creatingOpen && (
+          <div className="card-row">
+            <StopForm
+              initial={emptyStop}
+              onSubmit={handleCreate}
+              submitText="Добавить"
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-export default StopsPage;
