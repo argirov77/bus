@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import axios from "axios";
 import { API_URL } from "./config";
+import "./index.css";
 
 axios.defaults.baseURL = API_URL;
 axios.interceptors.request.use((config) => {

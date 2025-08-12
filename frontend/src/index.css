@@ -1,56 +1,96 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+:root{
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+
+  --primary: #3b5bcc;       /* приглушённый синий */
+  --primary-weak: #e9edff;
+  --success: #3a845f;
+  --warning: #b07a2a;
+  --danger:  #b44949;
+
+  --chip-bg: #f3f4f6;
+  --chip-text: #374151;
+
+  --radius: 10px;
+  --gap-1: 8px;
+  --gap-2: 12px;
+  --gap-3: 16px;
+}
+body{ background:var(--bg); color:var(--text); font:14px/1.45 system-ui, -apple-system, Arial; }
+
+/* контейнеры/карточки */
+.card-row{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:var(--gap-2);
+  box-shadow:none;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
-/* единый стиль для всех иконок-кнопок */
-.icon-btn {
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  margin: 0 4px;
-  background-color: #f0f0f5;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background-color .2s, transform .1s;
-}
-.icon-btn img {
-  width: 20px;
-  height: 20px;
-}
-.icon-btn:hover {
-  background-color: #e0e0e8;
-  transform: translateY(-1px);
+/* заголовки страниц */
+.container h2{
+  color:#2b3441;
+  font-weight:700;
+  letter-spacing:.2px;
+  margin:12px 0 18px;
 }
 
-/* кнопка "Создать рейс" */
-button[type="submit"] {
-  padding: 8px 16px;
-  background-color: #4caf50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
+/* INPUT/SELECT/DATE */
+.input, input, select, textarea{
+  border:1px solid var(--border);
+  background:#fff;
+  color:var(--text);
+  border-radius:var(--radius);
+  padding:8px 10px;
+  outline:none;
 }
-button[type="submit"]:hover {
-  background-color: #45a049;
+input:focus, select:focus, textarea:focus{
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59,91,204,.12);
 }
 
-/* единый стиль для выпадающих списков и инпутов */
-select, input[type="date"] {
-  padding: 6px 8px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+/* КНОПКИ (единый спок. стиль) */
+.btn{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:7px 12px; border-radius:var(--radius);
+  border:1px solid var(--border); background:#fff; color:#374151;
+  cursor:pointer; transition:background .12s, border-color .12s, color .12s;
 }
+.btn img{ width:20px; height:20px; }
+.btn:hover{ background:#f9fafb; }
+.btn--sm{ padding:6px 10px; font-size:13px; }
+.btn--primary{ color:var(--primary); border-color: rgba(59,91,204,.45); background:#fff; }
+.btn--primary:hover{ background:var(--primary-weak); }
+.btn--danger{ color:var(--danger); border-color: rgba(180,73,73,.35); }
+.btn--success{ color:var(--success); border-color: rgba(58,132,95,.35); }
+.btn--ghost{ border-color:transparent; background:transparent; color:#4b5563; }
+.btn--ghost:hover{ background:#f3f4f6; }
+
+/* БЕЙДЖИ (маршрут/прайс/статус) */
+.chip{
+  display:inline-flex; align-items:center;
+  padding:4px 10px; border-radius:999px;
+  background:var(--chip-bg); color:var(--chip-text);
+  border:1px solid var(--border); font-size:12.5px;
+}
+.chip--route{ background:#eef1fb; color:#2f4db7; border-color:#e0e5fb; }
+.chip--price{ background:#eef7f1; color:#2f6b4f; border-color:#dfeee5; }
+.chip--status-reserved{ background:#fff7eb; color:#946126; border-color:#f3e2c6; }
+.chip--status-paid{ background:#eaf7ef; color:#2f6b4f; border-color:#d8ecdf; }
+
+/* ТАБЛИЦЫ */
+table{ width:100%; border-collapse:collapse; }
+th, td{ border:1px solid var(--border); padding:10px 12px; }
+thead th{
+  background:#eef2f8; color:#2b3441; font-weight:600;
+}
+tbody tr{ height:44px; }
+tbody tr:nth-child(odd){ background:#fbfcfd; }
+
+/* пагинация/фильтры */
+.toolbar{ display:flex; flex-wrap:wrap; gap:var(--gap-1); align-items:center; margin: 6px 0 16px; }
+.pagination{ display:flex; gap:6px; align-items:center; }
+.pagination .btn{ padding:6px 10px; }
