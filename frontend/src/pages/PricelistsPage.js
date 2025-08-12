@@ -162,9 +162,7 @@ function PricelistPage() {
           onChange={e => setNewPricelistName(e.target.value)}
           required
         />
-        <button type="submit" className="icon-btn add-btn">
-          <img src={addIcon} alt="Добавить прайс-лист" />
-        </button>
+        <IconButton type="submit" icon={addIcon} alt="Добавить прайс-лист" className="btn--primary" />
       </form>
 
       <div className="routes-wrapper">
@@ -184,7 +182,7 @@ function PricelistPage() {
             ) : (
               <>
                 <button
-                  className={`route-btn ${selectedPricelist?.id === pl.id ? "active" : ""}`}
+                  className={`btn btn--sm ${selectedPricelist?.id === pl.id ? "btn--primary" : "btn--ghost"}`}
                   onClick={() => handleSelectPricelist(pl)}
                 >
                   {pl.name}
@@ -198,12 +196,8 @@ function PricelistPage() {
                   />
                   active
                 </label>
-                <button className="icon-btn" onClick={() => handleEditPricelist(pl)}>
-                  <img src={editIcon} alt="Редактировать прайс-лист" />
-                </button>
-                <button className="icon-btn" onClick={() => handleDeletePricelist(pl.id)}>
-                  <img src={deleteIcon} alt="Удалить прайс-лист" />
-                </button>
+                <IconButton className="btn--ghost" onClick={() => handleEditPricelist(pl)} icon={editIcon} alt="Редактировать прайс-лист" />
+                <IconButton className="btn--danger" onClick={() => handleDeletePricelist(pl.id)} icon={deleteIcon} alt="Удалить прайс-лист" />
               </>
             )}
           </div>
@@ -247,12 +241,8 @@ function PricelistPage() {
                       </>
                     ) : (
                       <>
-                        <button className="icon-btn" onClick={() => handleEditPrice(p)}>
-                          <img src={editIcon} alt="Редактировать цену" />
-                        </button>
-                        <button className="icon-btn" onClick={() => handleDeletePrice(p.id)}>
-                          <img src={deleteIcon} alt="Удалить цену" />
-                        </button>
+                        <IconButton className="btn--ghost" onClick={() => handleEditPrice(p)} icon={editIcon} alt="Редактировать цену" />
+                        <IconButton className="btn--danger" onClick={() => handleDeletePrice(p.id)} icon={deleteIcon} alt="Удалить цену" />
                       </>
                     )}
                   </td>
@@ -289,9 +279,7 @@ function PricelistPage() {
               onChange={e => setNewPrice({ ...newPrice, price: e.target.value })}
             />
 
-            <button type="submit" className="icon-btn add-btn">
-              <img src={addIcon} alt="Добавить цену" />
-            </button>
+            <IconButton type="submit" icon={addIcon} alt="Добавить цену" className="btn--primary" />
           </form>
         </>
       )}
