@@ -81,7 +81,7 @@ function App() {
             </NavLink>
           </li>
           <li>
-            <button onClick={handleLogout}>Logout</button>
+            <button className="btn btn--ghost btn--sm" onClick={handleLogout}>Logout</button>
           </li>
         </ul>
       </nav>
