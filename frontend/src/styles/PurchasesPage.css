@@ -1,0 +1,18 @@
+.purchases { width:100%; border-collapse:collapse; font:14px/1.4 system-ui,Arial; }
+.purchases th, .purchases td { border:1px solid #e5e7eb; padding:8px 10px; }
+.purchases thead th { background:#f3f6ff; color:#1f4bd8; font-weight:600; }
+.badge { padding:2px 8px; border-radius:999px; font-size:12px; display:inline-block; }
+.badge.reserved { background:#fff7e6; color:#b26a00; }
+.badge.paid { background:#e9fff0; color:#117a37; }
+.badge.cancelled { background:#f6f6f6; color:#7a7a7a; }
+.badge.refunded { background:#ffecec; color:#b21e1e; }
+.btn { padding:6px 10px; border:1px solid #d1d5db; background:#fff; border-radius:6px; cursor:pointer; }
+.btn:hover { background:#f9fafb; }
+.btn.primary { border-color:#1f4bd8; color:#1f4bd8; }
+tr.details > td { background:#fafbff; padding:0; }
+.details-inner { display:grid; grid-template-columns: 2fr 1.2fr 0.8fr; gap:12px; padding:14px; }
+.card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px; }
+.card h4 { margin:0 0 8px; font-size:14px; color:#111827; }
+.table-mini { width:100%; border-collapse:collapse; }
+.table-mini th, .table-mini td { border-bottom:1px dashed #e5e7eb; padding:6px 8px; font-size:13px; }
+.actions-col { display:flex; flex-direction:column; gap:8px; }
