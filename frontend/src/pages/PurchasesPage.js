@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { API } from "../config";
+import "../styles/PurchasesPage.css";
 
 const formatDateShort = (date) => {
   if (!date) return "";
@@ -13,7 +14,7 @@ export default function PurchasesPage() {
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState("");
   const [info, setInfo] = useState({});
-  const [expanded, setExpanded] = useState({});
+  const [expandedId, setExpandedId] = useState(null);
 
   const load = () => {
     const params = {};
@@ -52,8 +53,10 @@ export default function PurchasesPage() {
   };
 
   const toggleInfo = (id) => {
-    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+    setExpandedId((prev) => (prev === id ? null : id));
   };
+
+  const statusBadge = (s) => <span className={`badge ${s}`}>{s}</span>;
 
   return (
     <div>
@@ -68,14 +71,14 @@ export default function PurchasesPage() {
           <option value="refunded">refunded</option>
         </select>
       </label>
-      <table border="1" cellPadding="4" style={{ marginTop: 10 }}>
+      <table className="purchases">
         <thead>
           <tr>
             <th>№</th>
             <th>Клиент</th>
-            <th>Кол-во пассажиров</th>
-            <th>Кол-во билетов</th>
-            <th>Даты рейсов</th>
+            <th>Пасс.</th>
+            <th>Билеты</th>
+            <th>Даты</th>
             <th>Сумма</th>
             <th>Статус</th>
             <th>Оплата</th>
@@ -85,12 +88,12 @@ export default function PurchasesPage() {
         <tbody>
           {items.map((p) => (
             <React.Fragment key={p.id}>
-              <tr>
+              <tr data-id={p.id}>
                 <td>{p.id}</td>
                 <td>
-                  <div>{p.customer_name}</div>
-                  {p.customer_phone && <div>{p.customer_phone}</div>}
-                  {p.customer_email && <div>{p.customer_email}</div>}
+                  {p.customer_name}<br />
+                  {p.customer_phone && <small>{p.customer_phone}<br /></small>}
+                  {p.customer_email && <small>{p.customer_email}</small>}
                 </td>
                 <td>
                   {info[p.id]
@@ -100,106 +103,102 @@ export default function PurchasesPage() {
                 <td>{info[p.id] ? info[p.id].tickets.length : ""}</td>
                 <td>
                   {info[p.id]
-                    ? Array.from(
-                        new Set(
-                          info[p.id].tickets.map((t) => formatDateShort(t.tour_date))
-                        )
-                      ).join(", ")
+                    ? Array.from(new Set(info[p.id].tickets.map((t) => formatDateShort(t.tour_date)))).join(", ")
                     : ""}
                 </td>
                 <td>{p.amount_due}</td>
-                <td
-                  style={{
-                    color:
-                      p.status === "paid"
-                        ? "green"
-                        : p.status === "reserved"
-                        ? "goldenrod"
-                        : p.status === "refunded"
-                        ? "red"
-                        : "inherit",
-                  }}
-                >
-                  {p.status}
-                </td>
-                <td>{p.payment_method}</td>
+                <td>{statusBadge(p.status)}</td>
+                <td>{p.payment_method || "-"}</td>
                 <td>
-                  <button onClick={() => toggleInfo(p.id)}>
-                    {expanded[p.id] ? "Скрыть" : "Инфо"}
+                  <button className="btn" onClick={() => toggleInfo(p.id)}>
+                    {expandedId === p.id ? "Скрыть" : "Инфо"}
                   </button>
                   {p.status === "reserved" && (
                     <>
-                      <button onClick={() => handlePay(p.id)}>Pay</button>
-                      <button onClick={() => handleCancel(p.id)}>Cancel</button>
+                      <button className="btn primary" onClick={() => handlePay(p.id)}>Pay</button>
+                      <button className="btn" onClick={() => handleCancel(p.id)}>Cancel</button>
                     </>
                   )}
                   {p.status === "paid" && (
-                    <button onClick={() => handleRefund(p.id)}>Refund</button>
+                    <button className="btn" onClick={() => handleRefund(p.id)}>Refund</button>
                   )}
                 </td>
               </tr>
-              {expanded[p.id] && info[p.id] && (
-                <tr>
+              {expandedId === p.id && info[p.id] && (
+                <tr className="details" data-details-for={p.id}>
                   <td colSpan="9">
-                    <div>
-                      <strong>Билеты:</strong>
-                      <table border="1" cellPadding="4">
-                        <thead>
-                          <tr>
-                            <th>Пассажир</th>
-                            <th>Дата</th>
-                            <th>Место</th>
-                            <th>Багаж</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {info[p.id].tickets.map((t) => (
-                            <tr key={t.id}>
-                              <td>{t.passenger_name}</td>
-                              <td>{formatDateShort(t.tour_date)}</td>
-                              <td>{t.seat_num}</td>
-                              <td>{t.extra_baggage ? "✓" : "✗"}</td>
+                    <div className="details-inner">
+                      <div className="card">
+                        <h4>Билеты</h4>
+                        <table className="table-mini">
+                          <thead>
+                            <tr>
+                              <th>Пассажир</th>
+                              <th>Дата</th>
+                              <th>Место</th>
+                              <th>Багаж</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <strong>Логи заказа:</strong>
-                      <table border="1" cellPadding="4">
-                        <thead>
-                          <tr>
-                            <th>Действие</th>
-                            <th>Дата/время</th>
-                            <th>Способ оплаты</th>
-                            <th>Сумма</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {info[p.id].sales.length ? (
-                            info[p.id].sales.map((s) => {
-                              const icons = {
-                                ticket_sale: "⏳",
-                                paid: "💵",
-                                refunded: "🔙",
-                              };
-                              return (
+                          </thead>
+                          <tbody>
+                            {info[p.id].tickets.map((t) => (
+                              <tr key={t.id}>
+                                <td>{t.passenger_name}</td>
+                                <td>{formatDateShort(t.tour_date)}</td>
+                                <td>{t.seat_num}</td>
+                                <td>{t.extra_baggage ? "Да" : "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="card">
+                        <h4>Логи заказа</h4>
+                        <table className="table-mini">
+                          <thead>
+                            <tr>
+                              <th>Действие</th>
+                              <th>Дата/время</th>
+                              <th>Способ оплаты</th>
+                              <th>Сумма</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {info[p.id].sales.length ? (
+                              info[p.id].sales.map((s) => (
                                 <tr key={s.id}>
-                                  <td>
-                                    {icons[s.category] ? icons[s.category] + " " : ""}
-                                    {s.category}
-                                  </td>
+                                  <td>{s.category}</td>
                                   <td>{new Date(s.date).toLocaleString('ru-RU')}</td>
                                   <td>{s.comment || ""}</td>
                                   <td>{s.amount}</td>
                                 </tr>
-                              );
-                            })
-                          ) : (
-                            <tr>
-                              <td colSpan="4">Нет действий</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
+                              ))
+                            ) : (
+                              <tr>
+                                <td colSpan="4">Нет действий</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="card actions-col">
+                        <h4>Действия</h4>
+                        <button className="btn" onClick={() => toggleInfo(p.id)}>Скрыть</button>
+                        {p.status === "reserved" && (
+                          <>
+                            <button className="btn primary" onClick={() => handlePay(p.id)}>
+                              Отметить оплату (офлайн)
+                            </button>
+                            <button className="btn" onClick={() => handleCancel(p.id)}>
+                              Отменить бронь
+                            </button>
+                          </>
+                        )}
+                        {p.status === "paid" && (
+                          <button className="btn" onClick={() => handleRefund(p.id)}>
+                            Возврат
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
