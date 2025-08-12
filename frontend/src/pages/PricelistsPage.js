@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import IconButton from "../components/IconButton";
 import editIcon from "../assets/icons/edit.png";
 import deleteIcon from "../assets/icons/delete.png";
 import addIcon from "../assets/icons/add.png";
+import saveIcon from "../assets/icons/save.png";
+import cancelIcon from "../assets/icons/cancel.png";
 
 import { API } from "../config";
 
@@ -175,8 +178,8 @@ function PricelistPage() {
                   onChange={e => setEditingPricelistName(e.target.value)}
                   required
                 />
-                <button type="submit">✅</button>
-                <button type="button" onClick={handleCancelEditPricelist}>❌</button>
+                <IconButton type="submit" icon={saveIcon} alt="Сохранить" />
+                <IconButton type="button" onClick={handleCancelEditPricelist} icon={cancelIcon} alt="Отмена" />
               </form>
             ) : (
               <>
@@ -239,8 +242,8 @@ function PricelistPage() {
                   <td className="actions-cell">
                     {editingPriceId === p.id ? (
                       <>
-                        <button onClick={handleUpdatePrice}>✅</button>
-                        <button onClick={() => setEditingPriceId(null)}>❌</button>
+                        <IconButton onClick={handleUpdatePrice} icon={saveIcon} alt="Сохранить" />
+                        <IconButton onClick={() => setEditingPriceId(null)} icon={cancelIcon} alt="Отмена" />
                       </>
                     ) : (
                       <>

@@ -2,6 +2,10 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 import { API } from "../config";
+import IconButton from "../components/IconButton";
+import addIcon from "../assets/icons/add.png";
+import editIcon from "../assets/icons/edit.png";
+import deleteIcon from "../assets/icons/delete.png";
 // dnd-kit
 import {
   DndContext,
@@ -220,8 +224,16 @@ export default function RoutesPage() {
               demo
             </label>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-              <button className="btn btn--primary btn--sm" onClick={() => handleRenameRoute(route)}>Переименовать</button>
-              <button className="btn btn--danger btn--sm" onClick={() => handleDeleteRoute(route.id)}>Удалить</button>
+              <IconButton
+                icon={editIcon}
+                alt="Переименовать маршрут"
+                onClick={() => handleRenameRoute(route)}
+              />
+              <IconButton
+                icon={deleteIcon}
+                alt="Удалить маршрут"
+                onClick={() => handleDeleteRoute(route.id)}
+              />
             </div>
           </li>
         ))}
@@ -236,7 +248,7 @@ export default function RoutesPage() {
           value={newRouteName}
           onChange={(e) => setNewRouteName(e.target.value)}
         />
-        <button className="btn btn--success">Создать</button>
+        <IconButton type="submit" icon={addIcon} alt="Создать маршрут" className="btn--success" />
       </form>
   
       {selectedRoute && (
@@ -289,7 +301,12 @@ export default function RoutesPage() {
               value={newStop.departure_time}
               onChange={(e) => setNewStop({ ...newStop, departure_time: e.target.value })}
             />
-            <button type="submit" className="btn btn--success btn--sm">Добавить остановку</button>
+            <IconButton
+              type="submit"
+              icon={addIcon}
+              alt="Добавить остановку"
+              className="btn--success btn--sm"
+            />
           </form>
         </>
       )}
@@ -341,16 +358,16 @@ function SortableStop({ id, routeStop, getStopName, onDeleteStop, onUpdateTime }
         />
       </div>
   
-      <button
-        onPointerDown={(e) => e.stopPropagation()}
+      <IconButton
+        className="btn--danger btn--sm"
         onClick={(e) => {
           e.stopPropagation();
           onDeleteStop(id);
         }}
-        className="btn btn--danger btn--sm"
-      >
-        Удалить
-      </button>
+        onPointerDown={(e) => e.stopPropagation()}
+        icon={deleteIcon}
+        alt="Удалить остановку"
+      />
     </div>
   );
   

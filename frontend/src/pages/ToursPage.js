@@ -4,6 +4,12 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 import { API } from "../config";
+import IconButton from "../components/IconButton";
+import editIcon from "../assets/icons/edit.png";
+import deleteIcon from "../assets/icons/delete.png";
+import saveIcon from "../assets/icons/save.png";
+import addIcon from "../assets/icons/add.png";
+import cancelIcon from "../assets/icons/cancel.png";
 
 import BusLayoutNeoplan from "../components/busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "../components/busLayouts/BusLayoutTravego";
@@ -360,12 +366,12 @@ export default function ToursPage() {
                 <td>
                   {editing
                     ? <>
-                        <button className="btn btn--primary btn--sm" onClick={saveEdit}>Сохранить</button>
-                        <button className="btn btn--ghost btn--sm" onClick={cancelEdit}>Отмена</button>
+                        <IconButton className="btn--primary btn--sm" onClick={saveEdit} icon={saveIcon} alt="Сохранить" />
+                        <IconButton className="btn--ghost btn--sm" onClick={cancelEdit} icon={cancelIcon} alt="Отмена" />
                       </>
                     : <>
-                        <button className="btn btn--primary btn--sm" onClick={()=>startEdit(t)}>Редактировать</button>
-                        <button className="btn btn--danger btn--sm" onClick={()=>handleDelete(t.id)}>Удалить</button>
+                        <IconButton className="btn--primary btn--sm" onClick={()=>startEdit(t)} icon={editIcon} alt="Редактировать" />
+                        <IconButton className="btn--danger btn--sm" onClick={()=>handleDelete(t.id)} icon={deleteIcon} alt="Удалить" />
                       </>
                   }
                 </td>
@@ -471,10 +477,10 @@ export default function ToursPage() {
                     <td>
                       {isEd
                         ? <>
-                            <button className="btn btn--primary btn--sm" onClick={saveTicketEdit}>Сохранить</button>
-                            <button className="btn btn--ghost btn--sm" onClick={cancelTicketEdit}>Отмена</button>
+                            <IconButton className="btn--primary btn--sm" onClick={saveTicketEdit} icon={saveIcon} alt="Сохранить" />
+                            <IconButton className="btn--ghost btn--sm" onClick={cancelTicketEdit} icon={cancelIcon} alt="Отмена" />
                           </>
-                        : <button className="btn btn--primary btn--sm" onClick={()=>startTicketEdit(ticket)}>Редактировать</button>
+                        : <IconButton className="btn--primary btn--sm" onClick={()=>startTicketEdit(ticket)} icon={editIcon} alt="Редактировать" />
                       }
                     </td>
                   </tr>
@@ -486,7 +492,12 @@ export default function ToursPage() {
       )}
 
         <div style={{ marginTop:40 }}>
-          <button className="btn btn--primary" onClick={()=>setShowForm(s=>!s)}>{showForm ? 'Скрыть форму' : 'Добавить рейс'}</button>
+          <IconButton
+            className="btn--primary"
+            icon={showForm ? cancelIcon : addIcon}
+            alt={showForm ? 'Скрыть форму' : 'Добавить рейс'}
+            onClick={()=>setShowForm(s=>!s)}
+          />
           {showForm && (
             <>
               <h3 style={{ marginTop:20 }}>Создать новый рейс</h3>
@@ -541,7 +552,7 @@ export default function ToursPage() {
                         />}
                   </div>
                 )}
-                <button type="submit" className="btn btn--success">Создать рейс</button>
+                <IconButton type="submit" icon={addIcon} alt="Создать рейс" className="btn--success" />
               </form>
             </>
           )}
