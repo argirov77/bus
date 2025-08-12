@@ -99,7 +99,7 @@ def _cancel_expired_loop():
                     (pid,),
                 )
                 cur.execute(
-                    "INSERT INTO sales (purchase_id, category, amount) VALUES (%s, 'refund', 0)",
+                    "INSERT INTO sales (purchase_id, category, amount, actor, method) VALUES (%s, 'cancelled', 0, 'system', NULL)",
                     (pid,),
                 )
 

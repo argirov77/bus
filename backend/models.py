@@ -217,13 +217,15 @@ class Purchase(PurchaseBase):
         from_attributes = True
 
 
-class Sales(BaseModel):
+class PurchaseLog(BaseModel):
     id: int
-    date: datetime
-    category: str
+    at: datetime
+    action: str
     amount: float
     purchase_id: Optional[int] = None
-    comment: Optional[str] = None
+    by: Optional[str] = None
+    method: Optional[str] = None
+
     class Config:
         from_attributes = True
 

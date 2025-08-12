@@ -451,13 +451,15 @@ CREATE TABLE IF NOT EXISTS public.purchase (
     payment_method payment_method_type NOT NULL DEFAULT 'online'
 );
 
-CREATE TYPE sales_category AS ENUM ('ticket_sale','refund','part_refund');
+CREATE TYPE sales_category AS ENUM ('reserved','paid','cancelled','refunded','ticket_sale','part_refund');
 CREATE TABLE IF NOT EXISTS public.sales (
     id SERIAL PRIMARY KEY,
     date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     category sales_category NOT NULL,
     amount DECIMAL NOT NULL,
     purchase_id INTEGER REFERENCES public.purchase(id),
+    actor TEXT,
+    method payment_method_type,
     comment TEXT
 );
 -- Table to link forward/backward routes with a pricelist

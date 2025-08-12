@@ -38,7 +38,9 @@ class DummyCursor:
                 2,
                 "Ivan",
                 1,
+                "Stop1",
                 2,
+                "Stop4",
                 1,
                 0,
             )]
@@ -47,18 +49,20 @@ class DummyCursor:
                 (
                     1,
                     datetime(2025, 8, 9, 12, 0, 0),
-                    "ticket_sale",
-                    52.0,
+                    "reserved",
+                    0.0,
                     1,
+                    "system",
                     None,
                 ),
                 (
                     2,
                     datetime(2025, 8, 9, 13, 0, 0),
-                    "refund",
-                    0.0,
+                    "paid",
+                    52.0,
                     1,
-                    None,
+                    "cashier1",
+                    "offline",
                 ),
             ]
         return []
@@ -113,5 +117,7 @@ def test_admin_purchase_info(client):
     assert data['tickets'][0]['id'] == 1
     assert data['tickets'][0]['seat_num'] == 12
     assert data['tickets'][0]['passenger_name'] == 'Ivan'
-    assert len(data['sales']) == 2
-    assert data['sales'][0]['category'] == 'ticket_sale'
+    assert data['tickets'][0]['from_stop_name'] == 'Stop1'
+    assert data['tickets'][0]['to_stop_name'] == 'Stop4'
+    assert len(data['logs']) == 2
+    assert data['logs'][0]['action'] == 'reserved'
