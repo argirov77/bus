@@ -1,6 +1,8 @@
 import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import IconButton from "./IconButton";
+import deleteIcon from "../assets/icons/delete.png";
 
 export function SortableStop({
   id,
@@ -51,7 +53,11 @@ export function SortableStop({
         />
       </div>
       <div style={{ marginTop: "8px" }}>
-        <button onClick={() => onDeleteStop(routeStop.id)}>Удалить</button>
+        <IconButton
+          icon={deleteIcon}
+          alt="Удалить"
+          onClick={() => onDeleteStop(routeStop.id)}
+        />
       </div>
     </div>
   );
