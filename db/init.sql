@@ -149,7 +149,8 @@ CREATE TABLE public.prices (
     pricelist_id integer NOT NULL,
     departure_stop_id integer NOT NULL,
     arrival_stop_id integer NOT NULL,
-    price numeric(10,2) NOT NULL
+    price numeric(10,2) NOT NULL,
+    discount_price numeric(10,2)
 );
 
 
@@ -360,7 +361,8 @@ CREATE TABLE public.ticket (
     departure_stop_id integer NOT NULL,
     arrival_stop_id integer NOT NULL,
     purchase_id integer,
-    extra_baggage integer DEFAULT 0
+    extra_baggage integer DEFAULT 0,
+    discounted boolean DEFAULT false
 );
 
 

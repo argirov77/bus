@@ -17,6 +17,7 @@ class PurchaseCreate(BaseModel):
     departure_stop_id: int
     arrival_stop_id: int
     extra_baggage: list[bool] | None = None
+    discounted: list[bool] | None = None
     purchase_id: int | None = None
 
 class PurchaseOut(BaseModel):
@@ -53,6 +54,9 @@ def _create_purchase(
     baggage_list = data.extra_baggage or [False] * len(data.seat_nums)
     if len(baggage_list) != len(data.seat_nums):
         raise HTTPException(400, "Seat numbers and extra baggage count mismatch")
+    discounted_list = data.discounted or [False] * len(data.seat_nums)
+    if len(discounted_list) != len(data.seat_nums):
+        raise HTTPException(400, "Seat numbers and discounted flags count mismatch")
 
     # Determine route/pricelist and ordered stops
     cur.execute("SELECT route_id, pricelist_id FROM tour WHERE id=%s", (data.tour_id,))
@@ -76,7 +80,7 @@ def _create_purchase(
 
     cur.execute(
         """
-        SELECT price FROM prices
+        SELECT price, discount_price FROM prices
          WHERE pricelist_id=%s AND departure_stop_id=%s AND arrival_stop_id=%s
         """,
         (pricelist_id, data.departure_stop_id, data.arrival_stop_id),
@@ -85,9 +89,15 @@ def _create_purchase(
     if not price_row:
         raise HTTPException(404, "Price not found")
     base_price = float(price_row[0])
-    total_price = base_price * (
-        len(data.seat_nums) + 0.1 * sum(1 for b in baggage_list if b)
+    discount_price = (
+        float(price_row[1]) if price_row[1] is not None else base_price
     )
+    total_price = 0.0
+    for disc, bag in zip(discounted_list, baggage_list):
+        seat_price = discount_price if disc else base_price
+        if bag:
+            seat_price *= 1.1
+        total_price += seat_price
     total_price = round(total_price, 2)
 
     purchase_id = data.purchase_id
@@ -136,7 +146,7 @@ def _create_purchase(
         purchase_id = cur.fetchone()[0]
 
     # 2) create passenger and ticket for each seat
-    for seat_num, name, bag in zip(data.seat_nums, data.passenger_names, baggage_list):
+    for seat_num, name, bag, disc in zip(data.seat_nums, data.passenger_names, baggage_list, discounted_list):
         cur.execute(
             "INSERT INTO passenger (name) VALUES (%s) RETURNING id",
             (name,),
@@ -162,8 +172,8 @@ def _create_purchase(
         cur.execute(
             """
             INSERT INTO ticket
-              (tour_id, seat_id, passenger_id, departure_stop_id, arrival_stop_id, purchase_id, extra_baggage)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
+              (tour_id, seat_id, passenger_id, departure_stop_id, arrival_stop_id, purchase_id, extra_baggage, discounted)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
             RETURNING id
             """,
             (
@@ -174,6 +184,7 @@ def _create_purchase(
                 data.arrival_stop_id,
                 purchase_id,
                 int(bag),
+                disc,
             ),
         )
         cur.fetchone()
