@@ -25,8 +25,8 @@ class UniqueSalesCursor:
             return [1, 1]
         if "select stop_id from routestop" in q:
             return [(1,), (2,)]
-        if "select price" in q and "from prices" in q:
-            return [10, None]
+        if "select price from prices" in q:
+            return [10]
         if "select id, available from seat" in q:
             return [1, "1234"]
         if "select amount_due, status from purchase" in q:
