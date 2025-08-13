@@ -21,13 +21,14 @@ def get_prices(pricelist_id: int = None):
     if pricelist_id is not None:
         cur.execute(
             """
-            SELECT p.id,
+           SELECT p.id,
                    p.pricelist_id,
                    p.departure_stop_id,
                    s1.stop_name AS departure_name,
                    p.arrival_stop_id,
                    s2.stop_name AS arrival_name,
-                   p.price
+                   p.price,
+                   p.discount_price
             FROM prices p
             JOIN stop s1 ON p.departure_stop_id = s1.id
             JOIN stop s2 ON p.arrival_stop_id = s2.id
@@ -39,13 +40,14 @@ def get_prices(pricelist_id: int = None):
     else:
         cur.execute(
             """
-            SELECT p.id,
+           SELECT p.id,
                    p.pricelist_id,
                    p.departure_stop_id,
                    s1.stop_name AS departure_name,
                    p.arrival_stop_id,
                    s2.stop_name AS arrival_name,
-                   p.price
+                   p.price,
+                   p.discount_price
             FROM prices p
             JOIN stop s1 ON p.departure_stop_id = s1.id
             JOIN stop s2 ON p.arrival_stop_id = s2.id
@@ -66,7 +68,8 @@ def get_prices(pricelist_id: int = None):
             "departure_stop_name": row[3],
             "arrival_stop_id": row[4],
             "arrival_stop_name": row[5],
-            "price": row[6]
+            "price": row[6],
+            "discount_price": row[7]
         })
     return result
 
@@ -80,8 +83,8 @@ def create_price(price_data: PricesCreate):
     try:
         cur.execute(
             """
-            INSERT INTO prices (pricelist_id, departure_stop_id, arrival_stop_id, price)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO prices (pricelist_id, departure_stop_id, arrival_stop_id, price, discount_price)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING id;
             """,
             (
@@ -89,6 +92,7 @@ def create_price(price_data: PricesCreate):
                 price_data.departure_stop_id,
                 price_data.arrival_stop_id,
                 price_data.price,
+                price_data.discount_price,
             )
         )
         new_id = cur.fetchone()[0]
@@ -115,15 +119,17 @@ def update_price(price_id: int, price_data: PricesCreate):
             SET pricelist_id = %s,
                 departure_stop_id = %s,
                 arrival_stop_id = %s,
-                price = %s
+                price = %s,
+                discount_price = %s
             WHERE id = %s
-            RETURNING id, pricelist_id, departure_stop_id, arrival_stop_id, price;
+            RETURNING id, pricelist_id, departure_stop_id, arrival_stop_id, price, discount_price;
             """,
             (
                 price_data.pricelist_id,
                 price_data.departure_stop_id,
                 price_data.arrival_stop_id,
                 price_data.price,
+                price_data.discount_price,
                 price_id
             )
         )
@@ -136,7 +142,8 @@ def update_price(price_id: int, price_data: PricesCreate):
             "pricelist_id": updated_row[1],
             "departure_stop_id": updated_row[2],
             "arrival_stop_id": updated_row[3],
-            "price": updated_row[4]
+            "price": updated_row[4],
+            "discount_price": updated_row[5]
         }
     except Exception as e:
         conn.rollback()

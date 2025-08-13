@@ -22,8 +22,8 @@ class DummyCursor:
             return [1, 1]
         if "select id, available from seat" in q:
             return [1, "1234"]
-        if "select price from prices" in q:
-            return [10]
+        if "select price" in q and "from prices" in q:
+            return [10, None]
         return [1]
 
     def fetchall(self):
