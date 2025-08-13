@@ -76,7 +76,7 @@ def get_report(filters: ReportFilters):
         summary_query = f"""
             SELECT 
                 COUNT(*) AS total_tickets,
-                COALESCE(SUM(pr.price), 0) AS total_sales
+                COALESCE(SUM(CASE WHEN t.discounted THEN COALESCE(pr.discount_price, pr.price) ELSE pr.price END), 0) AS total_sales
             FROM ticket t
             JOIN tour tr ON t.tour_id = tr.id
             JOIN route r ON tr.route_id = r.id
@@ -102,7 +102,7 @@ def get_report(filters: ReportFilters):
                 t.id AS ticket_id,
                 t.tour_id,
                 s.seat_num,
-                pr.price,
+                CASE WHEN t.discounted THEN COALESCE(pr.discount_price, pr.price) ELSE pr.price END AS price,
                 p.name AS passenger_name,
                 pu.customer_phone AS passenger_phone,
                 pu.customer_email AS passenger_email,

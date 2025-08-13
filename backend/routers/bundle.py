@@ -174,7 +174,8 @@ def selected_pricelist(data: LangRequest):
             f"""
             SELECT p.departure_stop_id, COALESCE(s1.{col}, s1.stop_name),
                    p.arrival_stop_id, COALESCE(s2.{col}, s2.stop_name),
-                   p.price
+                   p.price,
+                   p.discount_price
               FROM prices p
               JOIN stop s1 ON s1.id=p.departure_stop_id
               JOIN stop s2 ON s2.id=p.arrival_stop_id
@@ -190,6 +191,7 @@ def selected_pricelist(data: LangRequest):
                 "arrival_stop_id": r[2],
                 "arrival_name": r[3],
                 "price": r[4],
+                "discount_price": r[5],
             }
             for r in cur.fetchall()
         ]

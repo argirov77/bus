@@ -28,7 +28,7 @@ class DummyCursor:
             else:
                 return [(20, "B_en"), (10, "A_en")]
         if "from prices" in self.query:
-            return [(10, "A_en", 20, "B_en", 9.9)]
+            return [(10, "A_en", 20, "B_en", 9.9, 8.8)]
         return []
     def close(self):
         pass
