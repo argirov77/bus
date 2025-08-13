@@ -6,8 +6,6 @@ import IconButton from "../components/IconButton";
 import editIcon from "../assets/icons/edit.png";
 import deleteIcon from "../assets/icons/delete.png";
 import addIcon from "../assets/icons/add.png";
-import saveIcon from "../assets/icons/save.png";
-import cancelIcon from "../assets/icons/cancel.png";
 
 const LANGS = ["ru", "en", "bg", "ua"];
 
@@ -41,7 +39,7 @@ function useLangNames(initial) {
   return { names, setFor, packToPayload };
 }
 
-function StopForm({ initial, onSubmit, onCancel, submitIcon, submitAlt }) {
+function StopForm({ initial, onSubmit, onCancel, submitText = "Сохранить" }) {
   const [active, setActive] = useState("ru");
   const { names, setFor, packToPayload } = useLangNames(initial || emptyStop);
   const [description, setDescription] = useState(initial.description || "");
@@ -105,7 +103,7 @@ function StopForm({ initial, onSubmit, onCancel, submitIcon, submitAlt }) {
       </div>
 
       <div className="actions">
-        <IconButton type="submit" icon={submitIcon} alt={submitAlt} />
+        <button className="btn primary" type="submit">{submitText}</button>
         {onCancel && (
           <button className="btn" type="button" onClick={onCancel}>
             Отмена
@@ -160,8 +158,7 @@ export default function StopsPage() {
                 initial={stop}
                 onSubmit={handleUpdate}
                 onCancel={() => setEditingId(null)}
-                submitIcon={saveIcon}
-                submitAlt="Сохранить"
+                submitText="Сохранить"
               />
             ) : (
               <>
@@ -200,19 +197,19 @@ export default function StopsPage() {
       </ul>
 
       <div className="create-wrap">
-        <IconButton
-          icon={creatingOpen ? cancelIcon : addIcon}
-          alt={creatingOpen ? "Скрыть" : "Добавить остановку"}
+        <button
+          className="btn primary"
           onClick={() => setCreatingOpen((v) => !v)}
-        />
+        >
+          {creatingOpen ? "Скрыть" : "Добавить остановку"}
+        </button>
 
         {creatingOpen && (
           <div className="card-row">
             <StopForm
               initial={emptyStop}
               onSubmit={handleCreate}
-              submitIcon={addIcon}
-              submitAlt="Добавить"
+              submitText="Добавить"
             />
           </div>
         )}
