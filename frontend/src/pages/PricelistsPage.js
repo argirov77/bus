@@ -13,10 +13,18 @@ function PricelistPage() {
   const [pricelists, setPricelists] = useState([]);
   const [selectedPricelist, setSelectedPricelist] = useState(null);
   const [prices, setPrices] = useState([]);
-  const [newPrice, setNewPrice] = useState({ departure_stop_id: "", arrival_stop_id: "", price: "" });
+  const [newPrice, setNewPrice] = useState({
+    departure_stop_id: "",
+    arrival_stop_id: "",
+    price: "",
+    discount_price: "",
+  });
   const [stops, setStops] = useState([]);
   const [editingPriceId, setEditingPriceId] = useState(null);
-  const [editingPriceData, setEditingPriceData] = useState({ price: "" });
+  const [editingPriceData, setEditingPriceData] = useState({
+    price: "",
+    discount_price: "",
+  });
 
   // Для создания и редактирования прайс-листов
   const [newPricelistName, setNewPricelistName] = useState("");
@@ -122,10 +130,17 @@ function PricelistPage() {
       pricelist_id: selectedPricelist.id,
       departure_stop_id: Number(newPrice.departure_stop_id),
       arrival_stop_id: Number(newPrice.arrival_stop_id),
-      price: Number(newPrice.price)
+      price: Number(newPrice.price),
+      discount_price:
+        newPrice.discount_price === "" ? null : Number(newPrice.discount_price),
     }).then(res => {
       setPrices([...prices, res.data]);
-      setNewPrice({ departure_stop_id: "", arrival_stop_id: "", price: "" });
+      setNewPrice({
+        departure_stop_id: "",
+        arrival_stop_id: "",
+        price: "",
+        discount_price: "",
+      });
     });
   };
 
@@ -136,12 +151,22 @@ function PricelistPage() {
 
   const handleEditPrice = (priceObj) => {
     setEditingPriceId(priceObj.id);
-    setEditingPriceData({ price: priceObj.price.toString() });
+    setEditingPriceData({
+      price: priceObj.price.toString(),
+      discount_price: priceObj.discount_price?.toString() || "",
+    });
   };
 
   const handleUpdatePrice = (e) => {
     e.preventDefault();
-    const updated = { ...prices.find(p => p.id === editingPriceId), price: Number(editingPriceData.price) };
+    const updated = {
+      ...prices.find(p => p.id === editingPriceId),
+      price: Number(editingPriceData.price),
+      discount_price:
+        editingPriceData.discount_price === ""
+          ? null
+          : Number(editingPriceData.discount_price),
+    };
     axios.put(`${API}/prices/${editingPriceId}`, updated)
       .then(res => {
         setPrices(prices.map(p => p.id === editingPriceId ? res.data : p));
@@ -214,6 +239,7 @@ function PricelistPage() {
                 <th>От остановки</th>
                 <th>До остановки</th>
                 <th>Цена</th>
+                <th>Льготная цена</th>
                 <th>Действия</th>
               </tr>
             </thead>
@@ -227,10 +253,31 @@ function PricelistPage() {
                       <input
                         type="number"
                         value={editingPriceData.price}
-                        onChange={e => setEditingPriceData({ price: e.target.value })}
+                        onChange={e =>
+                          setEditingPriceData({
+                            ...editingPriceData,
+                            price: e.target.value,
+                          })
+                        }
                       />
                     ) : (
                       p.price
+                    )}
+                  </td>
+                  <td>
+                    {editingPriceId === p.id ? (
+                      <input
+                        type="number"
+                        value={editingPriceData.discount_price}
+                        onChange={e =>
+                          setEditingPriceData({
+                            ...editingPriceData,
+                            discount_price: e.target.value,
+                          })
+                        }
+                      />
+                    ) : (
+                      p.discount_price ?? ""
                     )}
                   </td>
                   <td className="actions-cell">
@@ -277,6 +324,15 @@ function PricelistPage() {
               placeholder="Цена"
               value={newPrice.price}
               onChange={e => setNewPrice({ ...newPrice, price: e.target.value })}
+            />
+
+            <input
+              type="number"
+              placeholder="Льготная цена"
+              value={newPrice.discount_price}
+              onChange={e =>
+                setNewPrice({ ...newPrice, discount_price: e.target.value })
+              }
             />
 
             <IconButton type="submit" icon={addIcon} alt="Добавить цену" className="btn--primary" />
