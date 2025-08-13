@@ -202,9 +202,9 @@ def update_route_stop(route_id: int, stop_id: int, data: RouteStopCreate):
     cur = conn.cursor()
     cur.execute(
         'UPDATE routestop SET stop_id=%s, "order"=%s, arrival_time=%s, departure_time=%s '
-        'WHERE id=%s AND route_id=%s '
+        'WHERE route_id=%s AND stop_id=%s '
         'RETURNING id, route_id, stop_id, "order", arrival_time, departure_time;',
-        (data.stop_id, data.order, data.arrival_time, data.departure_time, stop_id, route_id)
+        (data.stop_id, data.order, data.arrival_time, data.departure_time, route_id, stop_id)
     )
     row = cur.fetchone()
     conn.commit()
@@ -228,7 +228,10 @@ def delete_route_stop(route_id: int, stop_id: int):
     """
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("DELETE FROM routestop WHERE id=%s AND route_id=%s RETURNING id;", (stop_id, route_id))
+    cur.execute(
+        "DELETE FROM routestop WHERE route_id=%s AND stop_id=%s RETURNING id;",
+        (route_id, stop_id),
+    )
     deleted = cur.fetchone()
     conn.commit()
     cur.close()
