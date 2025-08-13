@@ -17,7 +17,6 @@ class TicketCreate(BaseModel):
     departure_stop_id: int
     arrival_stop_id: int
     extra_baggage: bool = False
-    discounted: bool = False
 
 
 class TicketOut(BaseModel):
@@ -84,8 +83,8 @@ def create_ticket(data: TicketCreate):
         cur.execute(
             """
             INSERT INTO ticket
-              (tour_id, seat_id, passenger_id, departure_stop_id, arrival_stop_id, purchase_id, extra_baggage, discounted)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+              (tour_id, seat_id, passenger_id, departure_stop_id, arrival_stop_id, purchase_id, extra_baggage)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
@@ -96,7 +95,6 @@ def create_ticket(data: TicketCreate):
                 data.arrival_stop_id,
                 data.purchase_id,
                 int(data.extra_baggage),
-                data.discounted,
             ),
         )
         ticket_id = cur.fetchone()[0]

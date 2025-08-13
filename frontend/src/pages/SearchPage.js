@@ -28,9 +28,7 @@ export default function SearchPage() {
   const [selectedOutboundTour, setSelectedOutboundTour] = useState(null);
   const [selectedReturnTour, setSelectedReturnTour] = useState(null);
 
-  const [regularCount, setRegularCount] = useState(1);
-  const [discountCount, setDiscountCount] = useState(0);
-  const seatCount = regularCount + discountCount;
+  const [seatCount, setSeatCount] = useState(1);
   const [selectedOutboundSeats, setSelectedOutboundSeats] = useState([]);
   const [selectedReturnSeats, setSelectedReturnSeats] = useState([]);
   const [passengerNames, setPassengerNames] = useState([""]);
@@ -38,7 +36,6 @@ export default function SearchPage() {
   const [email, setEmail] = useState("");
   const [extraBaggageOutbound, setExtraBaggageOutbound] = useState([false]);
   const [extraBaggageReturn, setExtraBaggageReturn] = useState([false]);
-  const [discountFlags, setDiscountFlags] = useState([false]);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info");
   const [loading, setLoading] = useState(false);
@@ -51,10 +48,6 @@ export default function SearchPage() {
 
   useEffect(() => {
     setPassengerNames(Array(seatCount).fill(""));
-    setDiscountFlags([
-      ...Array(regularCount).fill(false),
-      ...Array(discountCount).fill(true)
-    ]);
     setSelectedOutboundSeats([]);
     setSelectedReturnSeats([]);
     setSelectedDepartDate("");
@@ -223,8 +216,7 @@ export default function SearchPage() {
       const basePayload = {
         passenger_names: passengerNames,
         passenger_phone: phone,
-        passenger_email: email,
-        discounted: discountFlags
+        passenger_email: email
       };
       const outRes = await axios.post(`${API}/${endpoint}`, {
         ...basePayload,
@@ -258,10 +250,6 @@ export default function SearchPage() {
       setSelectedOutboundSeats([]);
       setSelectedReturnSeats([]);
       setPassengerNames(Array(seatCount).fill(""));
-      setDiscountFlags([
-        ...Array(regularCount).fill(false),
-        ...Array(discountCount).fill(true)
-      ]);
       setPhone("");
       setEmail("");
       setExtraBaggageOutbound(Array(seatCount).fill(false));
@@ -354,20 +342,10 @@ export default function SearchPage() {
         <input
           className="input"
           type="number"
-          min="0"
-          value={regularCount}
-          onChange={e => setRegularCount(Number(e.target.value))}
+          min="1"
+          value={seatCount}
+          onChange={e => setSeatCount(Number(e.target.value))}
           style={{ width: 60 }}
-          placeholder="Обычный"
-        />
-        <input
-          className="input"
-          type="number"
-          min="0"
-          value={discountCount}
-          onChange={e => setDiscountCount(Number(e.target.value))}
-          style={{ width: 60 }}
-          placeholder="Льготный"
         />
 
         <input
@@ -515,18 +493,6 @@ export default function SearchPage() {
                   setPassengerNames(arr);
                 }}
               />
-              <label style={{display:'flex',alignItems:'center',gap:2}}>
-                <input
-                  type="checkbox"
-                  checked={discountFlags[idx]}
-                  onChange={e => {
-                    const arr = [...discountFlags];
-                    arr[idx] = e.target.checked;
-                    setDiscountFlags(arr);
-                  }}
-                />
-                Льготный
-              </label>
               <label style={{display:'flex',alignItems:'center',gap:2}}>
                 <input
                   type="checkbox"

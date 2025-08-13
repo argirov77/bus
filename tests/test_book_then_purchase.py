@@ -38,8 +38,8 @@ class DummyCursor:
             return [1, 1]
         if 'select id, available from seat' in q:
             return [1, '1234']
-        if 'select price' in q and 'from prices' in q:
-            return [10, None]
+        if 'select price from prices' in q:
+            return [10]
         if 'insert into purchase' in q:
             return [1]
         if 'select id, seat_id from ticket' in q:

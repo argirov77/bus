@@ -71,7 +71,6 @@ class PricesBase(BaseModel):
     departure_stop_id: int
     arrival_stop_id: int
     price: float
-    discount_price: Optional[float] = None
 
 class PricesCreate(PricesBase):
     pass
@@ -144,7 +143,6 @@ class TicketBase(BaseModel):
     arrival_stop_id: int
     purchase_id: Optional[int] = None
     extra_baggage: int = 0
-    discounted: bool = False
 
 class TicketCreate(TicketBase):
     pass
@@ -254,7 +252,6 @@ class PriceLocalized(BaseModel):
     arrival_stop_id: int
     arrival_name: str
     price: float
-    discount_price: Optional[float] = None
 
 class PricelistBundleOut(BaseModel):
     pricelist_id: int
