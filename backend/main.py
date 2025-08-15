@@ -5,6 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 
+# Ensure application runs in Bulgarian time (UTC+3) so all logs and time-based
+# functions reflect the expected timezone.
+os.environ.setdefault("TZ", "Europe/Sofia")
+time.tzset()
+
 # Импортируем все роутеры
 from .routers import (
     stop,
