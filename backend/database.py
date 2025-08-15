@@ -49,8 +49,16 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # --- psycopg2 helper for your existing routers ---
 
 def get_connection():
-    """Returns a new psycopg2 connection using DATABASE_URL."""
-    return psycopg2.connect(DATABASE_URL)
+    """Returns a new psycopg2 connection using DATABASE_URL.
+
+    The connection's timezone is explicitly set to Bulgarian local time so that
+    any timestamps produced by PostgreSQL (e.g. via ``NOW()``) reflect
+    the desired ``UTC+3`` offset.
+    """
+    conn = psycopg2.connect(DATABASE_URL)
+    with conn.cursor() as cur:
+        cur.execute("SET TIME ZONE 'Europe/Sofia'")
+    return conn
 
 from pathlib import Path
 
