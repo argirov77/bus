@@ -157,13 +157,12 @@ def selected_route(data: LangRequest):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        cur.execute(
-            "SELECT route_forward_id, route_backward_id FROM route_pricelist_bundle WHERE id=1"
-        )
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(404, "Bundle not found")
-        forward_id, backward_id = row
+        cur.execute("SELECT id FROM route WHERE is_demo ORDER BY id")
+        rows = cur.fetchall()
+        if not rows:
+            raise HTTPException(404, "Demo routes not found")
+        forward_id = rows[0][0]
+        backward_id = rows[1][0] if len(rows) > 1 else forward_id
         forward = _get_route(cur, forward_id, col)
         backward = _get_route(cur, backward_id, col)
         return {"forward": forward, "backward": backward}
@@ -179,12 +178,10 @@ def selected_pricelist(data: LangRequest):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        cur.execute(
-            "SELECT pricelist_id FROM route_pricelist_bundle WHERE id=1"
-        )
+        cur.execute("SELECT id FROM pricelist WHERE is_demo ORDER BY id LIMIT 1")
         row = cur.fetchone()
         if not row:
-            raise HTTPException(404, "Bundle not found")
+            raise HTTPException(404, "Demo pricelist not found")
         pricelist_id = row[0]
         cur.execute(
             f"""
