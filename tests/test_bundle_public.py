@@ -23,10 +23,14 @@ class DummyCursor:
     def fetchall(self):
         if "from routestop" in self.query:
             rid = self.params[0]
+            stops = [
+                (10, "A_en", "DescA", "LocA", "10:00", "10:05"),
+                (20, "B_en", "DescB", "LocB", "11:00", "11:05"),
+            ]
             if rid == 1:
-                return [(10, "A_en"), (20, "B_en")]
+                return stops
             else:
-                return [(20, "B_en"), (10, "A_en")]
+                return list(reversed(stops))
         if "from prices" in self.query:
             return [(10, "A_en", 20, "B_en", 9.9)]
         return []
@@ -66,7 +70,12 @@ def test_routes_bundle(client):
     resp = client.post("/selected_route", json={"lang": "en"})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["forward"]["stops"][0]["name"] == "A_en"
+    stop = data["forward"]["stops"][0]
+    assert stop["name"] == "A_en"
+    assert stop["description"] == "DescA"
+    assert stop["location"] == "LocA"
+    assert stop["arrival_time"] == "10:00"
+    assert stop["departure_time"] == "10:05"
 
 def test_pricelist_bundle(client):
     resp = client.post("/selected_pricelist", json={"lang": "en"})

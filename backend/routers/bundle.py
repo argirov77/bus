@@ -125,12 +125,23 @@ def _get_route(cur, route_id: int, col: str):
     row = cur.fetchone()
     name = row[0] if row else ""
     cur.execute(
-        f'SELECT s.id, COALESCE(s.{col}, s.stop_name) '
+        f'SELECT s.id, COALESCE(s.{col}, s.stop_name), s.description, s.location, '
+        f'rs.arrival_time, rs.departure_time '
         f'FROM routestop rs JOIN stop s ON rs.stop_id=s.id '
         f'WHERE rs.route_id=%s ORDER BY rs."order"',
         (route_id,),
     )
-    stops = [{"id": r[0], "name": r[1]} for r in cur.fetchall()]
+    stops = [
+        {
+            "id": r[0],
+            "name": r[1],
+            "description": r[2],
+            "location": r[3],
+            "arrival_time": r[4],
+            "departure_time": r[5],
+        }
+        for r in cur.fetchall()
+    ]
     return {"id": route_id, "name": name, "stops": stops}
 
 
