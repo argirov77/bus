@@ -92,6 +92,29 @@ def create_route(route_data: RouteCreate):
     conn.close()
     return {"id": new_id, "name": route_data.name, "is_demo": route_data.is_demo}
 
+@router.put("/{route_id}", response_model=Route)
+def update_route(route_id: int, route_data: RouteCreate):
+    """Обновить существующий маршрут."""
+    conn = get_connection()
+    cur = conn.cursor()
+    if route_data.is_demo:
+        cur.execute("SELECT COUNT(*) FROM route WHERE is_demo AND id != %s", (route_id,))
+        if cur.fetchone()[0] >= 2:
+            cur.close()
+            conn.close()
+            raise HTTPException(status_code=400, detail="Only two demo routes allowed")
+    cur.execute(
+        "UPDATE route SET name=%s, is_demo=%s WHERE id=%s RETURNING id, name, is_demo;",
+        (route_data.name, route_data.is_demo, route_id),
+    )
+    row = cur.fetchone()
+    conn.commit()
+    cur.close()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Route not found")
+    return {"id": row[0], "name": row[1], "is_demo": row[2]}
+
 @router.delete("/{route_id}")
 def delete_route(route_id: int):
     """
@@ -193,18 +216,16 @@ def create_route_stop(route_id: int, data: RouteStopCreate):
         "departure_time": data.departure_time
     }
 
-@router.put("/{route_id}/stops/{stop_id}", response_model=RouteStop)
-def update_route_stop(route_id: int, stop_id: int, data: RouteStopCreate):
-    """
-    Обновить остановку (arrival_time, departure_time, order, stop_id)
-    """
+@router.put("/{route_id}/stops/{routestop_id}", response_model=RouteStop)
+def update_route_stop(route_id: int, routestop_id: int, data: RouteStopCreate):
+    """Обновить остановку (arrival_time, departure_time, order, stop_id)"""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
         'UPDATE routestop SET stop_id=%s, "order"=%s, arrival_time=%s, departure_time=%s '
-        'WHERE route_id=%s AND stop_id=%s '
+        'WHERE route_id=%s AND id=%s '
         'RETURNING id, route_id, stop_id, "order", arrival_time, departure_time;',
-        (data.stop_id, data.order, data.arrival_time, data.departure_time, route_id, stop_id)
+        (data.stop_id, data.order, data.arrival_time, data.departure_time, route_id, routestop_id)
     )
     row = cur.fetchone()
     conn.commit()
@@ -221,16 +242,14 @@ def update_route_stop(route_id: int, stop_id: int, data: RouteStopCreate):
         "departure_time": row[5]
     }
 
-@router.delete("/{route_id}/stops/{stop_id}")
-def delete_route_stop(route_id: int, stop_id: int):
-    """
-    Удалить остановку (RouteStop) из маршрута
-    """
+@router.delete("/{route_id}/stops/{routestop_id}")
+def delete_route_stop(route_id: int, routestop_id: int):
+    """Удалить остановку (RouteStop) из маршрута"""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
-        "DELETE FROM routestop WHERE route_id=%s AND stop_id=%s RETURNING id;",
-        (route_id, stop_id),
+        "DELETE FROM routestop WHERE route_id=%s AND id=%s RETURNING id;",
+        (route_id, routestop_id),
     )
     deleted = cur.fetchone()
     conn.commit()
