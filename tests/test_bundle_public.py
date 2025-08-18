@@ -14,15 +14,15 @@ class DummyCursor:
         self.query = query.lower()
         self.params = params
     def fetchone(self):
-        if "route_pricelist_bundle" in self.query:
-            if "pricelist_id" in self.query:
-                return [5]
-            return [1, 2]
-        if "from route where" in self.query:
+        if "select id from pricelist where is_demo" in self.query:
+            return [5]
+        if "select name from route" in self.query and "where id" in self.query:
             rid = self.params[0]
             return [f"Route{rid}"]
         return None
     def fetchall(self):
+        if "select id from route where is_demo" in self.query:
+            return [(1,), (2,)]
         if "from routestop" in self.query:
             rid = self.params[0]
             stops = [
