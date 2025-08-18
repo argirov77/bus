@@ -2,7 +2,7 @@ import importlib
 import pytest
 
 
-def test_delete_route_stop_uses_stop_id(monkeypatch):
+def test_delete_route_stop_uses_id(monkeypatch):
     record = {}
 
     class DummyCursor:
@@ -31,4 +31,6 @@ def test_delete_route_stop_uses_stop_id(monkeypatch):
     response = route.delete_route_stop(1, 2)
     assert response['deleted_id'] == 123
     assert record['params'] == (1, 2)
-    assert 'stop_id' in record['query'].lower()
+    query = record['query'].lower()
+    assert 'stop_id' not in query
+    assert 'and id=%s' in query
