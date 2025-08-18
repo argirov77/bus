@@ -1,6 +1,8 @@
 import os
 import sys
 import importlib
+from datetime import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -24,8 +26,8 @@ class DummyCursor:
         if "from routestop" in self.query:
             rid = self.params[0]
             stops = [
-                (10, "A_en", "DescA", "LocA", "10:00", "10:05"),
-                (20, "B_en", "DescB", "LocB", "11:00", "11:05"),
+                (10, "A_en", "DescA", "LocA", time(10, 0), time(10, 5)),
+                (20, "B_en", "DescB", "LocB", time(11, 0), time(11, 5)),
             ]
             if rid == 1:
                 return stops

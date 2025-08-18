@@ -1,3 +1,5 @@
+from datetime import time as dt_time
+
 from fastapi import APIRouter, Depends, HTTPException
 from ..auth import require_admin_token
 from ..database import get_connection
@@ -131,14 +133,17 @@ def _get_route(cur, route_id: int, col: str):
         f'WHERE rs.route_id=%s ORDER BY rs."order"',
         (route_id,),
     )
+    def _fmt(val):
+        return val.strftime("%H:%M") if isinstance(val, dt_time) else val
+
     stops = [
         {
             "id": r[0],
             "name": r[1],
             "description": r[2],
             "location": r[3],
-            "arrival_time": r[4],
-            "departure_time": r[5],
+            "arrival_time": _fmt(r[4]),
+            "departure_time": _fmt(r[5]),
         }
         for r in cur.fetchall()
     ]
