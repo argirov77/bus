@@ -236,6 +236,10 @@ class LangRequest(BaseModel):
 class LocalizedStop(BaseModel):
     id: int
     name: str
+    description: Optional[str] = None
+    location: Optional[str] = None
+    arrival_time: Optional[str] = None
+    departure_time: Optional[str] = None
 
 class LocalizedRoute(BaseModel):
     id: int
