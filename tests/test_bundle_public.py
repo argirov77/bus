@@ -11,7 +11,16 @@ class DummyCursor:
         self.query = ""
         self.params = None
     def execute(self, query, params=None):
-        self.query = query.lower()
+        q_lower = query.lower()
+        # Simulate a database error when an unsupported language column is
+        # requested.  Prior to the fix in ``selected_pricelist`` the code would
+        # attempt to access a column such as ``stop_ru`` which doesn't exist in
+        # the schema, resulting in a 500 error.  Raising here allows the test to
+        # verify that we correctly fall back to ``stop_name`` instead of
+        # constructing invalid column names.
+        if "stop_ru" in q_lower:
+            raise Exception("column does not exist: stop_ru")
+        self.query = q_lower
         self.params = params
     def fetchone(self):
         if "select id from pricelist where is_demo" in self.query:
@@ -83,5 +92,17 @@ def test_pricelist_bundle(client):
     resp = client.post("/selected_pricelist", json={"lang": "en"})
     assert resp.status_code == 200
     data = resp.json()
+    assert data["prices"][0]["departure_name"] == "A_en"
+
+
+def test_pricelist_bundle_unsupported_language(client):
+    """Unsupported languages should gracefully fall back to the default column
+    rather than causing a 500 error."""
+    resp = client.post("/selected_pricelist", json={"lang": "ru"})
+    assert resp.status_code == 200
+    data = resp.json()
+    # Our dummy cursor returns "A_en" for the departure stop regardless of
+    # language; the key point is that the request succeeds instead of failing
+    # with a server error.
     assert data["prices"][0]["departure_name"] == "A_en"
 
