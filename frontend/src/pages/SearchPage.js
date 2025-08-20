@@ -11,6 +11,12 @@ import Calendar from "../components/Calendar";
 import { API } from "../config";
 
 export default function SearchPage() {
+  const supportedLangs = ["ru", "en", "bg", "ua"];
+  const browserLang =
+    typeof navigator !== "undefined" && navigator.language
+      ? navigator.language.slice(0, 2).toLowerCase()
+      : "ru";
+  const lang = supportedLangs.includes(browserLang) ? browserLang : "ru";
   const [departureStops, setDepartureStops] = useState([]);
   const [arrivalStops, setArrivalStops]     = useState([]);
   const [departDates, setDepartDates]       = useState([]);
@@ -60,10 +66,10 @@ export default function SearchPage() {
 
   // 1. Загрузить все отправные остановки
   useEffect(() => {
-    axios.get(`${API}/search/departures`, { params: { seats: seatCount } })
+    axios.post(`${API}/search/departures`, { seats: seatCount, lang })
       .then(res => setDepartureStops(res.data))
       .catch(console.error);
-  }, [seatCount]);
+  }, [seatCount, lang]);
 
   // 2. При выборе отправной — подгрузить конечные
   useEffect(() => {
@@ -74,13 +80,15 @@ export default function SearchPage() {
       setSelectedOutboundTour(null);
       setSelectedReturnTour(null);
     } else {
-      axios.get(`${API}/search/arrivals`, {
-        params: { departure_stop_id: selectedDeparture, seats: seatCount }
+      axios.post(`${API}/search/arrivals`, {
+        departure_stop_id: selectedDeparture,
+        seats: seatCount,
+        lang
       })
       .then(res => setArrivalStops(res.data))
       .catch(console.error);
     }
-  }, [selectedDeparture, seatCount]);
+  }, [selectedDeparture, seatCount, lang]);
 
   // 3. При выборе отправной+конечной — подгрузить доступные даты
   useEffect(() => {
