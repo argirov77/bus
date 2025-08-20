@@ -1,10 +1,25 @@
 from fastapi import APIRouter, Query
 from ..database import get_connection
+from ..models import LangRequest
 
 router = APIRouter(prefix="/search", tags=["search"])
 
-@router.get("/departures")
-def get_departures(seats: int = Query(1)):
+
+class DeparturesRequest(LangRequest):
+    seats: int = 1
+
+
+class ArrivalsRequest(LangRequest):
+    departure_stop_id: int
+    seats: int = 1
+
+
+@router.post("/departures")
+def get_departures(data: DeparturesRequest):
+    lang = data.lang.lower()
+    seats = data.seats
+    lang_columns = {"en": "stop_en", "bg": "stop_bg", "ua": "stop_ua"}
+    col = lang_columns.get(lang, "stop_name")
     conn = get_connection()
     cur = conn.cursor()
 
@@ -17,7 +32,10 @@ def get_departures(seats: int = Query(1)):
     departure_stops = [row[0] for row in cur.fetchall()]
 
     if departure_stops:
-        cur.execute("SELECT id, stop_name FROM stop WHERE id = ANY(%s)", (departure_stops,))
+        cur.execute(
+            f"SELECT id, COALESCE({col}, stop_name) FROM stop WHERE id = ANY(%s)",
+            (departure_stops,),
+        )
         stops_list = [{"id": row[0], "stop_name": row[1]} for row in cur.fetchall()]
     else:
         stops_list = []
@@ -26,8 +44,14 @@ def get_departures(seats: int = Query(1)):
     conn.close()
     return stops_list
 
-@router.get("/arrivals")
-def get_arrivals(departure_stop_id: int = Query(...), seats: int = Query(1)):
+
+@router.post("/arrivals")
+def get_arrivals(data: ArrivalsRequest):
+    lang = data.lang.lower()
+    departure_stop_id = data.departure_stop_id
+    seats = data.seats
+    lang_columns = {"en": "stop_en", "bg": "stop_bg", "ua": "stop_ua"}
+    col = lang_columns.get(lang, "stop_name")
     conn = get_connection()
     cur = conn.cursor()
 
@@ -41,7 +65,10 @@ def get_arrivals(departure_stop_id: int = Query(...), seats: int = Query(1)):
     arrival_stops = [row[0] for row in cur.fetchall()]
 
     if arrival_stops:
-        cur.execute("SELECT id, stop_name FROM stop WHERE id = ANY(%s)", (arrival_stops,))
+        cur.execute(
+            f"SELECT id, COALESCE({col}, stop_name) FROM stop WHERE id = ANY(%s)",
+            (arrival_stops,),
+        )
         stops_list = [{"id": row[0], "stop_name": row[1]} for row in cur.fetchall()]
     else:
         stops_list = []
