@@ -174,7 +174,13 @@ def selected_route(data: LangRequest):
 @router.post("/selected_pricelist", response_model=PricelistBundleOut)
 def selected_pricelist(data: LangRequest):
     lang = data.lang.lower()
-    col = f"stop_{lang}" if lang in {"en", "bg", "ua"} else "stop_name"
+    # Map supported languages to their corresponding column names.  If an
+    # unsupported language is requested we gracefully fall back to the
+    # default ``stop_name`` column rather than constructing a non-existent
+    # column like ``stop_ru`` which would raise an SQL error and bubble up as
+    # a 500 response.
+    lang_columns = {"en": "stop_en", "bg": "stop_bg", "ua": "stop_ua"}
+    col = lang_columns.get(lang, "stop_name")
     conn = get_connection()
     cur = conn.cursor()
     try:
