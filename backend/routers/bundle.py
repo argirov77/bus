@@ -189,8 +189,8 @@ def selected_pricelist(data: LangRequest):
         if not row:
             raise HTTPException(404, "Demo pricelist not found")
         pricelist_id = row[0]
-        cur.execute(
-            f"""
+        # Build the query dynamically with the requested translation column.
+        query_tpl = """
             SELECT p.departure_stop_id, COALESCE(s1.{col}, s1.stop_name),
                    p.arrival_stop_id, COALESCE(s2.{col}, s2.stop_name),
                    p.price
@@ -199,9 +199,19 @@ def selected_pricelist(data: LangRequest):
               JOIN stop s2 ON s2.id=p.arrival_stop_id
              WHERE p.pricelist_id=%s
              ORDER BY p.id
-            """,
-            (pricelist_id,),
-        )
+        """
+        query = query_tpl.format(col=col)
+        try:
+            cur.execute(query, (pricelist_id,))
+        except Exception as e:
+            # If the database does not contain the requested translation
+            # column (e.g. ``stop_bg``), retry the query using the default
+            # ``stop_name`` column instead of failing with a 500 error.
+            if "column" in str(e).lower() and "does not exist" in str(e).lower():
+                fallback_query = query_tpl.format(col="stop_name")
+                cur.execute(fallback_query, (pricelist_id,))
+            else:
+                raise
         prices = [
             {
                 "departure_stop_id": r[0],

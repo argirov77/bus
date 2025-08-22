@@ -18,8 +18,9 @@ class DummyCursor:
         # the schema, resulting in a 500 error.  Raising here allows the test to
         # verify that we correctly fall back to ``stop_name`` instead of
         # constructing invalid column names.
-        if "stop_ru" in q_lower:
-            raise Exception("column does not exist: stop_ru")
+        if "select" in q_lower and ("stop_ru" in q_lower or "stop_bg" in q_lower):
+            col = "stop_ru" if "stop_ru" in q_lower else "stop_bg"
+            raise Exception(f"column does not exist: {col}")
         self.query = q_lower
         self.params = params
     def fetchone(self):
@@ -104,5 +105,15 @@ def test_pricelist_bundle_unsupported_language(client):
     # Our dummy cursor returns "A_en" for the departure stop regardless of
     # language; the key point is that the request succeeds instead of failing
     # with a server error.
+    assert data["prices"][0]["departure_name"] == "A_en"
+
+
+def test_pricelist_bundle_missing_column(client):
+    """If a mapped language column is missing in the database we should
+    gracefully fall back to the default column instead of returning a 500
+    error."""
+    resp = client.post("/selected_pricelist", json={"lang": "bg"})
+    assert resp.status_code == 200
+    data = resp.json()
     assert data["prices"][0]["departure_name"] == "A_en"
 
