@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 from ..database import get_connection
 from ..models import LangRequest
 
@@ -12,6 +12,12 @@ class DeparturesRequest(LangRequest):
 class ArrivalsRequest(LangRequest):
     departure_stop_id: int
     seats: int = 1
+
+
+@router.options("/departures")
+def departures_options() -> Response:
+    """Preflight request handler for departures search."""
+    return Response(status_code=200)
 
 
 @router.post("/departures")
@@ -43,6 +49,12 @@ def get_departures(data: DeparturesRequest):
     cur.close()
     conn.close()
     return stops_list
+
+
+@router.options("/arrivals")
+def arrivals_options() -> Response:
+    """Preflight request handler for arrivals search."""
+    return Response(status_code=200)
 
 
 @router.post("/arrivals")

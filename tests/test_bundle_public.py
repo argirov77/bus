@@ -117,3 +117,8 @@ def test_pricelist_bundle_missing_column(client):
     data = resp.json()
     assert data["prices"][0]["departure_name"] == "A_en"
 
+
+def test_selected_route_options(client):
+    resp = client.options("/selected_route")
+    assert resp.status_code == 200
+

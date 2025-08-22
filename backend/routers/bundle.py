@@ -1,6 +1,6 @@
 from datetime import time as dt_time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from ..auth import require_admin_token
 from ..database import get_connection
 from ..models import (
@@ -148,6 +148,12 @@ def _get_route(cur, route_id: int, col: str):
         for r in cur.fetchall()
     ]
     return {"id": route_id, "name": name, "stops": stops}
+
+
+@router.options("/selected_route")
+def selected_route_options() -> Response:
+    """Preflight request handler for selected route bundle."""
+    return Response(status_code=200)
 
 
 @router.post("/selected_route", response_model=RoutesBundleOut)
