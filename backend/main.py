@@ -42,7 +42,7 @@ def health() -> dict[str, str]:
 # Настраиваем CORS из переменной окружения. Значение может быть
 # списком адресов через запятую либо "*" для разрешения всех источников.
 cors_origins = os.getenv(
-    "CORS_ORIGINS", "http://localhost:3000,http://localhost:3001"
+    "CORS_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:4000"
 )
 if cors_origins.strip() == "*":
     origins = ["*"]
