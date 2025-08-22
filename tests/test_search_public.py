@@ -37,6 +37,12 @@ class DummyConn:
     def cursor(self):
         return DummyCursor()
 
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
     def close(self):
         pass
 
@@ -75,3 +81,13 @@ def test_arrivals_lang(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data[0]["stop_name"] == "Stop1_en"
+
+
+def test_departures_options(client):
+    resp = client.options("/search/departures")
+    assert resp.status_code == 200
+
+
+def test_arrivals_options(client):
+    resp = client.options("/search/arrivals")
+    assert resp.status_code == 200
