@@ -82,6 +82,8 @@ def test_purchase_flow(client):
         'passenger_email': 'a@b.com',
         'departure_stop_id': 1,
         'arrival_stop_id': 2,
+        'adult_count': 1,
+        'discount_count': 0,
     })
     assert resp.status_code == 200
     assert 'amount_due' in resp.json()
@@ -104,6 +106,8 @@ def test_purchase_flow(client):
         'passenger_email': 'b@c.com',
         'departure_stop_id': 1,
         'arrival_stop_id': 2,
+        'adult_count': 1,
+        'discount_count': 0,
     })
     assert resp.status_code == 200
     assert 'amount_due' in resp.json()
@@ -124,3 +128,36 @@ def test_purchase_flow(client):
     assert resp.status_code == 204
     assert any("status='refunded'" in q[0] for q in store['cursor'].queries)
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
+
+
+def test_passenger_count_mismatch(client):
+    cli, _ = client
+    resp = cli.post('/book', json={
+        'tour_id': 1,
+        'seat_nums': [1],
+        'passenger_names': ['A'],
+        'passenger_phone': '1',
+        'passenger_email': 'a@b.com',
+        'departure_stop_id': 1,
+        'arrival_stop_id': 2,
+        'adult_count': 1,
+        'discount_count': 1,
+    })
+    assert resp.status_code == 400
+
+
+def test_discount_price_applied(client):
+    cli, _ = client
+    resp = cli.post('/book', json={
+        'tour_id': 1,
+        'seat_nums': [1],
+        'passenger_names': ['A'],
+        'passenger_phone': '1',
+        'passenger_email': 'a@b.com',
+        'departure_stop_id': 1,
+        'arrival_stop_id': 2,
+        'adult_count': 0,
+        'discount_count': 1,
+    })
+    assert resp.status_code == 200
+    assert resp.json()['amount_due'] == 9.5

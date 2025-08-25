@@ -82,6 +82,8 @@ def test_multiple_purchases_same_id(client):
         'passenger_email': 'a@b.com',
         'departure_stop_id': 1,
         'arrival_stop_id': 2,
+        'adult_count': 1,
+        'discount_count': 0,
     })
     assert resp1.status_code == 200
     purchase_id = resp1.json()['purchase_id']
@@ -94,6 +96,8 @@ def test_multiple_purchases_same_id(client):
         'passenger_email': 'a@b.com',
         'departure_stop_id': 1,
         'arrival_stop_id': 2,
+        'adult_count': 1,
+        'discount_count': 0,
         'purchase_id': purchase_id
     })
     assert resp2.status_code == 200

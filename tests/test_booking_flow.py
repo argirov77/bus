@@ -88,6 +88,8 @@ def test_booking_flow(client):
         'passenger_email': 'a@b.com',
         'departure_stop_id': 1,
         'arrival_stop_id': 2,
+        'adult_count': 1,
+        'discount_count': 0,
     })
     assert any('reserved' in q[0].lower() for q in store['cursor'].queries)
     assert any('insert into sales' in q[0].lower() for q in store['cursor'].queries)
@@ -111,6 +113,8 @@ def test_booking_flow(client):
         'passenger_email': 'a@b.com',
         'departure_stop_id': 1,
         'arrival_stop_id': 2,
+        'adult_count': 1,
+        'discount_count': 0,
     })
     assert any('paid' in q[0].lower() for q in store['cursor'].queries)
     assert any('insert into sales' in q[0].lower() for q in store['cursor'].queries)
