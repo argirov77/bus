@@ -376,18 +376,46 @@ def search_tours(
     try:
         cur.execute(
             """
-            SELECT t.id, t.date, a.seats, t.layout_variant
+            SELECT t.id,
+                   t.date,
+                   a.seats,
+                   t.layout_variant,
+                   rs_dep.departure_time,
+                   rs_arr.arrival_time,
+                   p.price
               FROM tour t
               JOIN available a ON a.tour_id = t.id
+              JOIN routestop rs_dep ON rs_dep.route_id = t.route_id AND rs_dep.stop_id = %s
+              JOIN routestop rs_arr ON rs_arr.route_id = t.route_id AND rs_arr.stop_id = %s
+              JOIN prices p ON p.pricelist_id = t.pricelist_id
+                             AND p.departure_stop_id = %s
+                             AND p.arrival_stop_id = %s
              WHERE a.departure_stop_id=%s
                AND a.arrival_stop_id=%s
                AND t.date=%s
                AND a.seats>=%s
             """,
-            (departure_stop_id, arrival_stop_id, date, seats),
+            (
+                departure_stop_id,
+                arrival_stop_id,
+                departure_stop_id,
+                arrival_stop_id,
+                departure_stop_id,
+                arrival_stop_id,
+                date,
+                seats,
+            ),
         )
         return [
-            {"id": r[0], "date": r[1], "seats": r[2], "layout_variant": r[3]}
+            {
+                "id": r[0],
+                "date": r[1],
+                "seats": r[2],
+                "layout_variant": r[3],
+                "departure_time": r[4].strftime("%H:%M") if r[4] else None,
+                "arrival_time": r[5].strftime("%H:%M") if r[5] else None,
+                "price": float(r[6]),
+            }
             for r in cur.fetchall()
         ]
     finally:
