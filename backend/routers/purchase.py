@@ -16,6 +16,8 @@ class PurchaseCreate(BaseModel):
     passenger_email: EmailStr
     departure_stop_id: int
     arrival_stop_id: int
+    adult_count: int
+    discount_count: int
     extra_baggage: list[bool] | None = None
     purchase_id: int | None = None
 
@@ -49,6 +51,8 @@ def _create_purchase(
 
     if len(data.seat_nums) != len(data.passenger_names):
         raise HTTPException(400, "Seat numbers and passenger names count mismatch")
+    if data.adult_count + data.discount_count != len(data.seat_nums):
+        raise HTTPException(400, "Passenger counts must match seat numbers")
 
     baggage_list = data.extra_baggage or [False] * len(data.seat_nums)
     if len(baggage_list) != len(data.seat_nums):
@@ -85,8 +89,9 @@ def _create_purchase(
     if not price_row:
         raise HTTPException(404, "Price not found")
     base_price = float(price_row[0])
+    baggage_count = sum(1 for b in baggage_list if b)
     total_price = base_price * (
-        len(data.seat_nums) + 0.1 * sum(1 for b in baggage_list if b)
+        data.adult_count + data.discount_count * 0.95 + 0.1 * baggage_count
     )
     total_price = round(total_price, 2)
 

@@ -140,3 +140,26 @@ CORS_ORIGINS=http://localhost:3000,https://example.com
 - `GET /stops/{id}` – получить остановку по идентификатору.
 - `PUT /stops/{id}` – обновить существующую остановку. Тело запроса аналогично созданию и также может содержать поле `location`.
 - `DELETE /stops/{id}` – удалить остановку.
+
+## Покупка билетов
+
+Эндпоинты `/book` и `/purchase` принимают поля `adult_count` и `discount_count`,
+которые задают количество полных и льготных билетов соответственно. Сумма
+этих полей должна совпадать с числом мест в `seat_nums`. Для каждого льготного
+билета применяется скидка 5 %.
+
+Пример тела запроса для бронирования одного места:
+
+```json
+{
+  "tour_id": 1,
+  "seat_nums": [1],
+  "passenger_names": ["Иван"],
+  "passenger_phone": "123",
+  "passenger_email": "ivan@example.com",
+  "departure_stop_id": 1,
+  "arrival_stop_id": 2,
+  "adult_count": 1,
+  "discount_count": 0
+}
+```

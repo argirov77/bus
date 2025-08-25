@@ -100,6 +100,8 @@ def test_reserved_to_paid_purchase(client):
         'passenger_email': 'a@b.com',
         'departure_stop_id': 1,
         'arrival_stop_id': 2,
+        'adult_count': 1,
+        'discount_count': 0,
     })
     assert resp.status_code == 200
     pid = resp.json()['purchase_id']
@@ -116,6 +118,8 @@ def test_reserved_to_paid_purchase(client):
         'passenger_email': 'a@b.com',
         'departure_stop_id': 1,
         'arrival_stop_id': 2,
+        'adult_count': 1,
+        'discount_count': 0,
         'purchase_id': pid,
     })
     assert resp.status_code == 200

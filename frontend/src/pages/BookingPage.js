@@ -43,6 +43,8 @@ function BookingPage(props) {
         passenger_email: passengerData.email,
         departure_stop_id: departureStopId,
         arrival_stop_id: arrivalStopId,
+        adult_count: 1,
+        discount_count: 0,
         extra_baggage: [extraBaggage]
       })
       .then(function(res) {
