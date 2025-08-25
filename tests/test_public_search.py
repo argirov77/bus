@@ -1,7 +1,7 @@
-import importlib
 import os
 import sys
-from datetime import date
+import importlib
+from datetime import date, time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,8 +15,8 @@ class DummyCursor:
         self.query = query
 
     def fetchall(self):
-        # Return one dummy tour row
-        return [(1, date(2024, 1, 1), 5, 1)]
+        # Return one dummy tour row with times and price
+        return [(1, date(2024, 1, 1), 5, 1, time(8, 0), time(10, 0), 200.0)]
 
     def close(self):
         pass
@@ -69,5 +69,8 @@ def test_tours_search_public(client):
         'id': 1,
         'date': '2024-01-01',
         'seats': 5,
-        'layout_variant': 1
+        'layout_variant': 1,
+        'departure_time': '08:00',
+        'arrival_time': '10:00',
+        'price': 200.0
     }]

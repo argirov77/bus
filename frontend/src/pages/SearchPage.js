@@ -312,6 +312,29 @@ export default function SearchPage() {
       })
       .finally(() => setLoading(false));
   };
+  const depStopName = departureStops.find(s => s.id === Number(selectedDeparture))?.stop_name || "";
+  const arrStopName = arrivalStops.find(s => s.id === Number(selectedArrival))?.stop_name || "";
+
+  const formatDate = d => {
+    const [y, m, day] = d.split("-");
+    return `${day}/${m}/${y}`;
+  };
+
+  const getDuration = (start, end) => {
+    const [sh, sm] = start.split(":").map(Number);
+    const [eh, em] = end.split(":").map(Number);
+    const mins = eh * 60 + em - (sh * 60 + sm);
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${h}ч ${m}м`;
+  };
+
+  const calcPrice = price => {
+    const adultSum = price * adultCount;
+    const discountSum = price * discountCount * 0.95;
+    const total = adultSum + discountSum;
+    return { adultSum, discountSum, total };
+  };
 
   return (
     <div className="container" style={{ padding: 20 }}>
@@ -415,28 +438,64 @@ export default function SearchPage() {
     {outboundTours.length > 0 && (
       <>
         <h3>Рейсы туда:</h3>
-        {outboundTours.map(t => (
-          <div key={t.id} style={{ display:'flex', marginBottom:8 }}>
-            <span>Рейс #{t.id}, дата: {t.date}</span>
-            <button style={{ marginLeft:8 }} onClick={() => handleOutboundTourSelect(t)}>
-              Выбрать
-            </button>
-          </div>
-        ))}
+        {outboundTours.map(t => {
+          const { adultSum, discountSum, total } = calcPrice(t.price);
+          const duration = getDuration(t.departure_time, t.arrival_time);
+          return (
+            <div key={t.id} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
+              <div>
+                {formatDate(t.date)} {t.departure_time} {depStopName} → {t.arrival_time} {arrStopName} ({duration})
+              </div>
+              <div>Цена билета: {t.price.toFixed(2)}</div>
+              {adultCount > 0 && (
+                <div>
+                  {adultCount} взрослых {t.price.toFixed(2)} x {adultCount} = {adultSum.toFixed(2)}
+                </div>
+              )}
+              {discountCount > 0 && (
+                <div>
+                  {discountCount} льготный {t.price.toFixed(2)} x {discountCount} -5% = {discountSum.toFixed(2)}
+                </div>
+              )}
+              <div>Итого: {total.toFixed(2)}</div>
+              <button style={{ marginTop: 8 }} onClick={() => handleOutboundTourSelect(t)}>
+                Выбрать
+              </button>
+            </div>
+          );
+        })}
       </>
     )}
 
     {selectedReturnDate && returnTours.length > 0 && (
       <>
         <h3>Рейсы обратно:</h3>
-        {returnTours.map(t => (
-          <div key={t.id} style={{ display:'flex', marginBottom:8 }}>
-            <span>Рейс #{t.id}, дата: {t.date}</span>
-            <button style={{ marginLeft:8 }} onClick={() => handleReturnTourSelect(t)}>
-              Выбрать
-            </button>
-          </div>
-        ))}
+        {returnTours.map(t => {
+          const { adultSum, discountSum, total } = calcPrice(t.price);
+          const duration = getDuration(t.departure_time, t.arrival_time);
+          return (
+            <div key={t.id} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
+              <div>
+                {formatDate(t.date)} {t.departure_time} {arrStopName} → {t.arrival_time} {depStopName} ({duration})
+              </div>
+              <div>Цена билета: {t.price.toFixed(2)}</div>
+              {adultCount > 0 && (
+                <div>
+                  {adultCount} взрослых {t.price.toFixed(2)} x {adultCount} = {adultSum.toFixed(2)}
+                </div>
+              )}
+              {discountCount > 0 && (
+                <div>
+                  {discountCount} льготный {t.price.toFixed(2)} x {discountCount} -5% = {discountSum.toFixed(2)}
+                </div>
+              )}
+              <div>Итого: {total.toFixed(2)}</div>
+              <button style={{ marginTop: 8 }} onClick={() => handleReturnTourSelect(t)}>
+                Выбрать
+              </button>
+            </div>
+          );
+        })}
       </>
     )}
 
