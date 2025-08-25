@@ -38,23 +38,25 @@ app = FastAPI()
 def health() -> dict[str, str]:
     """Simple health check returning API status."""
     return {"status": "ok"}
-
-# Настраиваем CORS из переменной окружения. Значение может быть
-# списком адресов через запятую либо "*" для разрешения всех источников.
-cors_origins = os.getenv(
-    "CORS_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:4000"
-)
-if cors_origins.strip() == "*":
-    origins = ["*"]
-else:
-    origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+# Configure CORS to allow requests from development front-end origins.
+origins = [
+    "http://localhost:4000",
+    "http://127.0.0.1:4000",
+    # if using other dev ports (Vite/CRA), include:
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins,           # or allow_origin_regex=r"http://localhost:\d+$"
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    expose_headers=["Content-Disposition"],
+    max_age=86400,
 )
 
 # Подключаем роутеры

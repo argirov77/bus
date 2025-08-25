@@ -84,10 +84,24 @@ def test_arrivals_lang(client):
 
 
 def test_departures_options(client):
-    resp = client.options("/search/departures")
+    resp = client.options(
+        "/search/departures",
+        headers={
+            "Origin": "http://localhost:4000",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
     assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:4000"
 
 
 def test_arrivals_options(client):
-    resp = client.options("/search/arrivals")
+    resp = client.options(
+        "/search/arrivals",
+        headers={
+            "Origin": "http://localhost:4000",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
     assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == "http://localhost:4000"
