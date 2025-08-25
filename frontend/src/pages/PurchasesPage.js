@@ -172,7 +172,7 @@ export default function PurchasesPage() {
                               info[p.id].logs.map((l) => (
                                 <tr key={l.id}>
                                   <td>{l.action}</td>
-                                  <td>{new Date(l.at).toLocaleString('ru-RU')}</td>
+                                  <td>{new Date(l.at).toLocaleString('ru-RU', { timeZone: 'Europe/Sofia', hour12: false })}</td>
                                   <td>{l.by || '—'}</td>
                                   <td>{l.method || '—'}</td>
                                   <td>{l.amount}</td>
