@@ -378,7 +378,7 @@ export default function SearchPage() {
           type="text"
           readOnly
           placeholder="Дата туда"
-          value={selectedDepartDate}
+          value={selectedDepartDate ? formatDate(selectedDepartDate) : ''}
           onClick={() => { setShowDepartCal(v => !v); setShowReturnCal(false); }}
         />
 
@@ -387,7 +387,7 @@ export default function SearchPage() {
           type="text"
           readOnly
           placeholder="Дата обратно"
-          value={selectedReturnDate}
+          value={selectedReturnDate ? formatDate(selectedReturnDate) : ''}
           onClick={() => {
             if (returnDates.length) {
               setShowReturnCal(v => !v);
@@ -428,8 +428,8 @@ export default function SearchPage() {
         </div>
       )}
 
-      {selectedDepartDate && <p>Выбранная дата туда: {selectedDepartDate}</p>}
-      {selectedReturnDate && <p>Выбранная дата обратно: {selectedReturnDate}</p>}
+      {selectedDepartDate && <p>Выбранная дата туда: {formatDate(selectedDepartDate)}</p>}
+      {selectedReturnDate && <p>Выбранная дата обратно: {formatDate(selectedReturnDate)}</p>}
 
     {loading && <Loader />}
 
@@ -443,9 +443,10 @@ export default function SearchPage() {
           const duration = getDuration(t.departure_time, t.arrival_time);
           return (
             <div key={t.id} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
-              <div>
-                {formatDate(t.date)} {t.departure_time} {depStopName} → {t.arrival_time} {arrStopName} ({duration})
-              </div>
+              <div>Дата: {formatDate(t.date)}</div>
+              <div>Отправление: {t.departure_time} {depStopName}</div>
+              <div>Прибытие: {t.arrival_time} {arrStopName}</div>
+              <div>В пути: {duration}</div>
               <div>Цена билета: {t.price.toFixed(2)}</div>
               {adultCount > 0 && (
                 <div>
@@ -475,9 +476,10 @@ export default function SearchPage() {
           const duration = getDuration(t.departure_time, t.arrival_time);
           return (
             <div key={t.id} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
-              <div>
-                {formatDate(t.date)} {t.departure_time} {arrStopName} → {t.arrival_time} {depStopName} ({duration})
-              </div>
+              <div>Дата: {formatDate(t.date)}</div>
+              <div>Отправление: {t.departure_time} {arrStopName}</div>
+              <div>Прибытие: {t.arrival_time} {depStopName}</div>
+              <div>В пути: {duration}</div>
               <div>Цена билета: {t.price.toFixed(2)}</div>
               {adultCount > 0 && (
                 <div>
@@ -501,7 +503,10 @@ export default function SearchPage() {
 
     {selectedOutboundTour && (!selectedReturnDate || selectedReturnTour) && (
       <>
-        <h3>Рейс туда #{selectedOutboundTour.id}, дата: {selectedOutboundTour.date}</h3>
+        <h3>Рейс туда #{selectedOutboundTour.id}</h3>
+        <p>Дата: {formatDate(selectedOutboundTour.date)}</p>
+        <p>Отправление: {selectedOutboundTour.departure_time} {depStopName}</p>
+        <p>Прибытие: {selectedOutboundTour.arrival_time} {arrStopName}</p>
         <p>Свободно мест: {selectedOutboundTour.seats}</p>
         <p>Выберите место:</p>
 
@@ -521,7 +526,10 @@ export default function SearchPage() {
 
         {selectedReturnTour && (
           <>
-            <h3>Рейс обратно #{selectedReturnTour.id}, дата: {selectedReturnTour.date}</h3>
+            <h3>Рейс обратно #{selectedReturnTour.id}</h3>
+            <p>Дата: {formatDate(selectedReturnTour.date)}</p>
+            <p>Отправление: {selectedReturnTour.departure_time} {arrStopName}</p>
+            <p>Прибытие: {selectedReturnTour.arrival_time} {depStopName}</p>
             <p>Свободно мест: {selectedReturnTour.seats}</p>
             <p>Выберите место:</p>
             <SeatClient
