@@ -7,6 +7,7 @@ import SeatClient from "../components/SeatClient";
 import Loader from "../components/Loader";
 import Alert from "../components/Alert";
 import Calendar from "../components/Calendar";
+import PassengerSelector from "../components/PassengerSelector";
 
 import { API } from "../config";
 
@@ -34,10 +35,11 @@ export default function SearchPage() {
   const [selectedOutboundTour, setSelectedOutboundTour] = useState(null);
   const [selectedReturnTour, setSelectedReturnTour] = useState(null);
 
-  const [seatCount, setSeatCount] = useState(1);
+  const [adultCount, setAdultCount] = useState(1);
+  const [discountCount, setDiscountCount] = useState(0);
+  const seatCount = adultCount + discountCount;
   const [selectedOutboundSeats, setSelectedOutboundSeats] = useState([]);
   const [selectedReturnSeats, setSelectedReturnSeats] = useState([]);
-  const [passengerNames, setPassengerNames] = useState([""]);
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [extraBaggageOutbound, setExtraBaggageOutbound] = useState([false]);
@@ -53,7 +55,6 @@ export default function SearchPage() {
     : today;
 
   useEffect(() => {
-    setPassengerNames(Array(seatCount).fill(""));
     setSelectedOutboundSeats([]);
     setSelectedReturnSeats([]);
     setSelectedDepartDate("");
@@ -206,11 +207,6 @@ export default function SearchPage() {
       setMessageType("error");
       return;
     }
-    if (passengerNames.some(n => !n)) {
-      setMessage("Заполните имена пассажиров");
-      setMessageType("error");
-      return;
-    }
     if (!phone || !email) {
       setMessage("Заполните контактные данные");
       setMessageType("error");
@@ -222,9 +218,10 @@ export default function SearchPage() {
     try {
       const endpoint = action === 'purchase' ? 'purchase' : 'book';
       const basePayload = {
-        passenger_names: passengerNames,
         passenger_phone: phone,
-        passenger_email: email
+        passenger_email: email,
+        adult_count: adultCount,
+        discount_count: discountCount
       };
       const outRes = await axios.post(`${API}/${endpoint}`, {
         ...basePayload,
@@ -257,7 +254,6 @@ export default function SearchPage() {
       setMessageType("success");
       setSelectedOutboundSeats([]);
       setSelectedReturnSeats([]);
-      setPassengerNames(Array(seatCount).fill(""));
       setPhone("");
       setEmail("");
       setExtraBaggageOutbound(Array(seatCount).fill(false));
@@ -347,13 +343,11 @@ export default function SearchPage() {
           ))}
         </select>
 
-        <input
-          className="input"
-          type="number"
-          min="1"
-          value={seatCount}
-          onChange={e => setSeatCount(Number(e.target.value))}
-          style={{ width: 60 }}
+        <PassengerSelector
+          adultCount={adultCount}
+          discountCount={discountCount}
+          onAdultChange={setAdultCount}
+          onDiscountChange={setDiscountCount}
         />
 
         <input
@@ -488,19 +482,9 @@ export default function SearchPage() {
 
         <form onSubmit={e => e.preventDefault()}
               style={{ marginTop:20, display:"flex", flexDirection:"column", gap:8, maxWidth:300 }}>
-          {passengerNames.map((name, idx) => (
+          {[...Array(seatCount).keys()].map(idx => (
             <div key={idx} style={{display:'flex',alignItems:'center',gap:4}}>
-              <input
-                type="text"
-                placeholder={`Имя пассажира ${idx + 1}`}
-                required
-                value={name}
-                onChange={e => {
-                  const arr = [...passengerNames];
-                  arr[idx] = e.target.value;
-                  setPassengerNames(arr);
-                }}
-              />
+              <span>Пассажир {idx + 1}</span>
               <label style={{display:'flex',alignItems:'center',gap:2}}>
                 <input
                   type="checkbox"
