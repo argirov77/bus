@@ -45,16 +45,13 @@ cors_origins = os.getenv(
     "CORS_ORIGINS", "http://localhost:3000,http://localhost:3001,http://localhost:4000"
 )
 if cors_origins.strip() == "*":
-    origins: list[str] = []
-    origin_regex = ".*"
+    origins = ["*"]
 else:
     origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
-    origin_regex = None
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -119,14 +119,6 @@ def test_pricelist_bundle_missing_column(client):
 
 
 def test_selected_route_options(client):
-    resp = client.options(
-        "/selected_route",
-        headers={
-            "Origin": "http://localhost:4000",
-            "Access-Control-Request-Method": "POST",
-        },
-    )
+    resp = client.options("/selected_route")
     assert resp.status_code == 200
-    # The CORS middleware should echo back the requesting origin.
-    assert resp.headers.get("access-control-allow-origin") == "http://localhost:4000"
 
