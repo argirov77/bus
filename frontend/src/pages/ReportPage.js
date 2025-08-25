@@ -20,6 +20,7 @@ function ReportPage() {
   // Результат отчёта
   const [reportData, setReportData] = useState(null);
   const [message, setMessage] = useState("");
+  const [isError, setIsError] = useState(false);
 
   // Загружаем маршруты
   useEffect(() => {
@@ -50,6 +51,7 @@ function ReportPage() {
   const handleSearch = (e) => {
     e.preventDefault();
     setMessage("Загрузка отчёта...");
+    setIsError(false);
 
     // На бэкенд отправляем ID остановок
     const departureStopId = departureStop || null;
@@ -70,6 +72,7 @@ function ReportPage() {
     .catch(err => {
       console.error("Ошибка получения отчёта:", err);
       setMessage("Ошибка получения отчёта");
+      setIsError(true);
     });
   };
 
@@ -156,7 +159,7 @@ function ReportPage() {
         <button type="submit">Найти отчёт</button>
       </form>
 
-      {message && <p className="report-message">{message}</p>}
+      {message && <p className={`report-message${isError ? " error" : ""}`}>{message}</p>}
 
       {reportData && (
         <div className="report-results">
@@ -166,36 +169,38 @@ function ReportPage() {
 
           <h3>Детали билетов</h3>
           {reportData.tickets.length > 0 ? (
-            <table className="report-table">
-              <thead>
-                <tr>
-                  <th>Билет</th>
-                  <th>Рейс</th>
-                  <th>Маршрут</th>
-                  <th>Место</th>
-                  <th>Цена</th>
-                  <th>Пассажир</th>
-                  <th>Дата рейса</th>
-                  <th>Отправная</th>
-                  <th>Конечная</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reportData.tickets.map((tk) => (
-                  <tr key={tk.ticket_id}>
-                    <td>{tk.ticket_id}</td>
-                    <td>{tk.tour_id}</td>
-                    <td>{tk.route_name}</td>
-                    <td>{tk.seat_num}</td>
-                    <td>{tk.price}</td>
-                    <td>{tk.passenger_name}</td>
-                    <td>{tk.tour_date}</td>
-                    <td>{tk.departure_stop_name}</td>
-                    <td>{tk.arrival_stop_name}</td>
+            <div className="table-wrapper">
+              <table className="report-table">
+                <thead>
+                  <tr>
+                    <th>Билет</th>
+                    <th>Рейс</th>
+                    <th>Маршрут</th>
+                    <th>Место</th>
+                    <th>Цена</th>
+                    <th>Пассажир</th>
+                    <th>Дата рейса</th>
+                    <th>Отправная</th>
+                    <th>Конечная</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {reportData.tickets.map((tk) => (
+                    <tr key={tk.ticket_id}>
+                      <td>{tk.ticket_id}</td>
+                      <td>{tk.tour_id}</td>
+                      <td>{tk.route_name}</td>
+                      <td>{tk.seat_num}</td>
+                      <td>{tk.price}</td>
+                      <td>{tk.passenger_name}</td>
+                      <td>{tk.tour_date}</td>
+                      <td>{tk.departure_stop_name}</td>
+                      <td>{tk.arrival_stop_name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <p>Нет проданных билетов по заданным параметрам.</p>
           )}

@@ -1,73 +1,95 @@
 .report-container {
     max-width: 900px;
     margin: 20px auto;
-    padding: 20px;
-    font-family: 'Roboto', sans-serif;
+    padding: 24px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    font: 14px/1.4 system-ui, Arial, sans-serif;
   }
-  
+
   .report-form {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 15px;
-    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    padding: 20px;
+    border-radius: 8px;
   }
-  
-  .report-form div {
+
+  .report-form > div {
     display: flex;
     flex-direction: column;
   }
-  
+
   .report-form label {
     font-weight: bold;
     margin-bottom: 5px;
   }
-  
+
   .report-form input,
   .report-form select {
     padding: 8px;
     border: 1px solid #ccc;
     border-radius: 4px;
+    background: #fff;
   }
-  
+
   .report-form button {
+    grid-column: 1 / -1;
+    justify-self: start;
     padding: 10px 16px;
     background-color: #4d9ef9;
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    align-self: flex-end;
-    margin-top: 22px;
+    transition: background-color 0.2s ease;
   }
-  
+
   .report-form button:hover {
     background-color: #327ad6;
   }
-  
+
   .report-message {
-    color: blue;
-    font-weight: bold;
+    font-weight: 500;
     margin-bottom: 20px;
+    color: #0d6efd;
   }
-  
+
+  .report-message.error {
+    color: #d9534f;
+  }
+
   .report-results {
     margin-top: 20px;
   }
-  
+
+  .table-wrapper {
+    overflow-x: auto;
+  }
+
   .report-table {
     width: 100%;
     border-collapse: collapse;
     margin-top: 10px;
+    min-width: 600px;
   }
-  
+
   .report-table th,
   .report-table td {
     padding: 8px 12px;
     border: 1px solid #ddd;
     text-align: left;
   }
-  
+
   .report-table th {
     background-color: #f0f2f7;
+  }
+
+  .report-table tr:nth-child(even) {
+    background-color: #f9fafb;
   }
   
