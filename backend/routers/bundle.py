@@ -220,10 +220,13 @@ def selected_pricelist(data: LangRequest):
         query = query_tpl.format(col=col)
         try:
             cur.execute(query, (pricelist_id,))
-        except Exception as e:
+        except UndefinedColumn:
             # If the database does not contain the requested translation
             # column (e.g. ``stop_bg``), retry the query using the default
             # ``stop_name`` column instead of failing with a 500 error.
+            fallback_query = query_tpl.format(col="stop_name")
+            cur.execute(fallback_query, (pricelist_id,))
+        except Exception as e:
             if "column" in str(e).lower() and "does not exist" in str(e).lower():
                 fallback_query = query_tpl.format(col="stop_name")
                 cur.execute(fallback_query, (pricelist_id,))
