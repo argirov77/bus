@@ -5,6 +5,7 @@ from datetime import time
 
 import pytest
 from fastapi.testclient import TestClient
+from psycopg2.errors import UndefinedColumn
 
 class DummyCursor:
     def __init__(self):
@@ -117,6 +118,31 @@ def test_pricelist_bundle_missing_column(client):
     data = resp.json()
     assert data["prices"][0]["departure_name"] == "A_en"
 
+
+def test_pricelist_bundle_missing_is_demo(client, monkeypatch):
+    """If the ``is_demo`` column is absent in the ``pricelist`` table the
+    endpoint should fall back to selecting the first available pricelist
+    instead of returning a server error."""
+
+    class NoDemoCursor(DummyCursor):
+        def execute(self, query, params=None):
+            q_lower = query.lower()
+            if "select id from pricelist where is_demo" in q_lower:
+                raise UndefinedColumn("column does not exist: is_demo")
+            super().execute(query, params)
+
+        def fetchone(self):
+            if "select id from pricelist" in self.query and "where" not in self.query:
+                return [5]
+            return super().fetchone()
+
+    class NoDemoConn(DummyConn):
+        def __init__(self):
+            self.cursor_obj = NoDemoCursor()
+
+    monkeypatch.setattr("backend.routers.bundle.get_connection", lambda: NoDemoConn())
+    resp = client.post("/selected_pricelist", json={"lang": "en"})
+    assert resp.status_code == 200
 
 def test_selected_route_options(client):
     resp = client.options(
