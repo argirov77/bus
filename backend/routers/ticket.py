@@ -1,10 +1,10 @@
 # backend/app/routers/ticket.py
 
-from typing import cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from pydantic import BaseModel, EmailStr, Field
 
 from ..auth import require_scope
 from ..database import get_connection
@@ -18,6 +18,7 @@ from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
 from ..services import ticket_links
 from ..services.access_guard import guard_public_request
+from ..ticket_utils import recalc_available
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +78,31 @@ def get_ticket_pdf(
 
 
 class TicketReassign(BaseModel):
-    tour_id:   int
+    tour_id: int
     from_seat: int
-    to_seat:   int
+    to_seat: int
+
+
+class TicketUpdate(BaseModel):
+    passenger_name: Optional[str] = Field(None, description="Updated passenger name")
+    extra_baggage: Optional[bool] = Field(None, description="Extra baggage flag")
+    departure_stop_id: Optional[int] = Field(
+        None, description="Updated departure stop identifier"
+    )
+    arrival_stop_id: Optional[int] = Field(
+        None, description="Updated arrival stop identifier"
+    )
+
+
+class TicketSeatChange(BaseModel):
+    seat_num: int = Field(..., description="Target seat number on the tour")
+
+
+class TicketReschedule(BaseModel):
+    tour_id: int = Field(..., description="Target tour identifier")
+    seat_num: int = Field(..., description="Desired seat number on the new tour")
+    departure_stop_id: int = Field(..., description="Departure stop for the new segment")
+    arrival_stop_id: int = Field(..., description="Arrival stop for the new segment")
 
 
 def _resolve_actor(request: Request) -> tuple[str, str | None]:
@@ -97,6 +120,560 @@ def _resolve_actor(request: Request) -> tuple[str, str | None]:
     actor = jti or ("admin" if is_admin else "system")
     return actor, jti
 
+
+def _fetch_route_stops(cur, route_id: int) -> List[int]:
+    cur.execute(
+        'SELECT stop_id FROM routestop WHERE route_id = %s ORDER BY "order"',
+        (route_id,),
+    )
+    rows = cur.fetchall()
+    if not rows:
+        raise HTTPException(400, "Route has no stops configured")
+    return [int(row[0]) for row in rows]
+
+
+def _segments_between(
+    stops: List[int], departure_stop_id: int, arrival_stop_id: int
+) -> Tuple[List[str], List[Tuple[int, int]]]:
+    if departure_stop_id not in stops or arrival_stop_id not in stops:
+        raise HTTPException(400, "Invalid stops for this route")
+    idx_from = stops.index(departure_stop_id)
+    idx_to = stops.index(arrival_stop_id)
+    if idx_from >= idx_to:
+        raise HTTPException(400, "Arrival must come after departure")
+    segment_tokens = [str(i + 1) for i in range(idx_from, idx_to)]
+    segment_pairs = [(stops[i], stops[i + 1]) for i in range(idx_from, idx_to)]
+    return segment_tokens, segment_pairs
+
+
+def _merge_available(avail: Optional[str], segments: List[str]) -> str:
+    base = "" if not avail or avail == "0" else avail
+    merged = sorted(set(base + "".join(segments)), key=int)
+    return "".join(merged) if merged else "0"
+
+
+def _remove_segments(avail: Optional[str], segments: List[str]) -> str:
+    base = "" if not avail or avail == "0" else avail
+    updated = "".join(ch for ch in base if ch not in segments)
+    return updated or "0"
+
+
+def _ensure_segments_available(avail: Optional[str], segments: List[str]) -> None:
+    base = "" if not avail or avail == "0" else avail
+    for seg in segments:
+        if seg not in base:
+            raise HTTPException(409, "Seat is already occupied on the selected segment")
+
+
+def _determine_scopes(context) -> set[str]:
+    if getattr(context, "is_admin", False):
+        return {"view", "download", "pay", "cancel", "edit", "seat", "reschedule"}
+    return set(getattr(context, "scopes", []) or [])
+
+
+def _build_allowed_actions(dto: Dict[str, Any], context) -> Dict[str, bool]:
+    scopes = _determine_scopes(context)
+    purchase = dto.get("purchase") or {}
+    flags = purchase.get("flags") or dto.get("payment_status") or {}
+    is_reserved = bool(flags.get("is_reserved"))
+    is_active = bool(flags.get("is_active"))
+    is_cancelled = bool(flags.get("is_cancelled"))
+
+    return {
+        "download_pdf": "download" in scopes,
+        "pay": "pay" in scopes and is_reserved and not is_cancelled,
+        "cancel": "cancel" in scopes and is_active,
+        "update_passenger": "edit" in scopes,
+        "change_seat": "seat" in scopes,
+        "reschedule": "reschedule" in scopes,
+    }
+
+
+def _resolve_lang(request: Request, context) -> str:
+    return (
+        request.query_params.get("lang")
+        or getattr(context, "lang", None)
+        or "bg"
+    )
+
+
+def _load_ticket_details(
+    ticket_id: int,
+    request: Request,
+    context,
+) -> Dict[str, Any]:
+    conn = get_connection()
+    try:
+        lang = _resolve_lang(request, context)
+        try:
+            dto = get_ticket_dto(ticket_id, lang, conn)
+        except ValueError as exc:
+            raise HTTPException(404, "Ticket not found") from exc
+    finally:
+        conn.close()
+
+    token = request.headers.get("X-Ticket-Token") or request.query_params.get("token")
+    pdf_url: Optional[str] = None
+    if token:
+        pdf_url = f"/tickets/{ticket_id}/pdf?token={token}&lang={lang}"
+    elif getattr(context, "is_admin", False):
+        pdf_url = f"/tickets/{ticket_id}/pdf?lang={lang}"
+
+    payload: Dict[str, Any] = {
+        "data": dto,
+        "lang": lang,
+        "pdf_url": pdf_url,
+        "allowed_actions": _build_allowed_actions(dto, context),
+    }
+
+    if getattr(context, "is_admin", False):
+        payload["scopes"] = sorted(_determine_scopes(context))
+    else:
+        payload["scopes"] = sorted(set(getattr(context, "scopes", []) or []))
+        link = getattr(context, "link", None) or {}
+        payload["token"] = {
+            "jti": getattr(context, "jti", None),
+            "expires_at": link.get("exp"),
+        }
+
+    return payload
+
+
+@router.get("/{ticket_id}")
+def get_ticket_details(
+    ticket_id: int,
+    request: Request,
+    context=Depends(require_scope("view")),
+):
+    guard_public_request(
+        request,
+        "view",
+        ticket_id=ticket_id,
+        context=context,
+    )
+    return _load_ticket_details(ticket_id, request, context)
+
+
+@router.patch("/{ticket_id}")
+def update_ticket_details(
+    ticket_id: int,
+    data: TicketUpdate,
+    request: Request,
+    context=Depends(require_scope("edit")),
+):
+    if not any(
+        [
+            data.passenger_name is not None,
+            data.extra_baggage is not None,
+            data.departure_stop_id is not None,
+            data.arrival_stop_id is not None,
+        ]
+    ):
+        raise HTTPException(400, "No fields provided for update")
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        actor, jti = _resolve_actor(request)
+        guard_public_request(
+            request,
+            "edit",
+            ticket_id=ticket_id,
+            context=context,
+        )
+
+        cur.execute(
+            """
+            SELECT passenger_id, seat_id, tour_id, departure_stop_id, arrival_stop_id
+              FROM ticket
+             WHERE id = %s
+             FOR UPDATE
+            """,
+            (ticket_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Ticket not found")
+        passenger_id, seat_id, tour_id, current_dep, current_arr = row
+
+        cur.execute("SELECT route_id FROM tour WHERE id = %s", (tour_id,))
+        route_row = cur.fetchone()
+        if not route_row:
+            raise HTTPException(404, "Tour not found")
+        route_id = int(route_row[0])
+        stops = _fetch_route_stops(cur, route_id)
+
+        new_dep = data.departure_stop_id or current_dep
+        new_arr = data.arrival_stop_id or current_arr
+
+        segments_changed = new_dep != current_dep or new_arr != current_arr
+        if segments_changed:
+            old_segments, _ = _segments_between(stops, current_dep, current_arr)
+            new_segments, _ = _segments_between(stops, new_dep, new_arr)
+
+            cur.execute(
+                "SELECT available FROM seat WHERE id = %s FOR UPDATE",
+                (seat_id,),
+            )
+            seat_row = cur.fetchone()
+            if not seat_row:
+                raise HTTPException(404, "Seat not found")
+            avail_str = seat_row[0]
+            interim = _merge_available(avail_str, old_segments)
+            _ensure_segments_available(interim, new_segments)
+            final_avail = _remove_segments(interim, new_segments)
+            cur.execute(
+                "UPDATE seat SET available = %s WHERE id = %s",
+                (final_avail, seat_id),
+            )
+
+        if data.passenger_name is not None:
+            cur.execute(
+                "UPDATE passenger SET name = %s WHERE id = %s",
+                (data.passenger_name, passenger_id),
+            )
+
+        ticket_updates: List[str] = []
+        params: List[Any] = []
+        if data.extra_baggage is not None:
+            ticket_updates.append("extra_baggage = %s")
+            params.append(int(data.extra_baggage))
+        if segments_changed:
+            ticket_updates.append("departure_stop_id = %s")
+            ticket_updates.append("arrival_stop_id = %s")
+            params.extend([new_dep, new_arr])
+
+        if ticket_updates:
+            params.append(ticket_id)
+            cur.execute(
+                f"UPDATE ticket SET {', '.join(ticket_updates)} WHERE id = %s",
+                params,
+            )
+
+        if segments_changed:
+            recalc_available(cur, tour_id)
+
+        conn.commit()
+        if jti:
+            logger.info("Ticket %s updated with token jti=%s by %s", ticket_id, jti, actor)
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        raise HTTPException(500, str(exc))
+    finally:
+        cur.close()
+        conn.close()
+
+    return _load_ticket_details(ticket_id, request, context)
+
+
+@router.post("/{ticket_id}/seat")
+def change_ticket_seat(
+    ticket_id: int,
+    data: TicketSeatChange,
+    request: Request,
+    context=Depends(require_scope("seat")),
+):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        actor, jti = _resolve_actor(request)
+        guard_public_request(
+            request,
+            "seat",
+            ticket_id=ticket_id,
+            context=context,
+        )
+
+        cur.execute(
+            """
+            SELECT seat_id, tour_id, departure_stop_id, arrival_stop_id
+              FROM ticket
+             WHERE id = %s
+             FOR UPDATE
+            """,
+            (ticket_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Ticket not found")
+        current_seat_id, tour_id, dep_id, arr_id = row
+
+        cur.execute("SELECT route_id FROM tour WHERE id = %s", (tour_id,))
+        route_row = cur.fetchone()
+        if not route_row:
+            raise HTTPException(404, "Tour not found")
+        stops = _fetch_route_stops(cur, int(route_row[0]))
+        segments, _ = _segments_between(stops, dep_id, arr_id)
+
+        cur.execute(
+            "SELECT available FROM seat WHERE id = %s FOR UPDATE",
+            (current_seat_id,),
+        )
+        current_seat_row = cur.fetchone()
+        if not current_seat_row:
+            raise HTTPException(404, "Seat not found")
+        current_avail = current_seat_row[0]
+
+        cur.execute(
+            "SELECT id, available FROM seat WHERE tour_id = %s AND seat_num = %s FOR UPDATE",
+            (tour_id, data.seat_num),
+        )
+        new_seat_row = cur.fetchone()
+        if not new_seat_row:
+            raise HTTPException(404, "Seat not found")
+        new_seat_id, new_avail = new_seat_row
+
+        if new_seat_id == current_seat_id:
+            conn.rollback()
+            return _load_ticket_details(ticket_id, request, context)
+
+        if new_avail == "0":
+            raise HTTPException(400, "Seat is blocked")
+        _ensure_segments_available(new_avail, segments)
+
+        released_avail = _merge_available(current_avail, segments)
+        updated_new_avail = _remove_segments(new_avail, segments)
+
+        cur.execute(
+            "UPDATE seat SET available = %s WHERE id = %s",
+            (released_avail, current_seat_id),
+        )
+        cur.execute(
+            "UPDATE seat SET available = %s WHERE id = %s",
+            (updated_new_avail, new_seat_id),
+        )
+        cur.execute(
+            "UPDATE ticket SET seat_id = %s WHERE id = %s",
+            (new_seat_id, ticket_id),
+        )
+
+        recalc_available(cur, tour_id)
+        conn.commit()
+        if jti:
+            logger.info(
+                "Ticket %s seat changed to %s with token jti=%s by %s",
+                ticket_id,
+                data.seat_num,
+                jti,
+                actor,
+            )
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        raise HTTPException(500, str(exc))
+    finally:
+        cur.close()
+        conn.close()
+
+    return _load_ticket_details(ticket_id, request, context)
+
+
+@router.post("/{ticket_id}/reschedule")
+def reschedule_ticket(
+    ticket_id: int,
+    data: TicketReschedule,
+    request: Request,
+    context=Depends(require_scope("reschedule")),
+):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        actor, jti = _resolve_actor(request)
+        guard_public_request(
+            request,
+            "reschedule",
+            ticket_id=ticket_id,
+            context=context,
+        )
+
+        cur.execute(
+            """
+            SELECT seat_id, tour_id, departure_stop_id, arrival_stop_id
+              FROM ticket
+             WHERE id = %s
+             FOR UPDATE
+            """,
+            (ticket_id,),
+        )
+        ticket_row = cur.fetchone()
+        if not ticket_row:
+            raise HTTPException(404, "Ticket not found")
+        current_seat_id, current_tour_id, current_dep, current_arr = ticket_row
+
+        cur.execute("SELECT route_id FROM tour WHERE id = %s", (current_tour_id,))
+        current_route_row = cur.fetchone()
+        if not current_route_row:
+            raise HTTPException(404, "Tour not found")
+        current_stops = _fetch_route_stops(cur, int(current_route_row[0]))
+        current_segments, _ = _segments_between(
+            current_stops, current_dep, current_arr
+        )
+
+        cur.execute(
+            "SELECT available FROM seat WHERE id = %s FOR UPDATE",
+            (current_seat_id,),
+        )
+        current_seat_row = cur.fetchone()
+        if not current_seat_row:
+            raise HTTPException(404, "Seat not found")
+        current_avail = current_seat_row[0]
+
+        cur.execute("SELECT route_id FROM tour WHERE id = %s", (data.tour_id,))
+        target_route_row = cur.fetchone()
+        if not target_route_row:
+            raise HTTPException(404, "Target tour not found")
+        target_stops = _fetch_route_stops(cur, int(target_route_row[0]))
+        target_segments, _ = _segments_between(
+            target_stops, data.departure_stop_id, data.arrival_stop_id
+        )
+
+        cur.execute(
+            "SELECT id, available FROM seat WHERE tour_id = %s AND seat_num = %s FOR UPDATE",
+            (data.tour_id, data.seat_num),
+        )
+        target_seat_row = cur.fetchone()
+        if not target_seat_row:
+            raise HTTPException(404, "Seat not found on target tour")
+        target_seat_id, target_avail = target_seat_row
+        if target_avail == "0":
+            raise HTTPException(400, "Seat is blocked on target tour")
+
+        _ensure_segments_available(target_avail, target_segments)
+
+        released_current_avail = _merge_available(current_avail, current_segments)
+        updated_target_avail = _remove_segments(target_avail, target_segments)
+
+        cur.execute(
+            "UPDATE seat SET available = %s WHERE id = %s",
+            (released_current_avail, current_seat_id),
+        )
+        cur.execute(
+            "UPDATE seat SET available = %s WHERE id = %s",
+            (updated_target_avail, target_seat_id),
+        )
+        cur.execute(
+            """
+            UPDATE ticket
+               SET tour_id = %s,
+                   seat_id = %s,
+                   departure_stop_id = %s,
+                   arrival_stop_id = %s
+             WHERE id = %s
+            """,
+            (
+                data.tour_id,
+                target_seat_id,
+                data.departure_stop_id,
+                data.arrival_stop_id,
+                ticket_id,
+            ),
+        )
+
+        recalc_available(cur, current_tour_id)
+        if data.tour_id != current_tour_id:
+            recalc_available(cur, data.tour_id)
+
+        conn.commit()
+        if jti:
+            logger.info(
+                "Ticket %s rescheduled to tour %s seat %s with token jti=%s by %s",
+                ticket_id,
+                data.tour_id,
+                data.seat_num,
+                jti,
+                actor,
+            )
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        raise HTTPException(500, str(exc))
+    finally:
+        cur.close()
+        conn.close()
+
+    return _load_ticket_details(ticket_id, request, context)
+
+
+@router.get("/{ticket_id}/seat-map")
+def get_ticket_seat_map(
+    ticket_id: int,
+    request: Request,
+    departure_stop_id: Optional[int] = Query(None),
+    arrival_stop_id: Optional[int] = Query(None),
+    context=Depends(require_scope("view")),
+):
+    guard_public_request(
+        request,
+        "seat-map",
+        ticket_id=ticket_id,
+        context=context,
+    )
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT tour_id, seat_id, departure_stop_id, arrival_stop_id FROM ticket WHERE id = %s",
+            (ticket_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Ticket not found")
+        tour_id, seat_id, ticket_dep, ticket_arr = row
+
+        dep_id = departure_stop_id or ticket_dep
+        arr_id = arrival_stop_id or ticket_arr
+
+        cur.execute("SELECT route_id FROM tour WHERE id = %s", (tour_id,))
+        route_row = cur.fetchone()
+        if not route_row:
+            raise HTTPException(404, "Tour not found")
+        stops = _fetch_route_stops(cur, int(route_row[0]))
+        segments, segment_pairs = _segments_between(stops, dep_id, arr_id)
+
+        cur.execute(
+            "SELECT id, seat_num, available FROM seat WHERE tour_id = %s ORDER BY seat_num",
+            (tour_id,),
+        )
+        seats = cur.fetchall()
+
+        seat_list: List[Dict[str, Any]] = []
+        for s_id, seat_num, avail_str in seats:
+            available_segments = "" if not avail_str or avail_str == "0" else avail_str
+            is_available = all(seg in available_segments for seg in segments)
+            if s_id == seat_id:
+                status = "selected"
+            elif is_available:
+                status = "available"
+            else:
+                status = "blocked"
+            seat_list.append(
+                {
+                    "seat_id": s_id,
+                    "seat_num": seat_num,
+                    "status": status,
+                }
+            )
+
+        return {
+            "tour_id": tour_id,
+            "segment": {
+                "departure_stop_id": dep_id,
+                "arrival_stop_id": arr_id,
+                "pairs": segment_pairs,
+            },
+            "seats": seat_list,
+        }
+    finally:
+        cur.close()
+        conn.close()
 
 @router.post("/", response_model=TicketOut)
 def create_ticket(data: TicketCreate):

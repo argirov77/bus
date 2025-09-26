@@ -14,7 +14,15 @@ from ..services import ticket_links
 logger = logging.getLogger(__name__)
 
 DEFAULT_TICKET_LANG = "bg"
-DEFAULT_TICKET_SCOPES = ("view", "download")
+DEFAULT_TICKET_SCOPES = (
+    "view",
+    "download",
+    "pay",
+    "cancel",
+    "edit",
+    "seat",
+    "reschedule",
+)
 
 
 class TicketIssueSpec(TypedDict):
