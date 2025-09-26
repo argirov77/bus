@@ -2,15 +2,19 @@
 
 from typing import cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr
 
+from ..auth import require_scope
 from ..database import get_connection
 from ._ticket_link_helpers import (
     TicketIssueSpec,
+    build_deep_link,
     combine_departure_datetime,
     issue_ticket_links,
 )
+from ..services.ticket_dto import get_ticket_dto
+from ..services.ticket_pdf import render_ticket_pdf
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
@@ -31,6 +35,33 @@ class TicketCreate(BaseModel):
 class TicketOut(BaseModel):
     ticket_id: int
     deep_link: str
+
+
+@router.get("/{ticket_id}/pdf")
+def get_ticket_pdf(
+    ticket_id: int,
+    request: Request,
+    lang: str | None = None,
+    context=Depends(require_scope("view")),
+):
+    conn = get_connection()
+    try:
+        resolved_lang = lang or getattr(context, "lang", None) or "bg"
+        try:
+            dto = get_ticket_dto(ticket_id, resolved_lang, conn)
+        except ValueError as exc:
+            raise HTTPException(404, "Ticket not found") from exc
+    finally:
+        conn.close()
+
+    token = request.query_params.get("token") or request.headers.get("X-Ticket-Token")
+    deep_link = build_deep_link(ticket_id, token) if token else None
+
+    pdf_bytes = render_ticket_pdf(dto, deep_link)
+    headers = {
+        "Content-Disposition": f'inline; filename="ticket-{ticket_id}.pdf"',
+    }
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
 class TicketReassign(BaseModel):
