@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="{{ i18n.lang }}">
+<head>
+  <meta charset="utf-8" />
+  <title>{{ page_title }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    /* Страница */
+    @page { size: A4; margin: 10mm; }
+    @media print { body{-webkit-print-color-adjust:exact; print-color-adjust:exact} }
+
+    /* Палитра «Максимов Турс» */
+    :root{
+      --brand:#1f4e79;
+      --accent:#f28c28;
+      --ink:#0f172a;
+      --muted:#5b667a;
+      --stroke:#e6edf5;
+      --bg:#f5f7fb;
+      --card:#ffffff;
+      --success:#16a34a;
+      --r:14px; --pad:12px; --gap:12px;
+      --fz:13px; --fz-sm:12px; --fz-lg:22px;
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:var(--bg); color:var(--ink);
+      font:var(--fz)/1.45 Inter, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", sans-serif;
+      orphans:3; widows:3;
+    }
+    a{ color:var(--brand); text-decoration:none }
+    .nowrap{ white-space:nowrap }
+    .break{ overflow-wrap:anywhere; word-break:break-word; }
+
+    /* Контейнер билета */
+    .wrap{
+      max-width:780px; margin:14px auto; background:var(--card);
+      border:1px solid var(--stroke); border-radius:16px; overflow:hidden;
+    }
+
+    /* Шапка */
+    .top{
+      display:grid; grid-template-columns: 1fr auto; gap:var(--gap);
+      padding:14px 16px; border-bottom:1px solid var(--stroke);
+      background:linear-gradient(180deg,#fff,#fbfdff);
+    }
+    .brandline{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+    .logo{
+      width:34px;height:34px;border-radius:50%;
+      background:radial-gradient(circle at 30% 30%, #fff 0 35%, var(--brand) 36% 100%);
+    }
+    .brandname{font-weight:900; color:var(--brand); letter-spacing:.3px}
+    .title{margin:0;font-size:16px}
+    .route{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+    .city{font-weight:900;font-size:var(--fz-lg); letter-spacing:.2px}
+    .meta{color:var(--muted);font-size:var(--fz-sm);margin-top:2px}
+
+    .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+    .chip{
+      padding:4px 10px;border:1px solid var(--stroke);border-radius:999px;
+      background:#fff;font-weight:700;font-size:12px
+    }
+    .chip.ok{ border-color:#c7f3cf; background:#eefcf0; color:#166534 }
+    .chip.place{ border-color:#dbe2f3; background:#f3f6ff; color:#1e388a }
+    .chip.bag{ border-color:#ffe0bf; background:#fff4e8; color:#a65300 }
+
+    /* Правая сводка + QR + кнопка */
+    .side{
+      display:grid; grid-template-columns: 1fr auto; gap:10px; align-items:start; min-width:0;
+    }
+    .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:var(--fz-sm);color:var(--muted)}
+    .kv b{color:var(--ink);font-size:var(--fz)}
+    .qr{
+      width:128px;height:128px;border:1px solid var(--stroke);border-radius:12px;
+      display:flex;align-items:center;justify-content:center;background:#fff
+    }
+    .qr img{max-width:100%;max-height:100%}
+    .btn{
+      display:inline-block;margin-top:8px;padding:8px 10px;border-radius:10px;
+      border:1px solid var(--brand); background:var(--brand); color:#fff; font-weight:800;
+      box-shadow:0 1px 0 rgba(0,0,0,.04)
+    }
+    .btn:hover{filter:brightness(1.05)}
+
+    /* Контент: 2 колонки */
+    .content{display:grid;grid-template-columns:1.12fr 0.88fr; gap:var(--gap); padding:var(--pad)}
+    .card{border:1px solid var(--stroke);border-radius:12px;padding:10px 12px;background:#fff}
+    .card h3{
+      margin:0 0 8px;font-size:12px;color:var(--brand);
+      text-transform:uppercase; letter-spacing:.35px
+    }
+
+    /* Поездка — чистые строки (без координат) */
+    .timeline{display:grid;grid-template-columns:18px 1fr;gap:8px}
+    .tl{position:relative}
+    .dot{
+      width:8px;height:8px;border-radius:50%;background:var(--accent);margin-top:3px;
+      box-shadow:0 0 0 2px #fff inset, 0 0 0 2px var(--accent);
+    }
+    .bar{position:absolute;left:3px;top:14px;width:2px;height:calc(100% - 14px);background:var(--stroke)}
+    .leg{border:1px dashed var(--stroke);border-radius:10px;padding:8px 10px;margin-bottom:8px}
+    .leg h4{margin:0 0 3px;font-size:14px}
+    .line{margin:2px 0;color:var(--muted);font-size:var(--fz-sm);line-height:1.35}
+    .pill{
+      display:inline-block;padding:4px 8px;border-radius:999px;
+      background:#fff6ea;border:1px solid #ffdfb8;color:#a65300;font-weight:800;font-size:12px
+    }
+
+    /* Таблички */
+    .dl{display:grid;grid-template-columns:44% 56%;gap:6px 10px}
+    .dl .k{color:var(--muted)} .dl .v{font-weight:800}
+
+    /* Подвал */
+    .footer{border-top:1px solid var(--stroke);padding:8px 12px;color:var(--muted);font-size:var(--fz-sm);
+            display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- ШАПКА -->
+    <div class="top">
+      <div>
+        <div class="brandline">
+          <div class="logo"></div>
+          <h1 class="title"><span class="brandname">{{ i18n.brand_name }}</span> · {{ i18n.ticket_label }}</h1>
+        </div>
+        <div class="route">
+          <div class="city">{{ route.from_city }}</div><div>→</div><div class="city">{{ route.to_city }}</div>
+        </div>
+        <div class="meta">
+          {{ i18n.ticket_number_label }} <b>{{ ticket.number }}</b>
+          {% if ticket.order_number %} · {{ i18n.order_label }} <b>{{ ticket.order_number }}</b>{% endif %}
+          {% if ticket.trip_date %} · {{ i18n.trip_date_label }} <b>{{ ticket.trip_date }}</b>{% endif %}
+        </div>
+        <div class="chips">
+          {% if status_chip %}<span class="chip {{ status_chip.css_class }}">{{ status_chip.text }}</span>{% endif %}
+          {% if ticket.seat_number %}<span class="chip place">{{ i18n.seat_label }}: <b>{{ ticket.seat_number }}</b></span>{% endif %}
+          {% if ticket.baggage_text %}<span class="chip bag">{{ i18n.baggage_label }}: <b>{{ ticket.baggage_text }}</b></span>{% endif %}
+        </div>
+      </div>
+
+      <div class="side">
+        <div>
+          <div class="kv">
+            <div>{{ i18n.passenger_label }}</div><b>{{ passenger.name }}</b>
+            <div>{{ i18n.route_label }}</div><b>{{ route.label }}</b>
+            <div>{{ i18n.price_label }}</div><b>{{ ticket.price_text or i18n.value_not_available }}</b>
+          </div>
+          {% if deep_link %}<a class="btn" href="{{ deep_link }}" target="_blank">{{ i18n.open_online }}</a>{% endif %}
+        </div>
+        <div class="qr">
+          {% if qr_data_uri %}<img alt="QR" src="{{ qr_data_uri }}" />{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- КОНТЕНТ -->
+    <div class="content">
+      <!-- Поездка -->
+      <div class="card">
+        <h3>{{ i18n.trip_section }}</h3>
+        <div class="timeline">
+          <div class="tl"><div class="dot"></div><div class="bar"></div></div>
+          <div class="leg">
+            <h4>{{ departure.title }}</h4>
+            {% if departure.date or departure.time %}
+            <div class="line">{{ i18n.datetime_label }}:
+              {% if departure.date %}<span class="nowrap">{{ departure.date }}</span>{% endif %}
+              {% if departure.date and departure.time %} · {% endif %}
+              {% if departure.time %}<span class="nowrap">{{ departure.time }}</span>{% endif %}
+            </div>
+            {% endif %}
+            {% if departure.address %}<div class="line">{{ i18n.address_label }}: {{ departure.address }}</div>{% endif %}
+            {% if departure.map_url %}<div class="line"><a href="{{ departure.map_url }}" target="_blank">{{ i18n.open_map }}</a></div>{% endif %}
+          </div>
+
+          <div class="tl"><div class="dot"></div></div>
+          <div class="leg">
+            <h4>{{ arrival.title }}</h4>
+            {% if arrival.date or arrival.time %}
+            <div class="line">{{ i18n.datetime_label }}:
+              {% if arrival.date %}<span class="nowrap">{{ arrival.date }}</span>{% endif %}
+              {% if arrival.date and arrival.time %} · {% endif %}
+              {% if arrival.time %}<span class="nowrap">{{ arrival.time }}</span>{% endif %}
+            </div>
+            {% endif %}
+            {% if arrival.address %}<div class="line">{{ i18n.address_label }}: {{ arrival.address }}</div>{% endif %}
+            {% if arrival.map_url %}<div class="line"><a href="{{ arrival.map_url }}" target="_blank">{{ i18n.open_map }}</a></div>{% endif %}
+          </div>
+        </div>
+
+        {% if timeline.duration_text %}
+        <div class="line" style="margin-top:6px;">{{ i18n.duration_label }}: <span class="pill">{{ timeline.duration_text }}</span></div>
+        {% endif %}
+      </div>
+
+      <!-- Пассажир + Оплата -->
+      <div class="card">
+        <h3>{{ i18n.passenger_section }}</h3>
+        <div class="dl">
+          <div class="k">{{ i18n.full_name_label }}</div><div class="v">{{ passenger.name }}</div>
+          {% if passenger.email %}<div class="k">E-mail</div><div class="v break">{{ passenger.email }}</div>{% endif %}
+          {% if passenger.phone %}<div class="k">{{ i18n.phone_label }}</div><div class="v nowrap">{{ passenger.phone }}</div>{% endif %}
+          {% if ticket.seat_number %}<div class="k">{{ i18n.seat_label }}</div><div class="v">{{ ticket.seat_number }}</div>{% endif %}
+          {% if ticket.baggage_text %}<div class="k">{{ i18n.baggage_label }}</div><div class="v">{{ ticket.baggage_text }}</div>{% endif %}
+        </div>
+
+        <h3 style="margin-top:10px;">{{ i18n.payment_section }}</h3>
+        <div class="dl">
+          <div class="k">{{ i18n.status_label }}</div><div class="v"{% if payment.status_color %} style="color:{{ payment.status_color }}"{% endif %}>{{ payment.status_text }}</div>
+          <div class="k">{{ i18n.method_label }}</div><div class="v">{{ payment.method_text }}</div>
+          <div class="k">{{ i18n.amount_label }}</div><div class="v">{{ payment.amount_text }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ПОДВАЛ -->
+    <div class="footer">
+      <div>{{ i18n.footer_note }}</div>
+      <div>{{ i18n.footer_brand }}</div>
+    </div>
+  </div>
+</body>
+</html>
