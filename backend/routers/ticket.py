@@ -1,8 +1,16 @@
 # backend/app/routers/ticket.py
 
+from typing import cast
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
+
 from ..database import get_connection
+from ._ticket_link_helpers import (
+    TicketIssueSpec,
+    combine_departure_datetime,
+    issue_ticket_links,
+)
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
@@ -17,10 +25,12 @@ class TicketCreate(BaseModel):
     departure_stop_id: int
     arrival_stop_id: int
     extra_baggage: bool = False
+    lang: str | None = None
 
 
 class TicketOut(BaseModel):
     ticket_id: int
+    deep_link: str
 
 
 class TicketReassign(BaseModel):
@@ -33,13 +43,14 @@ class TicketReassign(BaseModel):
 def create_ticket(data: TicketCreate):
     conn = get_connection()
     cur = conn.cursor()
+    ticket_spec: TicketIssueSpec | None = None
     try:
         # --- 1) Проверяем рейс и получаем route_id ---
-        cur.execute("SELECT route_id FROM tour WHERE id = %s", (data.tour_id,))
+        cur.execute("SELECT route_id, date FROM tour WHERE id = %s", (data.tour_id,))
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "Tour not found")
-        route_id = row[0]
+        route_id, tour_date = row
 
         # --- 2) Ищем место и получаем строку available (строку-сегменты) ---
         cur.execute(
@@ -55,10 +66,12 @@ def create_ticket(data: TicketCreate):
 
         # --- 3) Получаем список остановок по порядку для маршрута ---
         cur.execute(
-            "SELECT stop_id FROM routestop WHERE route_id = %s ORDER BY \"order\"",
+            "SELECT stop_id, departure_time FROM routestop WHERE route_id = %s ORDER BY \"order\"",
             (route_id,),
         )
-        stops = [r[0] for r in cur.fetchall()]
+        stop_rows = cur.fetchall()
+        stops = [r[0] for r in stop_rows]
+        stop_departures = {r[0]: r[1] for r in stop_rows}
         if data.departure_stop_id not in stops or data.arrival_stop_id not in stops:
             raise HTTPException(400, "Invalid stops for this route")
         idx_from = stops.index(data.departure_stop_id)
@@ -98,6 +111,17 @@ def create_ticket(data: TicketCreate):
             ),
         )
         ticket_id = cur.fetchone()[0]
+        departure_dt = combine_departure_datetime(
+            tour_date, stop_departures.get(data.departure_stop_id)
+        )
+        ticket_spec = cast(
+            TicketIssueSpec,
+            {
+                "ticket_id": ticket_id,
+                "purchase_id": data.purchase_id,
+                "departure_dt": departure_dt,
+            },
+        )
 
         # --- 7) Обновляем seat.available, убирая из строки занятые сегменты ---
         new_avail = "".join(ch for ch in avail_str if ch not in segments)
@@ -141,7 +165,6 @@ def create_ticket(data: TicketCreate):
         )
 
         conn.commit()
-        return {"ticket_id": ticket_id}
 
     except HTTPException:
         conn.rollback()
@@ -152,6 +175,18 @@ def create_ticket(data: TicketCreate):
     finally:
         cur.close()
         conn.close()
+
+    if ticket_spec is None:
+        raise HTTPException(500, "Failed to create ticket")
+
+    tickets = issue_ticket_links([ticket_spec], data.lang)
+    if not tickets:
+        raise HTTPException(500, "Failed to issue ticket link")
+
+    return {
+        "ticket_id": ticket_spec["ticket_id"],
+        "deep_link": tickets[0]["deep_link"],
+    }
 
 
 @router.post("/reassign", status_code=204)

@@ -1,6 +1,8 @@
 import importlib
 import os
 import sys
+from datetime import date, time
+
 from fastapi.testclient import TestClient
 import pytest
 
@@ -19,8 +21,10 @@ class DummyCursor:
             return [1, 1]
         if "select status from purchase" in q:
             return [self.status_resp]
-        if "select route_id, pricelist_id from tour" in q:
-            return [1, 1]
+        if "select route_id, pricelist_id, date from tour" in q:
+            return [1, 1, date(2024, 1, 1)]
+        if "select route_id, date from tour" in q:
+            return [1, date(2024, 1, 1)]
         if "select id, available from seat" in q:
             return [1, "1234"]
         if "select price from prices" in q:
@@ -28,8 +32,13 @@ class DummyCursor:
         return [1]
     def fetchall(self):
         q = self.query.lower()
-        if "select stop_id from routestop" in q:
-            return [(1,), (2,), (3,), (4,)]
+        if "select stop_id, departure_time from routestop" in q:
+            return [
+                (1, time(8, 0)),
+                (2, time(9, 0)),
+                (3, time(10, 0)),
+                (4, time(11, 0)),
+            ]
         if "select id from ticket where purchase_id" in q:
             return [(1,)]
         return []
@@ -52,17 +61,26 @@ class DummyConn:
 @pytest.fixture
 def client(monkeypatch):
     last = {}
+    monkeypatch.setenv("APP_PUBLIC_URL", "https://example.test")
+
     def fake_get_connection():
         conn = DummyConn()
         last['cursor'] = conn.cursor_obj
         return conn
+
+    token_counter = {"value": 0}
+
+    def fake_issue(ticket_id, purchase_id, scopes, lang, departure_dt):
+        token_counter['value'] += 1
+        return f"token-{token_counter['value']}"
+
     monkeypatch.setattr('psycopg2.connect', lambda *a, **kw: DummyConn())
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    import importlib
     import backend.database
     monkeypatch.setattr('backend.database.get_connection', fake_get_connection)
     monkeypatch.setattr('backend.ticket_utils.free_ticket', lambda *a, **k: None)
     monkeypatch.setattr('backend.routers.purchase.free_ticket', lambda *a, **k: None)
+    monkeypatch.setattr('backend.services.ticket_links.issue', fake_issue)
     if 'backend.main' in sys.modules:
         importlib.reload(sys.modules['backend.main'])
     else:
@@ -88,6 +106,7 @@ def test_purchase_flow(client):
     assert resp.status_code == 200
     assert 'amount_due' in resp.json()
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
+    assert resp.json()['tickets'][0]['deep_link'] == 'https://example.test/ticket/1?token=token-1'
 
     store['cursor'].queries.clear()
 
@@ -113,6 +132,7 @@ def test_purchase_flow(client):
     assert 'amount_due' in resp.json()
     assert any('INSERT INTO purchase' in q[0] for q in store['cursor'].queries)
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
+    assert resp.json()['tickets'][0]['deep_link'] == 'https://example.test/ticket/1?token=token-2'
 
     store['cursor'].queries.clear()
 
