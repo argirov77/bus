@@ -1,8 +1,10 @@
 from typing import List, cast
 
-from fastapi import APIRouter, HTTPException
+import logging
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
+from ..auth import require_scope
 from ..database import get_connection
 from ..ticket_utils import free_ticket
 from ._ticket_link_helpers import (
@@ -10,6 +12,9 @@ from ._ticket_link_helpers import (
     combine_departure_datetime,
     issue_ticket_links,
 )
+from ..services import ticket_links
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/purchase", tags=["purchase"])
 # second router exposing simplified endpoints without the /purchase prefix
@@ -45,19 +50,41 @@ def _log_action(
     purchase_id: int,
     action: str,
     amount: float = 0.0,
-    by: str = "system",
+    by: str | None = None,
     method: str | None = None,
 ) -> None:
     """Record an action for the purchase in the sales log."""
 
     cur.execute(
         "INSERT INTO sales (purchase_id, category, amount, actor, method) VALUES (%s,%s,%s,%s,%s)",
-        (purchase_id, action, amount, by, method),
+        (purchase_id, action, amount, by or "system", method),
     )
 
 
+def _resolve_actor(request: Request) -> tuple[str, str | None]:
+    """Determine actor for logging and return actor id along with token jti."""
+
+    token = request.headers.get("X-Ticket-Token") or request.query_params.get("token")
+    is_admin = getattr(request.state, "is_admin", False)
+    jti = getattr(request.state, "jti", None)
+
+    if token and not is_admin:
+        try:
+            payload = ticket_links.verify(token)
+        except ticket_links.TicketLinkError as exc:
+            raise HTTPException(401, "Invalid or missing ticket token") from exc
+        jti = payload.get("jti") or jti
+
+    actor = jti or ("admin" if is_admin else "system")
+    return actor, jti
+
+
 def _create_purchase(
-    cur, data: PurchaseCreate, status: str, payment_method: str = "online"
+    cur,
+    data: PurchaseCreate,
+    status: str,
+    payment_method: str = "online",
+    actor: str | None = None,
 ) -> tuple[int, float, List[TicketIssueSpec]]:
     """Helper that inserts passengers, purchase and ticket records.
 
@@ -255,6 +282,7 @@ def _create_purchase(
         purchase_id,
         status,
         total_price if status == "paid" else 0,
+        by=actor,
         method=payment_method,
     )
     return purchase_id, new_amount, ticket_specs
@@ -283,10 +311,15 @@ def create_purchase(data: PurchaseCreate):
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 @router.post("/{purchase_id}/pay", status_code=204)
-def pay_purchase(purchase_id: int):
+def pay_purchase(
+    purchase_id: int,
+    request: Request,
+    context=Depends(require_scope("pay")),
+):
     conn = get_connection()
     cur = conn.cursor()
     try:
+        actor, jti = _resolve_actor(request)
         cur.execute(
             "SELECT amount_due FROM purchase WHERE id=%s",
             (purchase_id,),
@@ -300,8 +333,10 @@ def pay_purchase(purchase_id: int):
             "UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
-        _log_action(cur, purchase_id, "paid", amount_due, method="offline")
+        _log_action(cur, purchase_id, "paid", amount_due, by=actor, method="offline")
         conn.commit()
+        if jti:
+            logger.info("Purchase %s paid with token jti=%s", purchase_id, jti)
     except HTTPException:
         conn.rollback()
         raise
@@ -313,10 +348,15 @@ def pay_purchase(purchase_id: int):
         conn.close()
 
 @router.post("/{purchase_id}/cancel", status_code=204)
-def cancel_purchase(purchase_id: int):
+def cancel_purchase(
+    purchase_id: int,
+    request: Request,
+    context=Depends(require_scope("cancel")),
+):
     conn = get_connection()
     cur = conn.cursor()
     try:
+        actor, jti = _resolve_actor(request)
         cur.execute(
             "SELECT id FROM ticket WHERE purchase_id=%s",
             (purchase_id,),
@@ -332,8 +372,10 @@ def cancel_purchase(purchase_id: int):
             "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
-        _log_action(cur, purchase_id, "cancelled", 0)
+        _log_action(cur, purchase_id, "cancelled", 0, by=actor)
         conn.commit()
+        if jti:
+            logger.info("Purchase %s cancelled with token jti=%s", purchase_id, jti)
     except HTTPException:
         conn.rollback()
         raise
@@ -376,15 +418,22 @@ def book_seat(data: PurchaseCreate):
 
 
 @actions_router.post("/purchase", response_model=PurchaseOut)
-def purchase_and_pay(data: PurchaseCreate):
+def purchase_and_pay(
+    data: PurchaseCreate,
+    request: Request,
+    context=Depends(require_scope("pay")),
+):
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
     try:
+        actor, jti = _resolve_actor(request)
         purchase_id, amount_due, ticket_specs = _create_purchase(
-            cur, data, "paid", "offline"
+            cur, data, "paid", "offline", actor
         )
         conn.commit()
+        if jti:
+            logger.info("Purchase %s created and paid with token jti=%s", purchase_id, jti)
     except HTTPException:
         conn.rollback()
         raise
@@ -400,10 +449,15 @@ def purchase_and_pay(data: PurchaseCreate):
 
 
 @actions_router.post("/pay", status_code=204)
-def pay_booking(data: PayIn):
+def pay_booking(
+    data: PayIn,
+    request: Request,
+    context=Depends(require_scope("pay")),
+):
     conn = get_connection()
     cur = conn.cursor()
     try:
+        actor, jti = _resolve_actor(request)
         cur.execute(
             "SELECT amount_due FROM purchase WHERE id=%s",
             (data.purchase_id,),
@@ -417,8 +471,19 @@ def pay_booking(data: PayIn):
             "UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s",
             (data.purchase_id,),
         )
-        _log_action(cur, data.purchase_id, "paid", amount_due, method="online")
+        _log_action(
+            cur,
+            data.purchase_id,
+            "paid",
+            amount_due,
+            by=actor,
+            method="online",
+        )
         conn.commit()
+        if jti:
+            logger.info(
+                "Purchase %s paid with token jti=%s", data.purchase_id, jti
+            )
     except HTTPException:
         conn.rollback()
         raise
@@ -431,10 +496,15 @@ def pay_booking(data: PayIn):
 
 
 @actions_router.post("/cancel/{purchase_id}", status_code=204)
-def cancel_booking(purchase_id: int):
+def cancel_booking(
+    purchase_id: int,
+    request: Request,
+    context=Depends(require_scope("cancel")),
+):
     conn = get_connection()
     cur = conn.cursor()
     try:
+        actor, jti = _resolve_actor(request)
         cur.execute(
             "SELECT id FROM ticket WHERE purchase_id=%s",
             (purchase_id,),
@@ -450,8 +520,10 @@ def cancel_booking(purchase_id: int):
             "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
-        _log_action(cur, purchase_id, "cancelled", 0)
+        _log_action(cur, purchase_id, "cancelled", 0, by=actor)
         conn.commit()
+        if jti:
+            logger.info("Purchase %s cancelled with token jti=%s", purchase_id, jti)
     except HTTPException:
         conn.rollback()
         raise
@@ -464,10 +536,15 @@ def cancel_booking(purchase_id: int):
 
 
 @actions_router.post("/refund/{purchase_id}", status_code=204)
-def refund_purchase(purchase_id: int):
+def refund_purchase(
+    purchase_id: int,
+    request: Request,
+    context=Depends(require_scope("cancel")),
+):
     conn = get_connection()
     cur = conn.cursor()
     try:
+        actor, jti = _resolve_actor(request)
         cur.execute(
             "SELECT id FROM ticket WHERE purchase_id=%s",
             (purchase_id,),
@@ -480,8 +557,10 @@ def refund_purchase(purchase_id: int):
             "UPDATE purchase SET status='refunded', update_at=NOW() WHERE id=%s",
             (purchase_id,),
         )
-        _log_action(cur, purchase_id, "refunded", 0)
+        _log_action(cur, purchase_id, "refunded", 0, by=actor)
         conn.commit()
+        if jti:
+            logger.info("Purchase %s refunded with token jti=%s", purchase_id, jti)
     except HTTPException:
         conn.rollback()
         raise

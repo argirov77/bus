@@ -75,12 +75,40 @@ def client(monkeypatch):
         conn = DummyConn(cursor)
         store['cursor'] = cursor
         return conn
+    payloads = {
+        "token-pay": {
+            "ticket_id": 1,
+            "purchase_id": 1,
+            "scopes": ["pay"],
+            "lang": "bg",
+            "exp": 4102444800,
+            "jti": "jti-pay",
+        },
+        "token-no-pay": {
+            "ticket_id": 1,
+            "purchase_id": 1,
+            "scopes": [],
+            "lang": "bg",
+            "exp": 4102444800,
+            "jti": "jti-no-pay",
+        },
+    }
+
+    from backend.services import ticket_links
+
+    def fake_verify(token):
+        payload = payloads.get(token)
+        if not payload:
+            raise ticket_links.TokenInvalid("invalid token")
+        return payload
+
     monkeypatch.setattr('psycopg2.connect', lambda *a, **kw: DummyConn(cursor))
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     import backend.database
     monkeypatch.setattr('backend.database.get_connection', fake_get_connection)
     monkeypatch.setattr('backend.ticket_utils.free_ticket', lambda *a, **k: None)
     monkeypatch.setattr('backend.routers.purchase.free_ticket', lambda *a, **k: None)
+    monkeypatch.setattr('backend.services.ticket_links.verify', fake_verify)
     if 'backend.main' in sys.modules:
         importlib.reload(sys.modules['backend.main'])
     else:
@@ -110,7 +138,21 @@ def test_reserved_to_paid_purchase(client):
 
     store['cursor'].queries.clear()
 
-    resp = cli.post('/purchase', json={
+    resp = cli.post('/purchase?token=token-no-pay', json={
+        'tour_id': 1,
+        'seat_nums': [2],
+        'passenger_names': ['B'],
+        'passenger_phone': '1',
+        'passenger_email': 'a@b.com',
+        'departure_stop_id': 1,
+        'arrival_stop_id': 2,
+        'adult_count': 1,
+        'discount_count': 0,
+        'purchase_id': pid,
+    })
+    assert resp.status_code == 403
+
+    resp = cli.post('/purchase?token=token-pay', json={
         'tour_id': 1,
         'seat_nums': [2],
         'passenger_names': ['B'],

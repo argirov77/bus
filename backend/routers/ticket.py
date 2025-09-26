@@ -2,6 +2,7 @@
 
 from typing import cast
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr
 
@@ -15,6 +16,9 @@ from ._ticket_link_helpers import (
 )
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
+from ..services import ticket_links
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
@@ -68,6 +72,22 @@ class TicketReassign(BaseModel):
     tour_id:   int
     from_seat: int
     to_seat:   int
+
+
+def _resolve_actor(request: Request) -> tuple[str, str | None]:
+    token = request.headers.get("X-Ticket-Token") or request.query_params.get("token")
+    is_admin = getattr(request.state, "is_admin", False)
+    jti = getattr(request.state, "jti", None)
+
+    if token and not is_admin:
+        try:
+            payload = ticket_links.verify(token)
+        except ticket_links.TicketLinkError as exc:
+            raise HTTPException(401, "Invalid or missing ticket token") from exc
+        jti = payload.get("jti") or jti
+
+    actor = jti or ("admin" if is_admin else "system")
+    return actor, jti
 
 
 @router.post("/", response_model=TicketOut)
@@ -221,10 +241,15 @@ def create_ticket(data: TicketCreate):
 
 
 @router.post("/reassign", status_code=204)
-def reassign_ticket(data: TicketReassign):
+def reassign_ticket(
+    data: TicketReassign,
+    request: Request,
+    context=Depends(require_scope("edit")),
+):
     conn = get_connection()
     cur = conn.cursor()
     try:
+        _actor, jti = _resolve_actor(request)
         # 1) Ищем ticket_id и from_seat_id
         cur.execute(
             """
@@ -270,6 +295,10 @@ def reassign_ticket(data: TicketReassign):
         )
 
         conn.commit()
+        if jti:
+            logger.info(
+                "Ticket reassigned on tour %s using token jti=%s", data.tour_id, jti
+            )
     except HTTPException:
         conn.rollback()
         raise

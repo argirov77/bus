@@ -57,12 +57,31 @@ class UniqueSalesConn:
 def client(monkeypatch):
     def fake_get_connection():
         return UniqueSalesConn()
+    payloads = {
+        "token-pay": {
+            "ticket_id": 1,
+            "purchase_id": 1,
+            "scopes": ["pay"],
+            "lang": "bg",
+            "exp": 4102444800,
+            "jti": "jti-pay",
+        }
+    }
+
+    from backend.services import ticket_links
+
+    def fake_verify(token):
+        payload = payloads.get(token)
+        if not payload:
+            raise ticket_links.TokenInvalid("invalid token")
+        return payload
     monkeypatch.setattr('psycopg2.connect', lambda *a, **kw: UniqueSalesConn())
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     import backend.database
     monkeypatch.setattr('backend.database.get_connection', fake_get_connection)
     monkeypatch.setattr('backend.ticket_utils.free_ticket', lambda *a, **k: None)
     monkeypatch.setattr('backend.routers.purchase.free_ticket', lambda *a, **k: None)
+    monkeypatch.setattr('backend.services.ticket_links.verify', fake_verify)
     if 'backend.main' in sys.modules:
         importlib.reload(sys.modules['backend.main'])
     else:
@@ -74,7 +93,7 @@ def client(monkeypatch):
 
 def test_multiple_purchases_same_id(client):
     # first purchase to create id
-    resp1 = client.post('/purchase', json={
+    resp1 = client.post('/purchase?token=token-pay', json={
         'tour_id': 1,
         'seat_nums': [1],
         'passenger_names': ['A'],
@@ -88,7 +107,7 @@ def test_multiple_purchases_same_id(client):
     assert resp1.status_code == 200
     purchase_id = resp1.json()['purchase_id']
     # second purchase using same purchase id simulating return trip
-    resp2 = client.post('/purchase', json={
+    resp2 = client.post('/purchase?token=token-pay', json={
         'tour_id': 1,
         'seat_nums': [2],
         'passenger_names': ['B'],
