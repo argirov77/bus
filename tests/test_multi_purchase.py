@@ -65,12 +65,32 @@ def client(monkeypatch):
         conn = DummyConn(cursor)
         store['cursor'] = cursor
         return conn
+    payloads = {
+        "token-pay": {
+            "ticket_id": 1,
+            "purchase_id": 1,
+            "scopes": ["pay"],
+            "lang": "bg",
+            "exp": 4102444800,
+            "jti": "jti-pay",
+        }
+    }
+
+    from backend.services import ticket_links
+
+    def fake_verify(token):
+        payload = payloads.get(token)
+        if not payload:
+            raise ticket_links.TokenInvalid("invalid token")
+        return payload
+
     monkeypatch.setattr('psycopg2.connect', lambda *a, **kw: DummyConn(cursor))
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     import backend.database
     monkeypatch.setattr('backend.database.get_connection', fake_get_connection)
     monkeypatch.setattr('backend.ticket_utils.free_ticket', lambda *a, **k: None)
     monkeypatch.setattr('backend.routers.purchase.free_ticket', lambda *a, **k: None)
+    monkeypatch.setattr('backend.services.ticket_links.verify', fake_verify)
     if 'backend.main' in sys.modules:
         importlib.reload(sys.modules['backend.main'])
     else:
@@ -83,7 +103,7 @@ def client(monkeypatch):
 def test_purchase_round_trip(client):
     cli, store = client
     # First purchase
-    resp = cli.post('/purchase', json={
+    resp = cli.post('/purchase?token=token-pay', json={
         'tour_id': 1,
         'seat_nums': [1],
         'passenger_names': ['A'],
@@ -100,7 +120,7 @@ def test_purchase_round_trip(client):
     store['cursor'].queries.clear()
 
     # Second purchase with same purchase_id (return trip)
-    resp = cli.post('/purchase', json={
+    resp = cli.post('/purchase?token=token-pay', json={
         'tour_id': 2,
         'seat_nums': [1],
         'passenger_names': ['A'],
