@@ -2,7 +2,17 @@
 FROM python:3.12-slim AS builder
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential libpq-dev \
+ && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libpangoft2-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    shared-mime-info \
+    fonts-dejavu-core \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -22,7 +32,17 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # install curl so the healthcheck can run
-RUN apt-get update && apt-get install -y curl
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+    curl \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libpangoft2-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    shared-mime-info \
+    fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*
 
 # bring in the venv & code
 COPY --from=builder /opt/venv /opt/venv
