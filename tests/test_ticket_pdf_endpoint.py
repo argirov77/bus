@@ -7,10 +7,20 @@ from typing import Any, Dict, Optional
 import pytest
 from fastapi.testclient import TestClient
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from backend.services import access_guard, ticket_links
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limit():
+    access_guard.reset_rate_limit_state()
+    yield
+    access_guard.reset_rate_limit_state()
+
 
 @pytest.fixture
 def client(monkeypatch):
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
     state: Dict[str, Any] = {
         "link_payload": None,
@@ -142,6 +152,8 @@ def client(monkeypatch):
     def fake_verify(token: str) -> Dict[str, Any]:
         state["verify_called_with"] = token
         payload = state.get("link_payload")
+        if isinstance(payload, Exception):
+            raise payload
         if payload is None:
             raise AssertionError("link_payload must be configured before verifying tokens")
         return payload
@@ -198,6 +210,37 @@ def test_ticket_pdf_returns_pdf_for_valid_link_token(client):
     assert state["connection_closed"] is True
 
 
+def test_ticket_pdf_rejected_for_revoked_token(client):
+    cli, state = client
+
+    state["link_payload"] = ticket_links.TokenRevoked("revoked")
+
+    response = cli.get("/tickets/55/pdf", params={"token": "revoked"})
+
+    assert response.status_code == 401
+
+
+def test_ticket_pdf_rate_limit(client, monkeypatch):
+    cli, state = client
+
+    monkeypatch.setattr(access_guard, "RATE_LIMIT_MAX_REQUESTS", 1)
+    monkeypatch.setattr(access_guard, "RATE_LIMIT_BURST", 0)
+    monkeypatch.setattr(access_guard, "RATE_LIMIT_DELAY_SECONDS", 0.0)
+
+    state["link_payload"] = {
+        "ticket_id": 55,
+        "purchase_id": None,
+        "scopes": ["view"],
+        "lang": "en",
+        "jti": "rate-limit-jti",
+        "exp": 1234567890,
+    }
+
+    first = cli.get("/tickets/55/pdf", params={"token": "limit"})
+    assert first.status_code == 200
+
+    second = cli.get("/tickets/55/pdf", params={"token": "limit"})
+    assert second.status_code == 429
 def test_ticket_pdf_uses_query_lang_override(client):
     cli, state = client
 

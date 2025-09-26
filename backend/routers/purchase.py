@@ -13,6 +13,7 @@ from ._ticket_link_helpers import (
     issue_ticket_links,
 )
 from ..services import ticket_links
+from ..services.access_guard import guard_public_request
 
 logger = logging.getLogger(__name__)
 
@@ -320,6 +321,12 @@ def pay_purchase(
     cur = conn.cursor()
     try:
         actor, jti = _resolve_actor(request)
+        guard_public_request(
+            request,
+            "pay",
+            purchase_id=purchase_id,
+            context=context,
+        )
         cur.execute(
             "SELECT amount_due FROM purchase WHERE id=%s",
             (purchase_id,),
@@ -357,6 +364,12 @@ def cancel_purchase(
     cur = conn.cursor()
     try:
         actor, jti = _resolve_actor(request)
+        guard_public_request(
+            request,
+            "cancel",
+            purchase_id=purchase_id,
+            context=context,
+        )
         cur.execute(
             "SELECT id FROM ticket WHERE purchase_id=%s",
             (purchase_id,),
@@ -394,7 +407,9 @@ class PayIn(BaseModel):
 
 
 @actions_router.post("/book", response_model=PurchaseOut)
-def book_seat(data: PurchaseCreate):
+def book_seat(data: PurchaseCreate, request: Request):
+    guard_public_request(request, "book")
+
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
@@ -428,6 +443,11 @@ def purchase_and_pay(
     ticket_specs: List[TicketIssueSpec] = []
     try:
         actor, jti = _resolve_actor(request)
+        guard_public_request(
+            request,
+            "purchase",
+            context=context,
+        )
         purchase_id, amount_due, ticket_specs = _create_purchase(
             cur, data, "paid", "offline", actor
         )
@@ -458,6 +478,12 @@ def pay_booking(
     cur = conn.cursor()
     try:
         actor, jti = _resolve_actor(request)
+        guard_public_request(
+            request,
+            "pay",
+            purchase_id=data.purchase_id,
+            context=context,
+        )
         cur.execute(
             "SELECT amount_due FROM purchase WHERE id=%s",
             (data.purchase_id,),
@@ -505,6 +531,12 @@ def cancel_booking(
     cur = conn.cursor()
     try:
         actor, jti = _resolve_actor(request)
+        guard_public_request(
+            request,
+            "cancel",
+            purchase_id=purchase_id,
+            context=context,
+        )
         cur.execute(
             "SELECT id FROM ticket WHERE purchase_id=%s",
             (purchase_id,),
@@ -545,13 +577,26 @@ def refund_purchase(
     cur = conn.cursor()
     try:
         actor, jti = _resolve_actor(request)
+        guard_public_request(
+            request,
+            "refund",
+            purchase_id=purchase_id,
+            context=context,
+        )
         cur.execute(
             "SELECT id FROM ticket WHERE purchase_id=%s",
             (purchase_id,),
         )
         t = cur.fetchone()
+        revoked_jtis: List[str] = []
         if t:
-            cur.execute("DELETE FROM ticket WHERE id=%s", (t[0],))
+            ticket_id = t[0]
+            cur.execute(
+                "SELECT jti FROM ticket_link_tokens WHERE ticket_id = %s AND revoked_at IS NULL",
+                (ticket_id,),
+            )
+            revoked_jtis = [str(row[0]) for row in cur.fetchall() if row and row[0]]
+            cur.execute("DELETE FROM ticket WHERE id=%s", (ticket_id,))
 
         cur.execute(
             "UPDATE purchase SET status='refunded', update_at=NOW() WHERE id=%s",
@@ -559,6 +604,8 @@ def refund_purchase(
         )
         _log_action(cur, purchase_id, "refunded", 0, by=actor)
         conn.commit()
+        for token_jti in revoked_jtis:
+            ticket_links.revoke(token_jti)
         if jti:
             logger.info("Purchase %s refunded with token jti=%s", purchase_id, jti)
     except HTTPException:

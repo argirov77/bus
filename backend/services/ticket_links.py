@@ -136,6 +136,15 @@ def issue(
         with conn.cursor() as cur:
             cur.execute(
                 """
+                UPDATE ticket_link_tokens
+                   SET revoked_at = NOW()
+                 WHERE ticket_id = %s
+                   AND revoked_at IS NULL
+                """,
+                (ticket_id,),
+            )
+            cur.execute(
+                """
                 INSERT INTO ticket_link_tokens (
                     jti, ticket_id, purchase_id, scopes, lang, expires_at
                 ) VALUES (%s, %s, %s, %s, %s, %s)
@@ -218,3 +227,32 @@ def verify(token: str) -> Dict[str, Any]:
         raise TokenExpired("Token has expired")
 
     return payload
+
+
+def revoke(jti: str) -> bool:
+    """Mark the provided token identifier as revoked.
+
+    Returns True if a token record was updated.
+    """
+
+    if not jti:
+        return False
+
+    conn = _get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE ticket_link_tokens
+                   SET revoked_at = NOW()
+                 WHERE jti = %s
+                   AND revoked_at IS NULL
+                """,
+                (jti,),
+            )
+            updated = cur.rowcount
+        conn.commit()
+    finally:
+        conn.close()
+
+    return updated > 0

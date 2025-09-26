@@ -35,6 +35,19 @@ class FakeCursor:
                 "revoked_at": None,
             }
             self._result = None
+        elif "update ticket_link_tokens" in normalized and "set revoked_at" in normalized:
+            now = datetime.now(timezone.utc)
+            if "where ticket_id" in normalized:
+                ticket_id = params[0]
+                for entry in self.store.values():
+                    if entry["ticket_id"] == ticket_id and entry["revoked_at"] is None:
+                        entry["revoked_at"] = now
+            elif "where jti" in normalized:
+                jti = params[0]
+                entry = self.store.get(jti)
+                if entry and entry["revoked_at"] is None:
+                    entry["revoked_at"] = now
+            self._result = None
         elif "select revoked_at, expires_at from ticket_link_tokens" in normalized:
             jti = params[0]
             row = self.store.get(jti)
@@ -42,11 +55,27 @@ class FakeCursor:
                 self._result = (row["revoked_at"], row["expires_at"])
             else:
                 self._result = None
+        elif "select jti from ticket_link_tokens" in normalized:
+            if "where ticket_id" in normalized:
+                ticket_id = params[0]
+                rows = [
+                    (jti,)
+                    for jti, entry in self.store.items()
+                    if entry["ticket_id"] == ticket_id and entry["revoked_at"] is None
+                ]
+                self._result = rows
+            else:
+                self._result = []
         else:
             raise AssertionError(f"Unexpected query: {query}")
 
     def fetchone(self):
         return self._result
+
+    def fetchall(self):
+        if isinstance(self._result, list):
+            return list(self._result)
+        return []
 
 
 class FakeConnection:
@@ -151,3 +180,64 @@ def test_verify_blocks_revoked_tokens(monkeypatch, fake_db):
 
     with pytest.raises(ticket_links.TokenRevoked):
         ticket_links.verify(token)
+
+
+def test_revoke_marks_token(monkeypatch, fake_db):
+    now = datetime(2024, 7, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(ticket_links, "_utcnow", lambda: now)
+
+    token = ticket_links.issue(
+        ticket_id=100,
+        purchase_id=200,
+        scopes=["view"],
+        lang="en",
+        departure_dt=now + timedelta(hours=3),
+    )
+    payload = jwt.decode(
+        token,
+        "test-secret",
+        algorithms=["HS256"],
+        options={"verify_exp": False},
+    )
+    jti = payload["jti"]
+
+    assert ticket_links.revoke(jti) is True
+    assert fake_db.tokens[jti]["revoked_at"] is not None
+
+    with pytest.raises(ticket_links.TokenRevoked):
+        ticket_links.verify(token)
+
+
+def test_issue_revokes_previous_tokens(monkeypatch, fake_db):
+    now = datetime(2024, 8, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(ticket_links, "_utcnow", lambda: now)
+
+    first_token = ticket_links.issue(
+        ticket_id=300,
+        purchase_id=None,
+        scopes=["download"],
+        lang="bg",
+        departure_dt=now + timedelta(hours=4),
+    )
+    first_payload = jwt.decode(
+        first_token,
+        "test-secret",
+        algorithms=["HS256"],
+        options={"verify_exp": False},
+    )
+    first_jti = first_payload["jti"]
+
+    # Issue a second token for the same ticket, which should revoke the first
+    second_token = ticket_links.issue(
+        ticket_id=300,
+        purchase_id=None,
+        scopes=["download"],
+        lang="bg",
+        departure_dt=now + timedelta(hours=5),
+    )
+
+    with pytest.raises(ticket_links.TokenRevoked):
+        ticket_links.verify(first_token)
+
+    second_payload = ticket_links.verify(second_token)
+    assert second_payload["jti"] != first_jti

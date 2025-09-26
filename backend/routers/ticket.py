@@ -17,6 +17,7 @@ from ._ticket_link_helpers import (
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
 from ..services import ticket_links
+from ..services.access_guard import guard_public_request
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,13 @@ def get_ticket_pdf(
     lang: str | None = None,
     context=Depends(require_scope("view")),
 ):
+    guard_public_request(
+        request,
+        "view",
+        ticket_id=ticket_id,
+        context=context,
+    )
+
     conn = get_connection()
     try:
         resolved_lang = lang or getattr(context, "lang", None) or "bg"
