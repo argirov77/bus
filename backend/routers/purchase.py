@@ -1,8 +1,15 @@
+from typing import List, cast
+
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
-from datetime import datetime
+from pydantic import BaseModel, EmailStr, Field
+
 from ..database import get_connection
 from ..ticket_utils import free_ticket
+from ._ticket_link_helpers import (
+    TicketIssueSpec,
+    combine_departure_datetime,
+    issue_ticket_links,
+)
 
 router = APIRouter(prefix="/purchase", tags=["purchase"])
 # second router exposing simplified endpoints without the /purchase prefix
@@ -20,10 +27,18 @@ class PurchaseCreate(BaseModel):
     discount_count: int
     extra_baggage: list[bool] | None = None
     purchase_id: int | None = None
+    lang: str | None = None
+
+
+class TicketLinkOut(BaseModel):
+    ticket_id: int
+    deep_link: str
+
 
 class PurchaseOut(BaseModel):
     purchase_id: int
     amount_due: float
+    tickets: List[TicketLinkOut] = Field(default_factory=list)
 
 def _log_action(
     cur,
@@ -43,10 +58,10 @@ def _log_action(
 
 def _create_purchase(
     cur, data: PurchaseCreate, status: str, payment_method: str = "online"
-) -> tuple[int, float]:
+) -> tuple[int, float, List[TicketIssueSpec]]:
     """Helper that inserts passengers, purchase and ticket records.
 
-    Returns tuple of purchase id and calculated price.
+    Returns tuple of purchase id, calculated price and specs for issued tickets.
     """
 
     if len(data.seat_nums) != len(data.passenger_names):
@@ -59,17 +74,22 @@ def _create_purchase(
         raise HTTPException(400, "Seat numbers and extra baggage count mismatch")
 
     # Determine route/pricelist and ordered stops
-    cur.execute("SELECT route_id, pricelist_id FROM tour WHERE id=%s", (data.tour_id,))
+    cur.execute(
+        "SELECT route_id, pricelist_id, date FROM tour WHERE id=%s",
+        (data.tour_id,),
+    )
     row = cur.fetchone()
     if not row:
         raise HTTPException(404, "Tour not found")
-    route_id, pricelist_id = row
+    route_id, pricelist_id, tour_date = row
 
     cur.execute(
-        'SELECT stop_id FROM routestop WHERE route_id=%s ORDER BY "order"',
+        'SELECT stop_id, departure_time FROM routestop WHERE route_id=%s ORDER BY "order"',
         (route_id,),
     )
-    stops = [r[0] for r in cur.fetchall()]
+    stop_rows = cur.fetchall()
+    stops = [r[0] for r in stop_rows]
+    stop_departures = {r[0]: r[1] for r in stop_rows}
     if data.departure_stop_id not in stops or data.arrival_stop_id not in stops:
         raise HTTPException(400, "Invalid stops for this route")
     idx_from = stops.index(data.departure_stop_id)
@@ -141,6 +161,8 @@ def _create_purchase(
         purchase_id = cur.fetchone()[0]
 
     # 2) create passenger and ticket for each seat
+    ticket_specs: List[TicketIssueSpec] = []
+
     for seat_num, name, bag in zip(data.seat_nums, data.passenger_names, baggage_list):
         cur.execute(
             "INSERT INTO passenger (name) VALUES (%s) RETURNING id",
@@ -181,7 +203,21 @@ def _create_purchase(
                 int(bag),
             ),
         )
-        cur.fetchone()
+        ticket_id = cur.fetchone()[0]
+
+        departure_dt = combine_departure_datetime(
+            tour_date, stop_departures.get(data.departure_stop_id)
+        )
+        ticket_specs.append(
+            cast(
+                TicketIssueSpec,
+                {
+                    "ticket_id": ticket_id,
+                    "purchase_id": purchase_id,
+                    "departure_dt": departure_dt,
+                },
+            )
+        )
 
         # update seat availability
         new_avail = "".join(ch for ch in avail_str if ch not in segments)
@@ -221,16 +257,18 @@ def _create_purchase(
         total_price if status == "paid" else 0,
         method=payment_method,
     )
-    return purchase_id, new_amount
+    return purchase_id, new_amount, ticket_specs
 
 @router.post("/", response_model=PurchaseOut)
 def create_purchase(data: PurchaseCreate):
     conn = get_connection()
     cur = conn.cursor()
+    ticket_specs: List[TicketIssueSpec] = []
     try:
-        purchase_id, amount_due = _create_purchase(cur, data, "reserved")
+        purchase_id, amount_due, ticket_specs = _create_purchase(
+            cur, data, "reserved"
+        )
         conn.commit()
-        return {"purchase_id": purchase_id, "amount_due": amount_due}
     except HTTPException:
         conn.rollback()
         raise
@@ -240,6 +278,9 @@ def create_purchase(data: PurchaseCreate):
     finally:
         cur.close()
         conn.close()
+
+    tickets = issue_ticket_links(ticket_specs, data.lang)
+    return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 @router.post("/{purchase_id}/pay", status_code=204)
 def pay_purchase(purchase_id: int):
@@ -314,10 +355,12 @@ class PayIn(BaseModel):
 def book_seat(data: PurchaseCreate):
     conn = get_connection()
     cur = conn.cursor()
+    ticket_specs: List[TicketIssueSpec] = []
     try:
-        purchase_id, amount_due = _create_purchase(cur, data, "reserved")
+        purchase_id, amount_due, ticket_specs = _create_purchase(
+            cur, data, "reserved"
+        )
         conn.commit()
-        return {"purchase_id": purchase_id, "amount_due": amount_due}
     except HTTPException:
         conn.rollback()
         raise
@@ -327,16 +370,21 @@ def book_seat(data: PurchaseCreate):
     finally:
         cur.close()
         conn.close()
+
+    tickets = issue_ticket_links(ticket_specs, data.lang)
+    return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 
 @actions_router.post("/purchase", response_model=PurchaseOut)
 def purchase_and_pay(data: PurchaseCreate):
     conn = get_connection()
     cur = conn.cursor()
+    ticket_specs: List[TicketIssueSpec] = []
     try:
-        purchase_id, amount_due = _create_purchase(cur, data, "paid", "offline")
+        purchase_id, amount_due, ticket_specs = _create_purchase(
+            cur, data, "paid", "offline"
+        )
         conn.commit()
-        return {"purchase_id": purchase_id, "amount_due": amount_due}
     except HTTPException:
         conn.rollback()
         raise
@@ -346,6 +394,9 @@ def purchase_and_pay(data: PurchaseCreate):
     finally:
         cur.close()
         conn.close()
+
+    tickets = issue_ticket_links(ticket_specs, data.lang)
+    return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 
 @actions_router.post("/pay", status_code=204)
