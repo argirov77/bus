@@ -1,4 +1,10 @@
+import logging
 from typing import List, Tuple
+
+from .services import ticket_links
+
+
+logger = logging.getLogger(__name__)
 
 
 def free_ticket(cur, ticket_id: int) -> None:
@@ -20,6 +26,13 @@ def free_ticket(cur, ticket_id: int) -> None:
     if not row:
         return
     tour_id, seat_id, dep, arr = row
+
+    cur.execute(
+        "SELECT jti FROM ticket_link_tokens WHERE ticket_id = %s AND revoked_at IS NULL",
+        (ticket_id,),
+    )
+    token_rows = cur.fetchall()
+    jtis = [str(token[0]) for token in token_rows if token and token[0]]
 
     # Resolve route and ordered stops
     cur.execute("SELECT route_id FROM tour WHERE id = %s", (tour_id,))
@@ -72,6 +85,12 @@ def free_ticket(cur, ticket_id: int) -> None:
 
     # Remove the ticket itself
     cur.execute("DELETE FROM ticket WHERE id = %s", (ticket_id,))
+
+    for jti in jtis:
+        try:
+            ticket_links.revoke(jti)
+        except Exception:  # pragma: no cover - defensive logging
+            logger.exception("Failed to revoke ticket link token %s", jti)
 
 
 def recalc_available(cur, tour_id: int) -> None:

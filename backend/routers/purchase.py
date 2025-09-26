@@ -14,6 +14,7 @@ from ._ticket_link_helpers import (
     issue_ticket_links,
 )
 from ..services import ticket_links
+from ..services.access_guard import guard_public_request
 from ..services.email import render_ticket_email, send_ticket_email
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/purchase", tags=["purchase"])
 # second router exposing simplified endpoints without the /purchase prefix
 actions_router = APIRouter(tags=["purchase"])
+
 
 class PurchaseCreate(BaseModel):
     tour_id: int
@@ -49,6 +51,7 @@ class PurchaseOut(BaseModel):
     amount_due: float
     tickets: List[TicketLinkOut] = Field(default_factory=list)
 
+
 def _log_action(
     cur,
     purchase_id: int,
@@ -58,7 +61,6 @@ def _log_action(
     method: str | None = None,
 ) -> None:
     """Record an action for the purchase in the sales log."""
-
     cur.execute(
         "INSERT INTO sales (purchase_id, category, amount, actor, method) VALUES (%s,%s,%s,%s,%s)",
         (purchase_id, action, amount, by or "system", method),
@@ -67,7 +69,6 @@ def _log_action(
 
 def _resolve_actor(request: Request) -> tuple[str, str | None]:
     """Determine actor for logging and return actor id along with token jti."""
-
     token = request.headers.get("X-Ticket-Token") or request.query_params.get("token")
     is_admin = getattr(request.state, "is_admin", False)
     jti = getattr(request.state, "jti", None)
@@ -85,7 +86,6 @@ def _resolve_actor(request: Request) -> tuple[str, str | None]:
 
 def _collect_ticket_specs_for_purchase(cur, purchase_id: int) -> List[TicketIssueSpec]:
     """Load ticket issue specs for all tickets belonging to a purchase."""
-
     cur.execute(
         """
         SELECT t.id, t.purchase_id, tr.date, rs.departure_time
@@ -122,7 +122,6 @@ def _queue_ticket_emails(
     recipient: str | None,
 ) -> None:
     """Schedule background tasks to send ticket emails for issued links."""
-
     if not background_tasks or not tickets or not recipient:
         return
 
@@ -148,12 +147,11 @@ def _send_ticket_email_task(
     deep_link: str,
 ) -> None:
     """Background task that renders PDF and sends ticket email."""
-
     lang_value = (lang or "bg").lower()
 
     try:
         conn = get_connection()
-    except Exception:  # pragma: no cover - defensive connection handling
+    except Exception:  # pragma: no cover
         logger.exception("Failed to acquire database connection for ticket %s", ticket_id)
         return
 
@@ -163,7 +161,7 @@ def _send_ticket_email_task(
     except ValueError:
         logger.warning("Ticket %s not found while preparing email", ticket_id)
         return
-    except Exception:  # pragma: no cover - unexpected failure
+    except Exception:  # pragma: no cover
         logger.exception("Failed to load ticket DTO for ticket %s", ticket_id)
         return
     finally:
@@ -190,11 +188,7 @@ def _create_purchase(
     payment_method: str = "online",
     actor: str | None = None,
 ) -> tuple[int, float, List[TicketIssueSpec]]:
-    """Helper that inserts passengers, purchase and ticket records.
-
-    Returns tuple of purchase id, calculated price and specs for issued tickets.
-    """
-
+    """Insert passengers, purchase and ticket records. Returns (purchase_id, amount_due, specs)."""
     if len(data.seat_nums) != len(data.passenger_names):
         raise HTTPException(400, "Seat numbers and passenger names count mismatch")
     if data.adult_count + data.discount_count != len(data.seat_nums):
@@ -275,10 +269,10 @@ def _create_purchase(
     else:
         # 1) create purchase record using first passenger as customer name
         cur.execute(
-            f"""
+            """
             INSERT INTO purchase
               (customer_name, customer_email, customer_phone, amount_due, deadline, status, update_at, payment_method)
-            VALUES (%s,%s,%s,%s,NOW() + interval '1 day','{status}',NOW(),%s)
+            VALUES (%s,%s,%s,%s,NOW() + interval '1 day',%s,NOW(),%s)
             RETURNING id
             """,
             (
@@ -286,6 +280,7 @@ def _create_purchase(
                 data.passenger_email,
                 data.passenger_phone,
                 total_price,
+                status,
                 payment_method,
             ),
         )
@@ -295,10 +290,7 @@ def _create_purchase(
     ticket_specs: List[TicketIssueSpec] = []
 
     for seat_num, name, bag in zip(data.seat_nums, data.passenger_names, baggage_list):
-        cur.execute(
-            "INSERT INTO passenger (name) VALUES (%s) RETURNING id",
-            (name,),
-        )
+        cur.execute("INSERT INTO passenger (name) VALUES (%s) RETURNING id", (name,))
         passenger_id = cur.fetchone()[0]
 
         cur.execute(
@@ -354,10 +346,7 @@ def _create_purchase(
         new_avail = "".join(ch for ch in avail_str if ch not in segments)
         if not new_avail:
             new_avail = "0"
-        cur.execute(
-            "UPDATE seat SET available=%s WHERE id=%s",
-            (new_avail, seat_id),
-        )
+        cur.execute("UPDATE seat SET available=%s WHERE id=%s", (new_avail, seat_id))
 
         # decrement counters in available table for overlapping segments
         cur.execute(
@@ -376,8 +365,12 @@ def _create_purchase(
             """,
             (
                 data.tour_id,
-                route_id, route_id, data.arrival_stop_id,
-                route_id, route_id, data.departure_stop_id,
+                route_id,
+                route_id,
+                data.arrival_stop_id,
+                route_id,
+                route_id,
+                data.departure_stop_id,
             ),
         )
 
@@ -391,15 +384,14 @@ def _create_purchase(
     )
     return purchase_id, new_amount, ticket_specs
 
+
 @router.post("/", response_model=PurchaseOut)
 def create_purchase(data: PurchaseCreate, background_tasks: BackgroundTasks):
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
     try:
-        purchase_id, amount_due, ticket_specs = _create_purchase(
-            cur, data, "reserved"
-        )
+        purchase_id, amount_due, ticket_specs = _create_purchase(cur, data, "reserved")
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -415,6 +407,7 @@ def create_purchase(data: PurchaseCreate, background_tasks: BackgroundTasks):
     _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
+
 @router.post("/{purchase_id}/pay", status_code=204)
 def pay_purchase(
     purchase_id: int,
@@ -428,6 +421,12 @@ def pay_purchase(
     customer_email: str | None = None
     try:
         actor, jti = _resolve_actor(request)
+        guard_public_request(
+            request,
+            "pay",
+            purchase_id=purchase_id,
+            context=context,
+        )
         cur.execute(
             "SELECT amount_due, customer_email FROM purchase WHERE id=%s",
             (purchase_id,),
@@ -440,10 +439,7 @@ def pay_purchase(
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
 
-        cur.execute(
-            "UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s",
-            (purchase_id,),
-        )
+        cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
         _log_action(cur, purchase_id, "paid", amount_due, by=actor, method="offline")
         conn.commit()
         if jti:
@@ -460,6 +456,7 @@ def pay_purchase(
         cur.close()
         conn.close()
 
+
 @router.post("/{purchase_id}/cancel", status_code=204)
 def cancel_purchase(
     purchase_id: int,
@@ -470,10 +467,13 @@ def cancel_purchase(
     cur = conn.cursor()
     try:
         actor, jti = _resolve_actor(request)
-        cur.execute(
-            "SELECT id FROM ticket WHERE purchase_id=%s",
-            (purchase_id,),
+        guard_public_request(
+            request,
+            "cancel",
+            purchase_id=purchase_id,
+            context=context,
         )
+        cur.execute("SELECT id FROM ticket WHERE purchase_id=%s", (purchase_id,))
         tickets = [row[0] for row in cur.fetchall()]
         if not tickets:
             raise HTTPException(404, "Purchase not found")
@@ -481,10 +481,7 @@ def cancel_purchase(
         for t_id in tickets:
             free_ticket(cur, t_id)
 
-        cur.execute(
-            "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",
-            (purchase_id,),
-        )
+        cur.execute("UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s", (purchase_id,))
         _log_action(cur, purchase_id, "cancelled", 0, by=actor)
         conn.commit()
         if jti:
@@ -507,14 +504,14 @@ class PayIn(BaseModel):
 
 
 @actions_router.post("/book", response_model=PurchaseOut)
-def book_seat(data: PurchaseCreate, background_tasks: BackgroundTasks):
+def book_seat(data: PurchaseCreate, request: Request, background_tasks: BackgroundTasks):
+    guard_public_request(request, "book")
+
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
     try:
-        purchase_id, amount_due, ticket_specs = _create_purchase(
-            cur, data, "reserved"
-        )
+        purchase_id, amount_due, ticket_specs = _create_purchase(cur, data, "reserved")
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -543,6 +540,7 @@ def purchase_and_pay(
     ticket_specs: List[TicketIssueSpec] = []
     try:
         actor, jti = _resolve_actor(request)
+        guard_public_request(request, "purchase", context=context)
         purchase_id, amount_due, ticket_specs = _create_purchase(
             cur, data, "paid", "offline", actor
         )
@@ -577,6 +575,12 @@ def pay_booking(
     customer_email: str | None = None
     try:
         actor, jti = _resolve_actor(request)
+        guard_public_request(
+            request,
+            "pay",
+            purchase_id=data.purchase_id,
+            context=context,
+        )
         cur.execute(
             "SELECT amount_due, customer_email FROM purchase WHERE id=%s",
             (data.purchase_id,),
@@ -589,23 +593,11 @@ def pay_booking(
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, data.purchase_id)
 
-        cur.execute(
-            "UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s",
-            (data.purchase_id,),
-        )
-        _log_action(
-            cur,
-            data.purchase_id,
-            "paid",
-            amount_due,
-            by=actor,
-            method="online",
-        )
+        cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (data.purchase_id,))
+        _log_action(cur, data.purchase_id, "paid", amount_due, by=actor, method="online")
         conn.commit()
         if jti:
-            logger.info(
-                "Purchase %s paid with token jti=%s", data.purchase_id, jti
-            )
+            logger.info("Purchase %s paid with token jti=%s", data.purchase_id, jti)
         tickets = issue_ticket_links(ticket_specs, None)
         _queue_ticket_emails(background_tasks, tickets, None, customer_email)
     except HTTPException:
@@ -629,10 +621,8 @@ def cancel_booking(
     cur = conn.cursor()
     try:
         actor, jti = _resolve_actor(request)
-        cur.execute(
-            "SELECT id FROM ticket WHERE purchase_id=%s",
-            (purchase_id,),
-        )
+        guard_public_request(request, "cancel", purchase_id=purchase_id, context=context)
+        cur.execute("SELECT id FROM ticket WHERE purchase_id=%s", (purchase_id,))
         tickets = [row[0] for row in cur.fetchall()]
         if not tickets:
             raise HTTPException(404, "Purchase not found")
@@ -640,10 +630,7 @@ def cancel_booking(
         for t_id in tickets:
             free_ticket(cur, t_id)
 
-        cur.execute(
-            "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",
-            (purchase_id,),
-        )
+        cur.execute("UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s", (purchase_id,))
         _log_action(cur, purchase_id, "cancelled", 0, by=actor)
         conn.commit()
         if jti:
@@ -669,20 +656,24 @@ def refund_purchase(
     cur = conn.cursor()
     try:
         actor, jti = _resolve_actor(request)
-        cur.execute(
-            "SELECT id FROM ticket WHERE purchase_id=%s",
-            (purchase_id,),
-        )
+        guard_public_request(request, "refund", purchase_id=purchase_id, context=context)
+        cur.execute("SELECT id FROM ticket WHERE purchase_id=%s", (purchase_id,))
         t = cur.fetchone()
+        revoked_jtis: List[str] = []
         if t:
-            cur.execute("DELETE FROM ticket WHERE id=%s", (t[0],))
+            ticket_id = t[0]
+            cur.execute(
+                "SELECT jti FROM ticket_link_tokens WHERE ticket_id = %s AND revoked_at IS NULL",
+                (ticket_id,),
+            )
+            revoked_jtis = [str(row[0]) for row in cur.fetchall() if row and row[0]]
+            cur.execute("DELETE FROM ticket WHERE id=%s", (ticket_id,))
 
-        cur.execute(
-            "UPDATE purchase SET status='refunded', update_at=NOW() WHERE id=%s",
-            (purchase_id,),
-        )
+        cur.execute("UPDATE purchase SET status='refunded', update_at=NOW() WHERE id=%s", (purchase_id,))
         _log_action(cur, purchase_id, "refunded", 0, by=actor)
         conn.commit()
+        for token_jti in revoked_jtis:
+            ticket_links.revoke(token_jti)
         if jti:
             logger.info("Purchase %s refunded with token jti=%s", purchase_id, jti)
     except HTTPException:
@@ -694,3 +685,4 @@ def refund_purchase(
     finally:
         cur.close()
         conn.close()
+
