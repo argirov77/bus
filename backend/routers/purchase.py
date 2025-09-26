@@ -1,7 +1,7 @@
-from typing import List, cast
+from typing import List, Sequence, cast
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
 from ..auth import require_scope
@@ -9,10 +9,14 @@ from ..database import get_connection
 from ..ticket_utils import free_ticket
 from ._ticket_link_helpers import (
     TicketIssueSpec,
+    TicketLinkResult,
     combine_departure_datetime,
     issue_ticket_links,
 )
 from ..services import ticket_links
+from ..services.email import render_ticket_email, send_ticket_email
+from ..services.ticket_dto import get_ticket_dto
+from ..services.ticket_pdf import render_ticket_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +81,106 @@ def _resolve_actor(request: Request) -> tuple[str, str | None]:
 
     actor = jti or ("admin" if is_admin else "system")
     return actor, jti
+
+
+def _collect_ticket_specs_for_purchase(cur, purchase_id: int) -> List[TicketIssueSpec]:
+    """Load ticket issue specs for all tickets belonging to a purchase."""
+
+    cur.execute(
+        """
+        SELECT t.id, t.purchase_id, tr.date, rs.departure_time
+          FROM ticket AS t
+          JOIN tour AS tr ON tr.id = t.tour_id
+          JOIN routestop AS rs
+            ON rs.route_id = tr.route_id AND rs.stop_id = t.departure_stop_id
+         WHERE t.purchase_id = %s
+        """,
+        (purchase_id,),
+    )
+    rows = cur.fetchall()
+
+    specs: List[TicketIssueSpec] = []
+    for ticket_id, purchase_ref, tour_date, departure_time in rows:
+        departure_dt = combine_departure_datetime(tour_date, departure_time)
+        specs.append(
+            cast(
+                TicketIssueSpec,
+                {
+                    "ticket_id": ticket_id,
+                    "purchase_id": purchase_ref,
+                    "departure_dt": departure_dt,
+                },
+            )
+        )
+    return specs
+
+
+def _queue_ticket_emails(
+    background_tasks: BackgroundTasks,
+    tickets: Sequence[TicketLinkResult],
+    lang: str | None,
+    recipient: str | None,
+) -> None:
+    """Schedule background tasks to send ticket emails for issued links."""
+
+    if not background_tasks or not tickets or not recipient:
+        return
+
+    lang_value = (lang or "bg").lower()
+    for ticket in tickets:
+        ticket_id = ticket.get("ticket_id") if isinstance(ticket, dict) else None
+        deep_link = ticket.get("deep_link") if isinstance(ticket, dict) else None
+        if ticket_id is None or not deep_link:
+            continue
+        background_tasks.add_task(
+            _send_ticket_email_task,
+            ticket_id,
+            recipient,
+            lang_value,
+            deep_link,
+        )
+
+
+def _send_ticket_email_task(
+    ticket_id: int,
+    recipient: str,
+    lang: str,
+    deep_link: str,
+) -> None:
+    """Background task that renders PDF and sends ticket email."""
+
+    lang_value = (lang or "bg").lower()
+
+    try:
+        conn = get_connection()
+    except Exception:  # pragma: no cover - defensive connection handling
+        logger.exception("Failed to acquire database connection for ticket %s", ticket_id)
+        return
+
+    dto = None
+    try:
+        dto = get_ticket_dto(ticket_id, lang_value, conn)
+    except ValueError:
+        logger.warning("Ticket %s not found while preparing email", ticket_id)
+        return
+    except Exception:  # pragma: no cover - unexpected failure
+        logger.exception("Failed to load ticket DTO for ticket %s", ticket_id)
+        return
+    finally:
+        conn.close()
+
+    try:
+        pdf_bytes = render_ticket_pdf(dto, deep_link)
+    except Exception:
+        logger.exception("Failed to render PDF for ticket %s", ticket_id)
+        return
+
+    try:
+        subject, html_body = render_ticket_email(dto, deep_link, lang_value)
+        send_ticket_email(recipient, subject, html_body, pdf_bytes)
+        logger.info("Sent ticket email for ticket %s to %s", ticket_id, recipient)
+    except Exception:
+        logger.exception("Failed to send ticket email for ticket %s", ticket_id)
 
 
 def _create_purchase(
@@ -288,7 +392,7 @@ def _create_purchase(
     return purchase_id, new_amount, ticket_specs
 
 @router.post("/", response_model=PurchaseOut)
-def create_purchase(data: PurchaseCreate):
+def create_purchase(data: PurchaseCreate, background_tasks: BackgroundTasks):
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
@@ -308,26 +412,33 @@ def create_purchase(data: PurchaseCreate):
         conn.close()
 
     tickets = issue_ticket_links(ticket_specs, data.lang)
+    _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 @router.post("/{purchase_id}/pay", status_code=204)
 def pay_purchase(
     purchase_id: int,
     request: Request,
+    background_tasks: BackgroundTasks,
     context=Depends(require_scope("pay")),
 ):
     conn = get_connection()
     cur = conn.cursor()
+    ticket_specs: List[TicketIssueSpec] = []
+    customer_email: str | None = None
     try:
         actor, jti = _resolve_actor(request)
         cur.execute(
-            "SELECT amount_due FROM purchase WHERE id=%s",
+            "SELECT amount_due, customer_email FROM purchase WHERE id=%s",
             (purchase_id,),
         )
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "Purchase not found")
         amount_due = float(row[0])
+        customer_email = row[1]
+
+        ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
 
         cur.execute(
             "UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s",
@@ -337,6 +448,8 @@ def pay_purchase(
         conn.commit()
         if jti:
             logger.info("Purchase %s paid with token jti=%s", purchase_id, jti)
+        tickets = issue_ticket_links(ticket_specs, None)
+        _queue_ticket_emails(background_tasks, tickets, None, customer_email)
     except HTTPException:
         conn.rollback()
         raise
@@ -394,7 +507,7 @@ class PayIn(BaseModel):
 
 
 @actions_router.post("/book", response_model=PurchaseOut)
-def book_seat(data: PurchaseCreate):
+def book_seat(data: PurchaseCreate, background_tasks: BackgroundTasks):
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
@@ -414,6 +527,7 @@ def book_seat(data: PurchaseCreate):
         conn.close()
 
     tickets = issue_ticket_links(ticket_specs, data.lang)
+    _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 
@@ -421,6 +535,7 @@ def book_seat(data: PurchaseCreate):
 def purchase_and_pay(
     data: PurchaseCreate,
     request: Request,
+    background_tasks: BackgroundTasks,
     context=Depends(require_scope("pay")),
 ):
     conn = get_connection()
@@ -445,6 +560,7 @@ def purchase_and_pay(
         conn.close()
 
     tickets = issue_ticket_links(ticket_specs, data.lang)
+    _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 
@@ -452,20 +568,26 @@ def purchase_and_pay(
 def pay_booking(
     data: PayIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     context=Depends(require_scope("pay")),
 ):
     conn = get_connection()
     cur = conn.cursor()
+    ticket_specs: List[TicketIssueSpec] = []
+    customer_email: str | None = None
     try:
         actor, jti = _resolve_actor(request)
         cur.execute(
-            "SELECT amount_due FROM purchase WHERE id=%s",
+            "SELECT amount_due, customer_email FROM purchase WHERE id=%s",
             (data.purchase_id,),
         )
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "Purchase not found")
         amount_due = float(row[0])
+        customer_email = row[1]
+
+        ticket_specs = _collect_ticket_specs_for_purchase(cur, data.purchase_id)
 
         cur.execute(
             "UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s",
@@ -484,6 +606,8 @@ def pay_booking(
             logger.info(
                 "Purchase %s paid with token jti=%s", data.purchase_id, jti
             )
+        tickets = issue_ticket_links(ticket_specs, None)
+        _queue_ticket_emails(background_tasks, tickets, None, customer_email)
     except HTTPException:
         conn.rollback()
         raise

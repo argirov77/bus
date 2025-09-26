@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="bg">
+  <body>
+    <p>Здравейте {{ customer_name or "пътник" }},</p>
+    <p>
+      Вашият билет <strong>№{{ ticket_number }}</strong>
+      {% if route_name %}за {{ route_name }}{% endif %}
+      в момента е <strong>{{ status_text }}</strong>.
+    </p>
+    <ul>
+      {% if tour_date %}<li><strong>Дата:</strong> {{ tour_date }}</li>{% endif %}
+      {% if departure_name or departure_time %}
+        <li>
+          <strong>Отпътуване:</strong>
+          {{ departure_name or "" }}
+          {% if departure_time %}— {{ departure_time }}{% endif %}
+        </li>
+      {% endif %}
+      {% if arrival_name or arrival_time %}
+        <li>
+          <strong>Пристигане:</strong>
+          {{ arrival_name or "" }}
+          {% if arrival_time %}— {{ arrival_time }}{% endif %}
+        </li>
+      {% endif %}
+      {% if seat_number %}<li><strong>Място:</strong> {{ seat_number }}</li>{% endif %}
+    </ul>
+    <p>
+      <a href="{{ deep_link }}">Отворете билета онлайн</a>
+      {% if is_paid %}(плащането е потвърдено){% endif %}
+    </p>
+    <p>PDF версията на билета е приложена към това писмо.</p>
+  </body>
+</html>

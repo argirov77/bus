@@ -31,6 +31,8 @@ class UniqueSalesCursor:
             return [1, "1234"]
         if "select amount_due, status from purchase" in q:
             return [10, 'paid']
+        if "select amount_due, customer_email from purchase" in q:
+            return [10, 'a@b.com']
         if "select amount_due from purchase" in q:
             return [10]
         return [1]
@@ -82,6 +84,12 @@ def client(monkeypatch):
     monkeypatch.setattr('backend.ticket_utils.free_ticket', lambda *a, **k: None)
     monkeypatch.setattr('backend.routers.purchase.free_ticket', lambda *a, **k: None)
     monkeypatch.setattr('backend.services.ticket_links.verify', fake_verify)
+    monkeypatch.setattr('backend.routers.purchase.render_ticket_pdf', lambda *a, **k: b'%PDF-FAKE%')
+    monkeypatch.setattr(
+        'backend.routers.purchase.render_ticket_email',
+        lambda dto, deep_link, lang: ("subject", "<p>body</p>"),
+    )
+    monkeypatch.setattr('backend.routers.purchase.send_ticket_email', lambda *a, **k: None)
     if 'backend.main' in sys.modules:
         importlib.reload(sys.modules['backend.main'])
     else:

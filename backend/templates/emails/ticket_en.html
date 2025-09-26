@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <body>
+    <p>Hello {{ customer_name or "traveller" }},</p>
+    <p>
+      Your ticket <strong>#{{ ticket_number }}</strong>
+      {% if route_name %}for {{ route_name }}{% endif %}
+      is currently <strong>{{ status_text }}</strong>.
+    </p>
+    <ul>
+      {% if tour_date %}<li><strong>Date:</strong> {{ tour_date }}</li>{% endif %}
+      {% if departure_name or departure_time %}
+        <li>
+          <strong>Departure:</strong>
+          {{ departure_name or "" }}
+          {% if departure_time %}— {{ departure_time }}{% endif %}
+        </li>
+      {% endif %}
+      {% if arrival_name or arrival_time %}
+        <li>
+          <strong>Arrival:</strong>
+          {{ arrival_name or "" }}
+          {% if arrival_time %}— {{ arrival_time }}{% endif %}
+        </li>
+      {% endif %}
+      {% if seat_number %}<li><strong>Seat:</strong> {{ seat_number }}</li>{% endif %}
+    </ul>
+    <p>
+      <a href="{{ deep_link }}">Open your ticket online</a>
+      {% if is_paid %}(payment confirmed){% endif %}
+    </p>
+    <p>The PDF version of your ticket is attached to this email.</p>
+  </body>
+</html>

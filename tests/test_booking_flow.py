@@ -24,6 +24,8 @@ class DummyCursor:
             return [1, 1, date(2024, 1, 1)]
         if "select route_id, date from tour" in q:
             return [1, date(2024, 1, 1)]
+        if "select amount_due, customer_email from purchase" in q:
+            return [10, "a@b.com"]
         if "select id, available from seat" in q:
             return [1, "1234"]
         if "select price from prices" in q:
@@ -129,6 +131,12 @@ def client(monkeypatch):
     monkeypatch.setattr('backend.routers.purchase.free_ticket', lambda *a, **k: None)
     monkeypatch.setattr('backend.services.ticket_links.issue', fake_issue)
     monkeypatch.setattr('backend.services.ticket_links.verify', fake_verify)
+    monkeypatch.setattr('backend.routers.purchase.render_ticket_pdf', lambda *a, **k: b'%PDF-FAKE%')
+    monkeypatch.setattr(
+        'backend.routers.purchase.render_ticket_email',
+        lambda dto, deep_link, lang: ("subject", "<p>body</p>"),
+    )
+    monkeypatch.setattr('backend.routers.purchase.send_ticket_email', lambda *a, **k: None)
     if 'backend.main' in sys.modules:
         importlib.reload(sys.modules['backend.main'])
     else:
