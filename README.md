@@ -93,6 +93,18 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
+
+### Зависимости для генерации PDF
+
+Функция экспорта билетов использует библиотеку WeasyPrint. Для её работы
+необходимы системные пакеты Cairo, Pango и шрифты. В Docker-образ они уже
+установлены, но при локальном запуске убедитесь, что установлены следующие
+библиотеки (пример для Debian/Ubuntu):
+
+```bash
+sudo apt-get install libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
+  libpangoft2-1.0-0 libgdk-pixbuf-2.0-0 shared-mime-info fonts-dejavu-core
+```
 Перед запуском необходимо указать переменную окружения `DATABASE_URL`, чтобы
 приложение подключилось к локальной базе данных:
 ```bash
