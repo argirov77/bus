@@ -10,6 +10,7 @@ import deleteIcon from "../assets/icons/delete.png";
 import saveIcon from "../assets/icons/save.png";
 import addIcon from "../assets/icons/add.png";
 import cancelIcon from "../assets/icons/cancel.png";
+import seatIcon from "../assets/icons/seat.svg";
 
 import BusLayoutNeoplan from "../components/busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "../components/busLayouts/BusLayoutTravego";
@@ -53,6 +54,7 @@ export default function ToursPage() {
   });
   const [initialSeats, setInitialSeats] = useState([]);
   const [seatEdits, setSeatEdits]       = useState({});
+  const [isSeatModalOpen, setSeatModalOpen] = useState(false);
 
   // — sold‐tickets table —
   const [tickets, setTickets]                 = useState([]);
@@ -153,6 +155,7 @@ export default function ToursPage() {
       booking_terms: String(tour.booking_terms)
     });
     setSeatEdits({});
+    setSeatModalOpen(true);
 
     // load seat statuses
     axios.get(`${API}/seat`, { params:{ tour_id: tour.id, adminMode:1 } })
@@ -201,11 +204,15 @@ export default function ToursPage() {
 
       await fetchTours();
       setEditingId(null);
+      setSeatModalOpen(false);
     } catch(err) {
       console.error("Ошибка сохранения тура:",err);
     }
   };
-  const cancelEdit = () => setEditingId(null);
+  const cancelEdit = () => {
+    setEditingId(null);
+    setSeatModalOpen(false);
+  };
 
   // — start editing a ticket row —
   const startTicketEdit = ticket => {
@@ -264,6 +271,11 @@ export default function ToursPage() {
       alert(err.response?.data?.detail || err.message);
     }
   };
+
+  const currentRoute = routes.find(r => String(r.id) === editingTourData.route_id);
+  const modalSubtitle = editingId
+    ? [currentRoute?.name, editingTourData.date].filter(Boolean).join(" • ")
+    : "";
 
   return (
     <div className="container">
@@ -367,6 +379,7 @@ export default function ToursPage() {
                   {editing
                     ? <>
                         <IconButton className="btn--primary btn--sm" onClick={saveEdit} icon={saveIcon} alt="Сохранить" />
+                        <IconButton className="btn--ghost btn--sm" onClick={()=>setSeatModalOpen(true)} icon={seatIcon} alt="Открыть схему" />
                         <IconButton className="btn--ghost btn--sm" onClick={cancelEdit} icon={cancelIcon} alt="Отмена" />
                       </>
                     : <>
@@ -394,100 +407,108 @@ export default function ToursPage() {
         <button className="btn btn--sm" disabled={page===totalPages || totalPages===0} onClick={()=>setPage(p=>p+1)}>Вперёд</button>
       </div>
 
-      {/* — SeatAdmin with drag‐n‐drop — */}
-      {editingId && (
-        <div style={{ marginTop:20 }}>
-          <h3>Управление местами</h3>
-          <SeatAdmin
-            key={seatReload}
-            tourId={editingId}
-            layoutVariant={+editingTourData.layout_variant}
-            seatEdits={seatEdits}
-            onToggle={toggleSeatEdit}
-            onReassign={handleReassign}
-            onRemove={handleRemove}
-          />
-        </div>
-      )}
+      {editingId && isSeatModalOpen && (
+        <div className="modal-overlay" onClick={()=>setSeatModalOpen(false)}>
+          <div className="modal-sheet" onClick={e=>e.stopPropagation()}>
+            <div className="modal-sheet__header">
+              <div>
+                <h3>Редактирование рейса</h3>
+                {modalSubtitle && <p className="modal-sheet__subtitle">{modalSubtitle}</p>}
+              </div>
+              <IconButton className="btn--ghost" onClick={()=>setSeatModalOpen(false)} icon={cancelIcon} alt="Закрыть" />
+            </div>
 
-      {/* — Sold tickets table — */}
-      {editingId && (
-        <div style={{ marginTop:30 }}>
-          <h3>Проданные билеты</h3>
-          <table className="styled-table">
-            <thead>
-              <tr>
-                <th>Место</th>
-                <th>Имя</th>
-                <th>Отправление</th>
-                <th>Прибытие</th>
-                <th>Багаж</th>
-                <th>Действия</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tickets.map(ticket => {
-                const isEd = ticket.ticket_id === editingTicketId;
-                return (
-                  <tr key={ticket.ticket_id}>
-                    <td>{ticket.seat_num}</td>
-                    <td>
-                      {isEd
-                        ? <input
-                            value={editingTicketData.passenger_name}
-                            onChange={e=>setEditingTicketData({...editingTicketData,passenger_name:e.target.value})}
-                          />
-                        : ticket.passenger_name
-                      }
-                    </td>
-                    <td>
-                      {isEd
-                        ? <select
-                            value={editingTicketData.departure_stop_id}
-                            onChange={e=>setEditingTicketData({...editingTicketData,departure_stop_id:+e.target.value})}
-                          >
-                            <option value="">—</option>
-                            {stops.map(s=><option key={s.id} value={s.id}>{s.stop_name}</option>)}
-                          </select>
-                        : stopsMap[ticket.departure_stop_id] || ticket.departure_stop_id
-                      }
-                    </td>
-                    <td>
-                      {isEd
-                        ? <select
-                            value={editingTicketData.arrival_stop_id}
-                            onChange={e=>setEditingTicketData({...editingTicketData,arrival_stop_id:+e.target.value})}
-                          >
-                            <option value="">—</option>
-                            {stops.map(s=><option key={s.id} value={s.id}>{s.stop_name}</option>)}
-                          </select>
-                        : stopsMap[ticket.arrival_stop_id] || ticket.arrival_stop_id
-                      }
-                    </td>
-                    <td>
-                      {isEd
-                        ? <input
-                            type="checkbox"
-                            checked={editingTicketData.extra_baggage}
-                            onChange={e=>setEditingTicketData({...editingTicketData,extra_baggage:e.target.checked})}
-                          />
-                        : (ticket.extra_baggage ? '✔' : '')
-                      }
-                    </td>
-                    <td>
-                      {isEd
-                        ? <>
-                            <IconButton className="btn--primary btn--sm" onClick={saveTicketEdit} icon={saveIcon} alt="Сохранить" />
-                            <IconButton className="btn--ghost btn--sm" onClick={cancelTicketEdit} icon={cancelIcon} alt="Отмена" />
-                          </>
-                        : <IconButton className="btn--primary btn--sm" onClick={()=>startTicketEdit(ticket)} icon={editIcon} alt="Редактировать" />
-                      }
-                    </td>
+            <div className="modal-section">
+              <h4>Управление местами</h4>
+              <SeatAdmin
+                key={seatReload}
+                tourId={editingId}
+                layoutVariant={+editingTourData.layout_variant}
+                seatEdits={seatEdits}
+                onToggle={toggleSeatEdit}
+                onReassign={handleReassign}
+                onRemove={handleRemove}
+              />
+            </div>
+
+            <div className="modal-section">
+              <h4>Проданные билеты</h4>
+              <table className="styled-table">
+                <thead>
+                  <tr>
+                    <th>Место</th>
+                    <th>Имя</th>
+                    <th>Отправление</th>
+                    <th>Прибытие</th>
+                    <th>Багаж</th>
+                    <th>Действия</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {tickets.map(ticket => {
+                    const isEd = ticket.ticket_id === editingTicketId;
+                    return (
+                      <tr key={ticket.ticket_id}>
+                        <td>{ticket.seat_num}</td>
+                        <td>
+                          {isEd
+                            ? <input
+                                value={editingTicketData.passenger_name}
+                                onChange={e=>setEditingTicketData({...editingTicketData,passenger_name:e.target.value})}
+                              />
+                            : ticket.passenger_name
+                          }
+                        </td>
+                        <td>
+                          {isEd
+                            ? <select
+                                value={editingTicketData.departure_stop_id}
+                                onChange={e=>setEditingTicketData({...editingTicketData,departure_stop_id:+e.target.value})}
+                              >
+                                <option value="">—</option>
+                                {stops.map(s=><option key={s.id} value={s.id}>{s.stop_name}</option>)}
+                              </select>
+                            : stopsMap[ticket.departure_stop_id] || ticket.departure_stop_id
+                          }
+                        </td>
+                        <td>
+                          {isEd
+                            ? <select
+                                value={editingTicketData.arrival_stop_id}
+                                onChange={e=>setEditingTicketData({...editingTicketData,arrival_stop_id:+e.target.value})}
+                              >
+                                <option value="">—</option>
+                                {stops.map(s=><option key={s.id} value={s.id}>{s.stop_name}</option>)}
+                              </select>
+                            : stopsMap[ticket.arrival_stop_id] || ticket.arrival_stop_id
+                          }
+                        </td>
+                        <td>
+                          {isEd
+                            ? <input
+                                type="checkbox"
+                                checked={editingTicketData.extra_baggage}
+                                onChange={e=>setEditingTicketData({...editingTicketData,extra_baggage:e.target.checked})}
+                              />
+                            : (ticket.extra_baggage ? '✔' : '')
+                          }
+                        </td>
+                        <td>
+                          {isEd
+                            ? <>
+                                <IconButton className="btn--primary btn--sm" onClick={saveTicketEdit} icon={saveIcon} alt="Сохранить" />
+                                <IconButton className="btn--ghost btn--sm" onClick={cancelTicketEdit} icon={cancelIcon} alt="Отмена" />
+                              </>
+                            : <IconButton className="btn--primary btn--sm" onClick={()=>startTicketEdit(ticket)} icon={editIcon} alt="Редактировать" />
+                          }
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
