@@ -22,3 +22,57 @@ form{ display:flex; gap:10px; align-items:center; }
 .styled-table thead{ background:#eef2f8; color:#2b3441; font-weight:600; }
 .styled-table tbody tr:nth-child(even){ background:#fbfcfd; }
 .styled-table tbody tr:hover{ background:#f9fafb; }
+
+.modal-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(24, 36, 74, 0.45);
+  display:flex;
+  justify-content:center;
+  align-items:flex-start;
+  padding:48px 16px;
+  overflow-y:auto;
+  z-index:1000;
+}
+
+.modal-sheet{
+  background:var(--surface);
+  border-radius:18px;
+  box-shadow:var(--shadow-2);
+  width:min(100%, 980px);
+  padding:28px;
+  display:flex;
+  flex-direction:column;
+  gap:24px;
+  max-height:calc(100vh - 96px);
+  overflow-y:auto;
+}
+
+.modal-sheet__header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
+
+.modal-sheet__header h3{
+  margin:0;
+}
+
+.modal-sheet__subtitle{
+  margin:6px 0 0;
+  color:var(--muted);
+  font-size:13px;
+}
+
+.modal-section{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.modal-section h4{
+  margin:0;
+  font-size:18px;
+  color:#243045;
+}
