@@ -8,6 +8,7 @@ import SeatSelection from "../components/SeatSelection";
 import Loader from "../components/Loader";
 import Alert from "../components/Alert";
 import styles from "./BookingPage.module.css";
+import { downloadTicketPdf } from "../utils/ticket";
 
 function BookingPage(props) {
   const { tourId, departureStopId, arrivalStopId } = props;
@@ -19,6 +20,7 @@ function BookingPage(props) {
   const [bookingType, setBookingType] = useState("info");
   const [loading, setLoading] = useState(false);
   const [purchaseId, setPurchaseId] = useState(null);
+  const [issuedTickets, setIssuedTickets] = useState([]);
 
   const handleSeatSelect = function(seat) {
     setSelectedSeat(seat.seat_number);
@@ -34,6 +36,7 @@ function BookingPage(props) {
     setBookingMessage("Бронирование…");
     setBookingType("info");
     setLoading(true);
+    setIssuedTickets([]);
     axios
       .post(`${API}/book`, {
         tour_id: tourId,
@@ -50,6 +53,7 @@ function BookingPage(props) {
       .then(function(res) {
         setBookingMessage(`Билет успешно забронирован! Purchase ID: ${res.data.purchase_id}. Сумма: ${res.data.amount_due.toFixed(2)}`);
         setPurchaseId(res.data.purchase_id);
+        setIssuedTickets(res.data.tickets || []);
         setBookingType("success");
         setSelectedSeat(null);
         setPassengerData({ name: "", phone: "", email: "" });
@@ -59,8 +63,18 @@ function BookingPage(props) {
         console.error("Ошибка бронирования:", err);
         setBookingMessage("Ошибка при бронировании.");
         setBookingType("error");
+        setIssuedTickets([]);
       })
       .finally(() => setLoading(false));
+  };
+
+  const handleTicketDownload = async (ticket) => {
+    try {
+      await downloadTicketPdf(ticket.ticket_id, { deepLink: ticket.deep_link });
+    } catch (err) {
+      console.error("Не удалось скачать билет", err);
+      window.alert("Не удалось скачать билет. Попробуйте ещё раз.");
+    }
   };
 
   return (
@@ -116,6 +130,25 @@ function BookingPage(props) {
       {loading && <Loader />}
       {bookingMessage && (
         <Alert type={bookingType} message={bookingMessage} />
+      )}
+      {issuedTickets.length > 0 && (
+        <div className={styles['download-section']}>
+          <h3>Ваши билеты</h3>
+          <ul>
+            {issuedTickets.map((ticket) => (
+              <li key={ticket.ticket_id}>
+                Билет №{ticket.ticket_id}
+                <button
+                  type="button"
+                  className="btn btn--sm"
+                  onClick={() => handleTicketDownload(ticket)}
+                >
+                  Скачать
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
