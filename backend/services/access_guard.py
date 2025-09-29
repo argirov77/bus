@@ -58,7 +58,7 @@ def _enforce_rate_limit(key: str) -> None:
         delay = RATE_LIMIT_DELAY_SECONDS * min(count - RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_BURST)
         if delay > 0:
             _sleep_fn(delay)
-        if count > RATE_LIMIT_MAX_REQUESTS + RATE_LIMIT_BURST:
+        if count >= RATE_LIMIT_MAX_REQUESTS + RATE_LIMIT_BURST:
             raise HTTPException(status_code=429, detail="Too many requests")
 
 
@@ -83,9 +83,10 @@ def guard_public_request(
 
     ip = _extract_ip(request)
     token_id: Optional[str] = None
-    if context and not context.is_admin:
-        token_id = context.jti
-    elif context and context.is_admin:
+    is_admin = bool(context) and bool(getattr(context, "is_admin", False))
+    if context and not is_admin:
+        token_id = getattr(context, "jti", None)
+    elif context and is_admin:
         token_id = "admin"
     else:
         token_id = request.headers.get("X-Ticket-Token") or None
