@@ -184,12 +184,14 @@ export default function ToursPage() {
   const saveEdit = async () => {
     try {
       const finalActive = initialSeats
-        .filter(s=>s.status!=="occupied")
         .filter(s=>{
-          if(seatEdits.hasOwnProperty(s.seat_num)){
-            return !seatEdits[s.seat_num];
+          if(s.status==="occupied"){
+            return true;
           }
-          return s.status!=="blocked";
+          const isBlocked = seatEdits.hasOwnProperty(s.seat_num)
+            ? seatEdits[s.seat_num]
+            : s.status==="blocked";
+          return !isBlocked;
         })
         .map(s=>s.seat_num);
 
