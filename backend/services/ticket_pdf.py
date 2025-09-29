@@ -62,14 +62,15 @@ _DEFAULT_I18N: Dict[str, Any] = {
     "status_pending": "Ожидает оплаты",
     "status_unknown": "Статус неизвестен",
     "value_not_available": "—",
-    "footer_note": "Полис страхования ответственности перевозчика действует на протяжении всего рейса.",
-    "footer_brand": "Since 1992 · Максимов Турс",
+    "footer_line": "Полис действует на протяжении рейса · Since 1992 · Максимов Турс",
     "ticket_page_title": "Электронный билет №{number} — {brand}",
     "departure_label": "Отправление",
     "arrival_label": "Прибытие",
     "currency_code": "UAH",
-    "qr_hint": "Сканируйте QR-код, чтобы оплатить, отменить или перенести поездку.",
+    "qr_hint": "Сканируйте для управления поездкой.",
     "qr_unavailable": "QR-код недоступен",
+    "timezone_label": "UTC+2 / лок. время рейса",
+    "refund_rules_short": "Возврат: >72 ч — 90%, 72–24 ч — 70%, 24–12 ч — 50%, <12 ч — без возмещения",
 }
 
 _STATUS_TO_I18N_KEY = {
@@ -83,6 +84,8 @@ _STATUS_TO_I18N_KEY = {
 }
 
 _SUCCESS_STATUSES = {"paid", "refunded"}
+_WARNING_STATUSES = {"reserved", "pending", "awaiting"}
+_NEGATIVE_STATUSES = {"cancelled", "canceled"}
 
 
 def _merge_i18n(overrides: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
@@ -157,7 +160,7 @@ def _format_duration(minutes: Optional[int], fallback: Optional[str], i18n: Mapp
 def _generate_qr_data_uri(data: Optional[str]) -> Optional[str]:
     if not data:
         return None
-    qr = qrcode.QRCode(version=None, box_size=10, border=2)
+    qr = qrcode.QRCode(version=None, box_size=18, border=4)
     qr.add_data(data)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
@@ -177,14 +180,28 @@ def _status_label(status: Optional[str], i18n: Mapping[str, Any]) -> str:
 
 
 def _status_css_class(status: Optional[str]) -> str:
-    if status and status.lower() in _SUCCESS_STATUSES:
+    if not status:
+        return ""
+    normalized = status.lower()
+    if normalized in _SUCCESS_STATUSES:
         return "ok"
+    if normalized in _WARNING_STATUSES:
+        return "warn"
+    if normalized in _NEGATIVE_STATUSES:
+        return "cancelled"
     return ""
 
 
 def _status_color(status: Optional[str]) -> Optional[str]:
-    if status and status.lower() in _SUCCESS_STATUSES:
+    if not status:
+        return None
+    normalized = status.lower()
+    if normalized in _SUCCESS_STATUSES:
         return "var(--success)"
+    if normalized in _WARNING_STATUSES:
+        return "var(--accent)"
+    if normalized in _NEGATIVE_STATUSES:
+        return "#4b5563"
     return None
 
 
