@@ -40,11 +40,13 @@ _DEFAULT_I18N: Dict[str, Any] = {
     "phone_label": "Телефон",
     "route_label": "Маршрут",
     "price_label": "Стоимость",
-    "open_online": "Открыть онлайн",
+    "manage_online_button": "Управлять поездкой",
+    "manage_online_hint": "Перейдите по ссылке или отсканируйте QR-код, чтобы оплатить, отменить или перенести свою поездку.",
     "trip_section": "Поездка",
     "datetime_label": "Дата/время",
     "address_label": "Адрес",
     "open_map": "Открыть карту",
+    "view_exact_location": "Посмотреть точное место",
     "duration_label": "Длительность",
     "approximate_symbol": "~",
     "hours_suffix": "ч.",
@@ -66,6 +68,8 @@ _DEFAULT_I18N: Dict[str, Any] = {
     "departure_label": "Отправление",
     "arrival_label": "Прибытие",
     "currency_code": "UAH",
+    "qr_hint": "Сканируйте QR-код, чтобы оплатить, отменить или перенести поездку.",
+    "qr_unavailable": "QR-код недоступен",
 }
 
 _STATUS_TO_I18N_KEY = {
