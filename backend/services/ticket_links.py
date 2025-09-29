@@ -65,14 +65,15 @@ def _utcnow() -> datetime:
 
 def _get_connection():
     from backend import database
-
     return database.get_connection()
 
 
 def _ensure_secret() -> str:
     secret = os.getenv("TICKET_LINK_SECRET")
     if not secret:
+        # Для дев-окружения можно оставить дефолт, в проде лучше кидать ошибку
         secret = "dev-ticket-secret"
+        # или: raise SecretNotConfigured("TICKET_LINK_SECRET is not set")
     return secret
 
 
@@ -103,8 +104,7 @@ def _compute_expiration(departure_dt: datetime) -> tuple[int, datetime]:
         departure_aware + timedelta(days=1),
         now + timedelta(days=ttl_days),
     )
-    # JWT exp should be an int timestamp (seconds)
-    exp_ts = int(exp_dt.timestamp())
+    exp_ts = int(exp_dt.timestamp())  # JWT exp as int seconds
     return exp_ts, exp_dt
 
 
@@ -114,8 +114,13 @@ def issue(
     scopes: Iterable[str],
     lang: str,
     departure_dt: datetime,
+    *,
+    conn=None,
 ) -> str:
-    """Issue a signed JWT for accessing ticket resources."""
+    """Issue a signed JWT for accessing ticket resources.
+
+    If ``conn`` is provided, caller manages transaction and connection lifecycle.
+    """
 
     secret = _ensure_secret()
     exp_ts, exp_dt = _compute_expiration(departure_dt)
@@ -131,40 +136,44 @@ def issue(
 
     token = jwt.encode(payload.to_dict(), secret, algorithm="HS256")
 
-    conn = _get_connection()
-    cur = conn.cursor()
+    owns_connection = conn is None
+    connection = conn or _get_connection()
     try:
-        cur.execute(
-            """
-            UPDATE ticket_link_tokens
-               SET revoked_at = NOW()
-             WHERE ticket_id = %s
-               AND revoked_at IS NULL
-            """,
-            (ticket_id,),
-        )
-        cur.execute(
-            """
-            INSERT INTO ticket_link_tokens (
-                jti, ticket_id, purchase_id, scopes, lang, expires_at
-            ) VALUES (%s, %s, %s, %s, %s, %s)
-            """,
-            (
-                jti,
-                ticket_id,
-                purchase_id,
-                json.dumps(list(scopes)),
-                lang,
-                exp_dt,
-            ),
-        )
-        conn.commit()
+        with connection.cursor() as cur:
+            # revoke all previous active tokens for this ticket
+            cur.execute(
+                """
+                UPDATE ticket_link_tokens
+                   SET revoked_at = NOW()
+                 WHERE ticket_id = %s
+                   AND revoked_at IS NULL
+                """,
+                (ticket_id,),
+            )
+            # insert the new token record
+            cur.execute(
+                """
+                INSERT INTO ticket_link_tokens (
+                    jti, ticket_id, purchase_id, scopes, lang, expires_at
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    jti,
+                    ticket_id,
+                    purchase_id,
+                    json.dumps(list(scopes)),
+                    lang,
+                    exp_dt,
+                ),
+            )
+        if owns_connection:
+            connection.commit()
     finally:
-        try:
-            cur.close()
-        except Exception:
-            pass
-        conn.close()
+        if owns_connection:
+            try:
+                connection.close()
+            except Exception:
+                pass
 
     return token
 
@@ -180,7 +189,7 @@ def verify(token: str) -> Dict[str, Any]:
             algorithms=["HS256"],
             options={
                 "require": ["exp", "jti", "ticket_id", "scopes", "lang"],
-                "verify_exp": False,
+                "verify_exp": False,  # проверяем exp вручную вместе с БД
             },
         )
     except jwt.ExpiredSignatureError as exc:
@@ -200,15 +209,22 @@ def verify(token: str) -> Dict[str, Any]:
             cur.execute(
                 """
                 SELECT revoked_at, expires_at
-                FROM ticket_link_tokens
-                WHERE jti = %s
+                  FROM ticket_link_tokens
+                 WHERE jti = %s
                 """,
                 (jti,),
             )
             row = cur.fetchone()
-        conn.commit()
+        # commit не обязателен после SELECT, но и не повредит в некоторых драйверах
+        try:
+            conn.commit()
+        except Exception:
+            pass
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
 
     if not row:
         raise TokenNotFound("Token not found")
@@ -238,34 +254,32 @@ def revoke(jti: str) -> bool:
 
     Returns True if a token record was updated.
     """
-
     if not jti:
         return False
 
     conn = _get_connection()
-    cur = conn.cursor()
     try:
-        cur.execute(
-            """
-            UPDATE ticket_link_tokens
-               SET revoked_at = NOW()
-             WHERE jti = %s
-               AND revoked_at IS NULL
-            """,
-            (jti,),
-        )
-        cur.execute(
-            "SELECT revoked_at, expires_at FROM ticket_link_tokens WHERE jti = %s",
-            (jti,),
-        )
-        updated_row = cur.fetchone()
-        updated = 1 if updated_row and updated_row[0] is not None else 0
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE ticket_link_tokens
+                   SET revoked_at = NOW()
+                 WHERE jti = %s
+                   AND revoked_at IS NULL
+                """,
+                (jti,),
+            )
+            cur.execute(
+                "SELECT revoked_at FROM ticket_link_tokens WHERE jti = %s",
+                (jti,),
+            )
+            row = cur.fetchone()
         conn.commit()
     finally:
         try:
-            cur.close()
+            conn.close()
         except Exception:
             pass
-        conn.close()
 
-    return updated > 0
+    return bool(row and row[0] is not None)
+

@@ -50,12 +50,18 @@ class DummyCursor:
 class DummyConn:
     def __init__(self):
         self.cursor_obj = DummyCursor()
+        self.was_committed = False
+        self.was_rolled_back = False
+
     def cursor(self):
         return self.cursor_obj
+
     def commit(self):
-        pass
+        self.was_committed = True
+
     def rollback(self):
-        pass
+        self.was_rolled_back = True
+
     def close(self):
         pass
 
@@ -68,11 +74,12 @@ def client(monkeypatch):
     def fake_get_connection():
         conn = DummyConn()
         last['cursor'] = conn.cursor_obj
+        last['conn'] = conn
         return conn
 
     token_counter = {"value": 0}
 
-    def fake_issue(ticket_id, purchase_id, scopes, lang, departure_dt):
+    def fake_issue(ticket_id, purchase_id, scopes, lang, departure_dt, conn=None):
         token_counter['value'] += 1
         return f"token-{token_counter['value']}"
 
@@ -255,3 +262,30 @@ def test_discount_price_applied(client):
     })
     assert resp.status_code == 200
     assert resp.json()['amount_due'] == 9.5
+
+
+def test_booking_rolls_back_when_ticket_issue_fails(client, monkeypatch):
+    cli, store = client
+
+    from backend.services import ticket_links
+
+    def failing_issue(ticket_id, purchase_id, scopes, lang, departure_dt, conn=None):
+        raise ticket_links.TicketLinkError("boom")
+
+    monkeypatch.setattr('backend.services.ticket_links.issue', failing_issue)
+
+    resp = cli.post('/book', json={
+        'tour_id': 1,
+        'seat_nums': [1],
+        'passenger_names': ['A'],
+        'passenger_phone': '1',
+        'passenger_email': 'a@b.com',
+        'departure_stop_id': 1,
+        'arrival_stop_id': 2,
+        'adult_count': 1,
+        'discount_count': 0,
+    })
+
+    assert resp.status_code == 500
+    assert store['conn'].was_rolled_back
+    assert not store['conn'].was_committed

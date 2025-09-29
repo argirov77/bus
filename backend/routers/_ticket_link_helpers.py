@@ -101,6 +101,8 @@ def build_deep_link(ticket_id: int, token: str) -> str:
 def issue_ticket_links(
     specs: Sequence[TicketIssueSpec],
     lang: str | None,
+    *,
+    conn=None,
 ) -> List[TicketLinkResult]:
     """Issue ticket links for provided specs and return deep-link payloads."""
 
@@ -118,6 +120,7 @@ def issue_ticket_links(
                 scopes=DEFAULT_TICKET_SCOPES,
                 lang=lang_value,
                 departure_dt=spec["departure_dt"],
+                conn=conn,
             )
         except ticket_links.TicketLinkError as exc:
             logger.exception(

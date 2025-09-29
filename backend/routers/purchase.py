@@ -450,8 +450,10 @@ def create_purchase(data: PurchaseCreate, background_tasks: BackgroundTasks):
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
+    tickets: List[TicketLinkResult] = []
     try:
         purchase_id, amount_due, ticket_specs = _create_purchase(cur, data, "reserved")
+        tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -463,7 +465,6 @@ def create_purchase(data: PurchaseCreate, background_tasks: BackgroundTasks):
         cur.close()
         conn.close()
 
-    tickets = issue_ticket_links(ticket_specs, data.lang)
     _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
@@ -478,6 +479,7 @@ def pay_purchase(
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
+    tickets: List[TicketLinkResult] = []
     customer_email: str | None = None
     try:
         actor, jti = _resolve_actor(request)
@@ -501,11 +503,10 @@ def pay_purchase(
 
         cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
         _log_action(cur, purchase_id, "paid", amount_due, by=actor, method="offline")
+        tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         conn.commit()
         if jti:
             logger.info("Purchase %s paid with token jti=%s", purchase_id, jti)
-        tickets = issue_ticket_links(ticket_specs, None)
-        _queue_ticket_emails(background_tasks, tickets, None, customer_email)
     except HTTPException:
         conn.rollback()
         raise
@@ -515,6 +516,8 @@ def pay_purchase(
     finally:
         cur.close()
         conn.close()
+
+    _queue_ticket_emails(background_tasks, tickets, None, customer_email)
 
 
 @router.post("/{purchase_id}/cancel", status_code=204)
@@ -570,8 +573,10 @@ def book_seat(data: PurchaseCreate, request: Request, background_tasks: Backgrou
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
+    tickets: List[TicketLinkResult] = []
     try:
         purchase_id, amount_due, ticket_specs = _create_purchase(cur, data, "reserved")
+        tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -583,7 +588,6 @@ def book_seat(data: PurchaseCreate, request: Request, background_tasks: Backgrou
         cur.close()
         conn.close()
 
-    tickets = issue_ticket_links(ticket_specs, data.lang)
     _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
@@ -598,12 +602,14 @@ def purchase_and_pay(
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
+    tickets: List[TicketLinkResult] = []
     try:
         actor, jti = _resolve_actor(request)
         guard_public_request(request, "purchase", context=context)
         purchase_id, amount_due, ticket_specs = _create_purchase(
             cur, data, "paid", "offline", actor
         )
+        tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
         conn.commit()
         if jti:
             logger.info("Purchase %s created and paid with token jti=%s", purchase_id, jti)
@@ -617,7 +623,6 @@ def purchase_and_pay(
         cur.close()
         conn.close()
 
-    tickets = issue_ticket_links(ticket_specs, data.lang)
     _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
@@ -632,6 +637,7 @@ def pay_booking(
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
+    tickets: List[TicketLinkResult] = []
     customer_email: str | None = None
     try:
         actor, jti = _resolve_actor(request)
@@ -655,11 +661,10 @@ def pay_booking(
 
         cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (data.purchase_id,))
         _log_action(cur, data.purchase_id, "paid", amount_due, by=actor, method="online")
+        tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         conn.commit()
         if jti:
             logger.info("Purchase %s paid with token jti=%s", data.purchase_id, jti)
-        tickets = issue_ticket_links(ticket_specs, None)
-        _queue_ticket_emails(background_tasks, tickets, None, customer_email)
     except HTTPException:
         conn.rollback()
         raise
@@ -669,6 +674,8 @@ def pay_booking(
     finally:
         cur.close()
         conn.close()
+
+    _queue_ticket_emails(background_tasks, tickets, None, customer_email)
 
 
 @actions_router.post("/cancel/{purchase_id}", status_code=204)
