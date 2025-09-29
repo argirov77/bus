@@ -70,19 +70,26 @@
     .side{
       display:grid; grid-template-columns: 1fr auto; gap:10px; align-items:start; min-width:0;
     }
+    .side-main{display:flex;flex-direction:column;gap:10px}
     .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:var(--fz-sm);color:var(--muted)}
     .kv b{color:var(--ink);font-size:var(--fz)}
-    .qr{
+    .cta{display:flex;flex-direction:column;gap:6px}
+    .cta .hint{color:var(--muted);font-size:var(--fz-sm);line-height:1.4}
+    .qr{display:flex;flex-direction:column;align-items:center;gap:8px}
+    .qr-box{
       width:128px;height:128px;border:1px solid var(--stroke);border-radius:12px;
-      display:flex;align-items:center;justify-content:center;background:#fff
+      display:flex;align-items:center;justify-content:center;background:#fff;padding:4px
     }
-    .qr img{max-width:100%;max-height:100%}
+    .qr-box img{max-width:100%;max-height:100%}
+    .qr-placeholder{color:var(--muted);font-size:var(--fz-sm);text-align:center;line-height:1.35;padding:8px}
+    .qr-hint{color:var(--muted);font-size:var(--fz-sm);text-align:center;line-height:1.35;max-width:140px}
     .btn{
       display:inline-block;margin-top:8px;padding:8px 10px;border-radius:10px;
       border:1px solid var(--brand); background:var(--brand); color:#fff; font-weight:800;
       box-shadow:0 1px 0 rgba(0,0,0,.04)
     }
     .btn:hover{filter:brightness(1.05)}
+    .cta .btn{margin-top:0}
 
     /* Контент: 2 колонки */
     .content{display:grid;grid-template-columns:1.12fr 0.88fr; gap:var(--gap); padding:var(--pad)}
@@ -111,6 +118,11 @@
     /* Таблички */
     .dl{display:grid;grid-template-columns:44% 56%;gap:6px 10px}
     .dl .k{color:var(--muted)} .dl .v{font-weight:800}
+    .stop-info{margin-top:6px;display:flex;flex-direction:column;gap:4px}
+    .stop-description{color:var(--ink);font-size:var(--fz-sm);line-height:1.35}
+    .stop-description strong{color:var(--muted);font-weight:600;margin-right:4px;font-size:var(--fz-sm)}
+    .stop-location{color:var(--brand);font-weight:700;font-size:var(--fz-sm)}
+    .stop-location:hover{filter:brightness(1.05)}
 
     /* Подвал */
     .footer{border-top:1px solid var(--stroke);padding:8px 12px;color:var(--muted);font-size:var(--fz-sm);
@@ -142,16 +154,26 @@
       </div>
 
       <div class="side">
-        <div>
+        <div class="side-main">
           <div class="kv">
             <div>{{ i18n.passenger_label }}</div><b>{{ passenger.name }}</b>
             <div>{{ i18n.route_label }}</div><b>{{ route.label }}</b>
             <div>{{ i18n.price_label }}</div><b>{{ ticket.price_text or i18n.value_not_available }}</b>
           </div>
-          {% if deep_link %}<a class="btn" href="{{ deep_link }}" target="_blank">{{ i18n.open_online }}</a>{% endif %}
+          {% if deep_link %}
+          <div class="cta">
+            <a class="btn" href="{{ deep_link }}" target="_blank">{{ i18n.manage_online_button }}</a>
+            <div class="hint">{{ i18n.manage_online_hint }}</div>
+          </div>
+          {% endif %}
         </div>
         <div class="qr">
-          {% if qr_data_uri %}<img alt="QR" src="{{ qr_data_uri }}" />{% endif %}
+          {% if qr_data_uri %}
+          <div class="qr-box"><img alt="QR" src="{{ qr_data_uri }}" /></div>
+          <div class="qr-hint">{{ i18n.qr_hint }}</div>
+          {% else %}
+          <div class="qr-box qr-placeholder">{{ i18n.qr_unavailable }}</div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -172,8 +194,12 @@
               {% if departure.time %}<span class="nowrap">{{ departure.time }}</span>{% endif %}
             </div>
             {% endif %}
-            {% if departure.address %}<div class="line">{{ i18n.address_label }}: {{ departure.address }}</div>{% endif %}
-            {% if departure.map_url %}<div class="line"><a href="{{ departure.map_url }}" target="_blank">{{ i18n.open_map }}</a></div>{% endif %}
+            {% if departure.address or departure.map_url %}
+            <div class="stop-info">
+              {% if departure.address %}<div class="stop-description"><strong>{{ i18n.address_label }}:</strong> {{ departure.address }}</div>{% endif %}
+              {% if departure.map_url %}<a href="{{ departure.map_url }}" target="_blank" class="stop-location">{{ i18n.view_exact_location }}</a>{% endif %}
+            </div>
+            {% endif %}
           </div>
 
           <div class="tl"><div class="dot"></div></div>
@@ -186,8 +212,12 @@
               {% if arrival.time %}<span class="nowrap">{{ arrival.time }}</span>{% endif %}
             </div>
             {% endif %}
-            {% if arrival.address %}<div class="line">{{ i18n.address_label }}: {{ arrival.address }}</div>{% endif %}
-            {% if arrival.map_url %}<div class="line"><a href="{{ arrival.map_url }}" target="_blank">{{ i18n.open_map }}</a></div>{% endif %}
+            {% if arrival.address or arrival.map_url %}
+            <div class="stop-info">
+              {% if arrival.address %}<div class="stop-description"><strong>{{ i18n.address_label }}:</strong> {{ arrival.address }}</div>{% endif %}
+              {% if arrival.map_url %}<a href="{{ arrival.map_url }}" target="_blank" class="stop-location">{{ i18n.view_exact_location }}</a>{% endif %}
+            </div>
+            {% endif %}
           </div>
         </div>
 

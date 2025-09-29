@@ -9,7 +9,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
-from ..auth import require_scope
+from ..auth import optional_scope, require_scope
 from ..database import get_connection
 from ._ticket_link_helpers import (
     TicketIssueSpec,
@@ -52,7 +52,7 @@ def get_ticket_pdf(
     ticket_id: int,
     request: Request,
     lang: str | None = None,
-    context=Depends(require_scope("view")),
+    context=Depends(optional_scope("view")),
 ):
     guard_public_request(
         request,
@@ -63,7 +63,8 @@ def get_ticket_pdf(
 
     conn = get_connection()
     try:
-        resolved_lang = lang or getattr(context, "lang", None) or "bg"
+        context_lang = getattr(context, "lang", None) if context else None
+        resolved_lang = lang or context_lang or "bg"
         try:
             dto = get_ticket_dto(ticket_id, resolved_lang, conn)
         except ValueError as exc:
@@ -86,12 +87,15 @@ def get_ticket_pdf(
             departure_dt = None
 
     try:
+        scope_values = set(getattr(context, "scopes", []) or []) if context else {"view"}
+        if not scope_values:
+            scope_values = {"view"}
         opaque, _expires_at = get_or_create_view_session(
             ticket_id,
             purchase_id=purchase.get("id"),
             lang=resolved_lang,
             departure_dt=departure_dt,
-            scopes={"view"},
+            scopes=scope_values,
         )
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("Failed to resolve ticket link session for %s", ticket_id)

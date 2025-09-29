@@ -198,12 +198,16 @@ def client(monkeypatch):
     return TestClient(app), state
 
 
-def test_ticket_pdf_requires_token(client):
-    cli, _ = client
+def test_ticket_pdf_allows_anonymous_access(client):
+    cli, state = client
 
     response = cli.get("/tickets/55/pdf")
 
-    assert response.status_code == 401
+    assert response.status_code == 200
+    assert response.content == b"%PDF-FAKE%"
+    assert state["dto_call"]["ticket_id"] == 55
+    assert state["dto_call"]["lang"] == "bg"
+    assert state["session_args"]["scopes"] == ("view",)
 
 
 def test_ticket_pdf_returns_pdf_for_valid_link_token(client):
