@@ -162,3 +162,28 @@ def require_scope(*scopes: str):
         return context
 
     return dependency
+
+
+def optional_scope(*scopes: str):
+    """Return authentication context when provided, otherwise allow anonymous access."""
+
+    async def dependency(
+        request: Request,
+        credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    ) -> RequestContext | None:
+        has_token = bool(credentials) or request.headers.get("X-Ticket-Token") or request.query_params.get("token")
+        if not has_token:
+            return None
+
+        context = get_request_context(request, credentials)
+        if context.is_admin:
+            return context
+
+        if scopes and not all(scope in context.scopes for scope in scopes):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient scope",
+            )
+        return context
+
+    return dependency

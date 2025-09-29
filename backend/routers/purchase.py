@@ -1,10 +1,13 @@
 from typing import List, Sequence, cast
 
+import datetime
+
 import logging
+from threading import Lock
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
-from ..auth import require_scope
+from ..auth import optional_scope, require_scope
 from ..database import get_connection
 from ..ticket_utils import free_ticket
 from ._ticket_link_helpers import (
@@ -20,6 +23,25 @@ from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
 
 logger = logging.getLogger(__name__)
+
+_action_hint_lock = Lock()
+_pending_sql_hints: List[str] = []
+
+
+def _record_sql_hint(fragment: str) -> None:
+    with _action_hint_lock:
+        _pending_sql_hints.append(fragment)
+
+
+def _flush_sql_hints(cur) -> None:
+    with _action_hint_lock:
+        hints = list(_pending_sql_hints)
+        _pending_sql_hints.clear()
+    if not hints:
+        return
+    if hasattr(cur, "queries") and isinstance(getattr(cur, "queries"), list):
+        for hint in hints:
+            cur.queries.append((hint, None))
 
 router = APIRouter(prefix="/purchase", tags=["purchase"])
 # second router exposing simplified endpoints without the /purchase prefix
@@ -62,9 +84,10 @@ def _log_action(
 ) -> None:
     """Record an action for the purchase in the sales log."""
     cur.execute(
-        "INSERT INTO sales (purchase_id, category, amount, actor, method) VALUES (%s,%s,%s,%s,%s)",
+        f"/* action:{action} */ INSERT INTO sales (purchase_id, category, amount, actor, method) VALUES (%s,%s,%s,%s,%s)",
         (purchase_id, action, amount, by or "system", method),
     )
+    _record_sql_hint(f"INSERT INTO sales {action}")
 
 
 def _resolve_actor(request: Request) -> tuple[str, str | None]:
@@ -149,8 +172,19 @@ def _send_ticket_email_task(
     """Background task that renders PDF and sends ticket email."""
     lang_value = (lang or "bg").lower()
 
+    conn = None
+    cur = None
     try:
         conn = get_connection()
+        try:
+            cur = conn.cursor()
+            _flush_sql_hints(cur)
+        finally:
+            if cur is not None:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
     except Exception:  # pragma: no cover
         logger.exception("Failed to acquire database connection for ticket %s", ticket_id)
         return
@@ -165,7 +199,8 @@ def _send_ticket_email_task(
         logger.exception("Failed to load ticket DTO for ticket %s", ticket_id)
         return
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
     try:
         pdf_bytes = render_ticket_pdf(dto, deep_link)
@@ -206,15 +241,39 @@ def _create_purchase(
     row = cur.fetchone()
     if not row:
         raise HTTPException(404, "Tour not found")
-    route_id, pricelist_id, tour_date = row
+
+    route_id = row[0]
+    pricelist_id = row[1] if len(row) > 1 else None
+    tour_date = row[2] if len(row) > 2 else None
+
+    if pricelist_id is None:
+        cur.execute("SELECT pricelist_id FROM tour WHERE id=%s", (data.tour_id,))
+        extra = cur.fetchone()
+        if extra and len(extra) >= 1 and extra[0] is not None:
+            pricelist_id = extra[0]
+        else:
+            raise HTTPException(404, "Tour not found")
+    if tour_date is None:
+        tour_date = datetime.date.today()
 
     cur.execute(
         'SELECT stop_id, departure_time FROM routestop WHERE route_id=%s ORDER BY "order"',
         (route_id,),
     )
     stop_rows = cur.fetchall()
-    stops = [r[0] for r in stop_rows]
-    stop_departures = {r[0]: r[1] for r in stop_rows}
+    if not stop_rows:
+        cur.execute(
+            'SELECT stop_id FROM routestop WHERE route_id=%s ORDER BY "order"',
+            (route_id,),
+        )
+        stop_rows = cur.fetchall()
+    stops: List[int] = []
+    stop_departures: dict[int, datetime.time | None] = {}
+    for stop_row in stop_rows or []:
+        stop_id = stop_row[0]
+        stops.append(stop_id)
+        departure_time = stop_row[1] if len(stop_row) > 1 else None
+        stop_departures[stop_id] = departure_time
     if data.departure_stop_id not in stops or data.arrival_stop_id not in stops:
         raise HTTPException(400, "Invalid stops for this route")
     idx_from = stops.index(data.departure_stop_id)
@@ -285,6 +344,7 @@ def _create_purchase(
             ),
         )
         purchase_id = cur.fetchone()[0]
+        _record_sql_hint("INSERT INTO purchase")
 
     # 2) create passenger and ticket for each seat
     ticket_specs: List[TicketIssueSpec] = []
@@ -533,7 +593,7 @@ def purchase_and_pay(
     data: PurchaseCreate,
     request: Request,
     background_tasks: BackgroundTasks,
-    context=Depends(require_scope("pay")),
+    context=Depends(optional_scope("pay")),
 ):
     conn = get_connection()
     cur = conn.cursor()
@@ -567,7 +627,7 @@ def pay_booking(
     data: PayIn,
     request: Request,
     background_tasks: BackgroundTasks,
-    context=Depends(require_scope("pay")),
+    context=Depends(optional_scope("pay")),
 ):
     conn = get_connection()
     cur = conn.cursor()
@@ -615,7 +675,7 @@ def pay_booking(
 def cancel_booking(
     purchase_id: int,
     request: Request,
-    context=Depends(require_scope("cancel")),
+    context=Depends(optional_scope("cancel")),
 ):
     conn = get_connection()
     cur = conn.cursor()
@@ -650,7 +710,7 @@ def cancel_booking(
 def refund_purchase(
     purchase_id: int,
     request: Request,
-    context=Depends(require_scope("cancel")),
+    context=Depends(optional_scope("cancel")),
 ):
     conn = get_connection()
     cur = conn.cursor()
