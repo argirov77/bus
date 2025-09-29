@@ -10,6 +10,7 @@ from typing import Any, List, Sequence, TypedDict, cast
 from fastapi import HTTPException
 
 from ..services import ticket_links
+from ..services.link_sessions import get_or_create_view_session
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +39,6 @@ class TicketLinkResult(TypedDict):
 
     ticket_id: int
     deep_link: str
-
-
-def _mask_token(token: str) -> str:
-    """Mask a JWT token for safe logging."""
-
-    if len(token) <= 10:
-        return "***"
-    return f"{token[:6]}...{token[-4:]}"
 
 
 def _normalize_date(value: Any) -> date_cls:
@@ -91,11 +84,14 @@ def combine_departure_datetime(tour_date: Any, departure_time: Any) -> dt_cls:
     return combined.astimezone(timezone.utc)
 
 
-def build_deep_link(ticket_id: int, token: str) -> str:
-    """Construct a deep link URL for a ticket."""
+def build_deep_link(opaque: str, *, base_url: str | None = None) -> str:
+    """Construct a deep link URL for a ticket session."""
 
-    base_url = os.getenv("APP_PUBLIC_URL", "http://localhost:4000").rstrip("/")
-    return f"{base_url}/ticket/{ticket_id}?token={token}"
+    configured = base_url or os.getenv("TICKET_LINK_BASE_URL")
+    if not configured:
+        configured = os.getenv("APP_PUBLIC_URL", "https://t.example.com")
+    configured = configured.rstrip("/")
+    return f"{configured}/q/{opaque}"
 
 
 def issue_ticket_links(
@@ -114,12 +110,12 @@ def issue_ticket_links(
 
     for spec in specs:
         try:
-            token = ticket_links.issue(
-                ticket_id=spec["ticket_id"],
+            opaque, _expires_at = get_or_create_view_session(
+                spec["ticket_id"],
                 purchase_id=spec["purchase_id"],
-                scopes=DEFAULT_TICKET_SCOPES,
                 lang=lang_value,
                 departure_dt=spec["departure_dt"],
+                scopes=DEFAULT_TICKET_SCOPES,
                 conn=conn,
             )
         except ticket_links.TicketLinkError as exc:
@@ -134,12 +130,12 @@ def issue_ticket_links(
             )
             raise HTTPException(500, "Failed to issue ticket link") from exc
 
-        deep_link = build_deep_link(spec["ticket_id"], token)
+        deep_link = build_deep_link(opaque)
         logger.info(
             "Issued ticket link for ticket %s (purchase %s): %s",
             spec["ticket_id"],
             spec["purchase_id"],
-            _mask_token(token),
+            opaque,
         )
 
         results.append(

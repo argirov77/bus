@@ -233,8 +233,8 @@ def email_test_env(monkeypatch):
         results = []
         for spec in specs:
             state["issue_counter"] += 1
-            token = f"token-{state['issue_counter']}"
-            deep_link = f"https://example.test/ticket/{spec['ticket_id']}?token={token}"
+            opaque = f"opaque-{state['issue_counter']}"
+            deep_link = f"https://example.test/q/{opaque}"
             results.append({"ticket_id": spec["ticket_id"], "deep_link": deep_link})
         return results
 
@@ -347,7 +347,7 @@ def test_render_ticket_email_localization(lang, expected_subject, marker):
             "flags": {"status": "reserved", "is_paid": False},
         },
     }
-    deep_link = "https://example.test/ticket/42?token=abc"
+    deep_link = "https://example.test/q/opaque-42"
 
     subject, html = render_ticket_email(dto, deep_link, lang)
 
@@ -388,7 +388,7 @@ def test_create_purchase_sends_email(email_test_env):
     email = emails[0]
     assert email["to"] == "alice@example.com"
     assert email["pdf"] == b"%PDF-FAKE%"
-    assert "https://example.test/ticket/1?token=token-1" in email["html"]
+    assert "https://example.test/q/opaque-1" in email["html"]
     assert "Your ticket" in email["subject"]
 
 
@@ -439,5 +439,5 @@ def test_pay_booking_sends_payment_confirmation(email_test_env):
         "(оплату підтверджено)",
     ]
     assert any(marker in email["html"] for marker in confirmation_markers)
-    assert "token-2" in email["html"]
+    assert "https://example.test/q/opaque-2" in email["html"]
     assert email["pdf"] == b"%PDF-FAKE%"

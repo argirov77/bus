@@ -2,6 +2,9 @@
 
 from typing import Any, Dict, List, Optional, Tuple, cast
 
+from datetime import datetime
+import os
+
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
@@ -16,6 +19,7 @@ from ._ticket_link_helpers import (
 )
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
+from ..services.link_sessions import get_or_create_view_session
 from ..services import ticket_links
 from ..services.access_guard import guard_public_request
 from ..ticket_utils import recalc_available
@@ -67,8 +71,34 @@ def get_ticket_pdf(
     finally:
         conn.close()
 
-    token = request.query_params.get("token") or request.headers.get("X-Ticket-Token")
-    deep_link = build_deep_link(ticket_id, token) if token else None
+    purchase = dto.get("purchase") or {}
+    segment = dto.get("segment") or {}
+    departure_ctx = segment.get("departure") or {}
+
+    departure_dt: datetime | None = None
+    tour = dto.get("tour") or {}
+    tour_date = tour.get("date")
+    departure_time = departure_ctx.get("time")
+    if tour_date:
+        try:
+            departure_dt = combine_departure_datetime(tour_date, departure_time)
+        except ValueError:
+            departure_dt = None
+
+    try:
+        opaque, _expires_at = get_or_create_view_session(
+            ticket_id,
+            purchase_id=purchase.get("id"),
+            lang=resolved_lang,
+            departure_dt=departure_dt,
+            scopes={"view"},
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Failed to resolve ticket link session for %s", ticket_id)
+        raise HTTPException(500, "Failed to prepare ticket link") from exc
+
+    base_url = os.getenv("TICKET_LINK_BASE_URL") or os.getenv("APP_PUBLIC_URL", "https://t.example.com")
+    deep_link = build_deep_link(opaque, base_url=base_url)
 
     pdf_bytes = render_ticket_pdf(dto, deep_link)
     headers = {

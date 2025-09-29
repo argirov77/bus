@@ -2,7 +2,8 @@ import importlib
 import os
 import sys
 import types
-from typing import Any, Dict, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Tuple
 
 import pytest
 from fastapi.testclient import TestClient
@@ -145,9 +146,30 @@ def client(monkeypatch):
         }
         return b"%PDF-FAKE%"
 
-    def fake_build_deep_link(ticket_id: int, token: str) -> str:
-        state["built_link_args"] = (ticket_id, token)
-        return f"https://example.test/ticket/{ticket_id}?token={token}"
+    def fake_get_or_create_view_session(
+        ticket_id: int,
+        *,
+        purchase_id: Optional[int],
+        lang: str,
+        departure_dt,
+        scopes,
+        conn=None,
+    ) -> Tuple[str, datetime]:
+        state["session_args"] = {
+            "ticket_id": ticket_id,
+            "purchase_id": purchase_id,
+            "lang": lang,
+            "departure_dt": departure_dt,
+            "scopes": tuple(sorted(scopes)) if scopes else (),
+        }
+        counter = state.setdefault("session_counter", 0) + 1
+        state["session_counter"] = counter
+        return f"opaque-{counter}", datetime(2030, 1, 1, tzinfo=timezone.utc)
+
+    def fake_build_deep_link(opaque: str, base_url: Optional[str] = None) -> str:
+        state["built_link_args"] = (opaque, base_url)
+        base = base_url or "https://example.test"
+        return f"{base.rstrip('/')}/q/{opaque}"
 
     def fake_verify(token: str) -> Dict[str, Any]:
         state["verify_called_with"] = token
@@ -168,6 +190,8 @@ def client(monkeypatch):
     monkeypatch.setattr("backend.routers.ticket.get_connection", fake_get_connection)
     monkeypatch.setattr("backend.routers.ticket.get_ticket_dto", fake_get_ticket_dto)
     monkeypatch.setattr("backend.routers.ticket.render_ticket_pdf", fake_render_ticket_pdf)
+    monkeypatch.setenv("TICKET_LINK_BASE_URL", "https://example.test")
+    monkeypatch.setattr("backend.routers.ticket.get_or_create_view_session", fake_get_or_create_view_session)
     monkeypatch.setattr("backend.routers.ticket.build_deep_link", fake_build_deep_link)
     monkeypatch.setattr("backend.auth.ticket_links.verify", fake_verify)
 
@@ -204,8 +228,9 @@ def test_ticket_pdf_returns_pdf_for_valid_link_token(client):
 
     assert state["dto_call"]["ticket_id"] == 55
     assert state["dto_call"]["lang"] == "en"
-    assert state["render_call"]["deep_link"] == "https://example.test/ticket/55?token=good-token"
-    assert state["built_link_args"] == (55, "good-token")
+    deep_link = state["render_call"]["deep_link"]
+    assert deep_link == "https://example.test/q/opaque-1"
+    assert state["built_link_args"] == ("opaque-1", "https://example.test")
     assert state["verify_called_with"] == "good-token"
     assert state["connection_closed"] is True
 

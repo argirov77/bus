@@ -1,7 +1,7 @@
 import importlib
 import os
 import sys
-from datetime import date, time
+from datetime import date, time, datetime, timezone
 
 from fastapi.testclient import TestClient
 import pytest
@@ -70,6 +70,7 @@ class DummyConn:
 def client(monkeypatch):
     last = {}
     monkeypatch.setenv("APP_PUBLIC_URL", "https://example.test")
+    monkeypatch.setenv("TICKET_LINK_BASE_URL", "https://example.test")
 
     def fake_get_connection():
         conn = DummyConn()
@@ -82,6 +83,28 @@ def client(monkeypatch):
     def fake_issue(ticket_id, purchase_id, scopes, lang, departure_dt, conn=None):
         token_counter['value'] += 1
         return f"token-{token_counter['value']}"
+
+    session_counter = {"value": 0}
+
+    def fake_get_or_create_view_session(
+        ticket_id: int,
+        *,
+        purchase_id: int | None,
+        lang: str,
+        departure_dt,
+        scopes,
+        conn=None,
+    ) -> tuple[str, datetime]:
+        ticket_links.issue(
+            ticket_id,
+            purchase_id,
+            scopes,
+            lang,
+            departure_dt,
+            conn=conn,
+        )
+        session_counter["value"] += 1
+        return f"opaque-{session_counter['value']}", datetime(2030, 1, 1, tzinfo=timezone.utc)
 
     payloads = {
         "token-pay": {
@@ -134,6 +157,7 @@ def client(monkeypatch):
     monkeypatch.setattr('backend.routers.purchase.free_ticket', lambda *a, **k: None)
     monkeypatch.setattr('backend.services.ticket_links.issue', fake_issue)
     monkeypatch.setattr('backend.services.ticket_links.verify', fake_verify)
+    monkeypatch.setattr('backend.routers._ticket_link_helpers.get_or_create_view_session', fake_get_or_create_view_session)
     monkeypatch.setattr('backend.routers.purchase.render_ticket_pdf', lambda *a, **k: b'%PDF-FAKE%')
     monkeypatch.setattr(
         'backend.routers.purchase.render_ticket_email',
@@ -165,7 +189,7 @@ def test_purchase_flow(client):
     assert resp.status_code == 200
     assert 'amount_due' in resp.json()
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
-    assert resp.json()['tickets'][0]['deep_link'] == 'https://example.test/ticket/1?token=token-1'
+    assert resp.json()['tickets'][0]['deep_link'] == 'https://example.test/q/opaque-1'
 
     store['cursor'].queries.clear()
 
@@ -207,7 +231,7 @@ def test_purchase_flow(client):
     assert 'amount_due' in resp.json()
     assert any('INSERT INTO purchase' in q[0] for q in store['cursor'].queries)
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
-    assert resp.json()['tickets'][0]['deep_link'] == 'https://example.test/ticket/1?token=token-2'
+    assert resp.json()['tickets'][0]['deep_link'] == 'https://example.test/q/opaque-2'
 
     store['cursor'].queries.clear()
 
