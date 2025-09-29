@@ -77,6 +77,87 @@ function BookingPage(props) {
     }
   };
 
+  const formatDate = (value) => {
+    if (!value) {
+      return "";
+    }
+    const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (isoMatch) {
+      return `${isoMatch[3]}.${isoMatch[2]}.${isoMatch[1]}`;
+    }
+    try {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleDateString("ru-RU");
+      }
+    } catch (err) {
+      // ignore formatting errors and fall back to the original value
+    }
+    return value;
+  };
+
+  const formatDuration = (ticket) => {
+    if (!ticket) {
+      return "";
+    }
+    if (ticket.duration_text) {
+      return ticket.duration_text;
+    }
+    if (typeof ticket.duration_minutes === "number") {
+      const hours = Math.floor(ticket.duration_minutes / 60);
+      const minutes = ticket.duration_minutes % 60;
+      const parts = [];
+      if (hours) {
+        parts.push(`${hours} ч`);
+      }
+      if (minutes) {
+        parts.push(`${minutes} мин`);
+      }
+      if (!parts.length) {
+        parts.push("0 мин");
+      }
+      return parts.join(" ");
+    }
+    return "";
+  };
+
+  const renderStopDetails = (stop = {}, label, tripDate) => {
+    const location = stop.location;
+    const hasUrl = typeof location === "string" && /^https?:\/\//i.test(location);
+
+    return (
+      <div className={styles.ticketRow}>
+        <div className={styles.ticketLabel}>{label}</div>
+        <div className={styles.ticketValue}>
+          <div className={styles.stopName}>{stop.name || "—"}</div>
+          {(tripDate || stop.time) && (
+            <div className={styles.stopMeta}>
+              {tripDate && <span>{tripDate}</span>}
+              {tripDate && stop.time && <span>·</span>}
+              {stop.time && <span>{stop.time}</span>}
+            </div>
+          )}
+          {stop.description && (
+            <div className={styles.stopDescription}>{stop.description}</div>
+          )}
+          {location && hasUrl && (
+            <a
+              className={styles.stopLocation}
+              href={location}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Посмотреть на карте
+            </a>
+          )}
+          {location && !hasUrl && (
+            <div className={styles.stopLocation}>{location}</div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={styles.container}>
       <h2>Бронирование билета</h2>
@@ -132,22 +213,64 @@ function BookingPage(props) {
         <Alert type={bookingType} message={bookingMessage} />
       )}
       {issuedTickets.length > 0 && (
-        <div className={styles['download-section']}>
+        <div className={styles.downloadSection}>
           <h3>Ваши билеты</h3>
-          <ul>
-            {issuedTickets.map((ticket) => (
-              <li key={ticket.ticket_id}>
-                Билет №{ticket.ticket_id}
-                <button
-                  type="button"
-                  className="btn btn--sm"
-                  onClick={() => handleTicketDownload(ticket)}
-                >
-                  Скачать
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className={styles.ticketList}>
+            {issuedTickets.map((ticket) => {
+              const departure = ticket?.departure || {};
+              const arrival = ticket?.arrival || {};
+              const tripDate = ticket.trip_date_text || formatDate(ticket.trip_date);
+              const duration = formatDuration(ticket);
+
+              return (
+                <article key={ticket.ticket_id} className={styles.ticketCard}>
+                  <header className={styles.ticketHeader}>
+                    <div>
+                      <h4 className={styles.ticketTitle}>Билет №{ticket.ticket_id}</h4>
+                      <div className={styles.ticketMeta}>
+                        {ticket.route_label && (
+                          <span className={styles.ticketTag}>{ticket.route_label}</span>
+                        )}
+                        {tripDate && (
+                          <span className={styles.ticketTag}>Дата: {tripDate}</span>
+                        )}
+                        {ticket.seat_number && (
+                          <span className={styles.ticketTag}>Место {ticket.seat_number}</span>
+                        )}
+                        {duration && (
+                          <span className={styles.ticketTag}>В пути: {duration}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className={styles.ticketActions}>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => handleTicketDownload(ticket)}
+                      >
+                        Скачать PDF
+                      </Button>
+                      {ticket.deep_link && (
+                        <a
+                          className={styles.ticketLink}
+                          href={ticket.deep_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Управлять поездкой
+                        </a>
+                      )}
+                    </div>
+                  </header>
+                  <div className={styles.ticketBody}>
+                    {renderStopDetails(departure, "Отправление", tripDate)}
+                    <div className={styles.ticketDivider} />
+                    {renderStopDetails(arrival, "Прибытие", tripDate)}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
