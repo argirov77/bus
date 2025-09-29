@@ -40,6 +40,7 @@ export default function SearchPage() {
   const seatCount = adultCount + discountCount;
   const [selectedOutboundSeats, setSelectedOutboundSeats] = useState([]);
   const [selectedReturnSeats, setSelectedReturnSeats] = useState([]);
+  const [passengerNames, setPassengerNames] = useState(Array(seatCount).fill(""));
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [extraBaggageOutbound, setExtraBaggageOutbound] = useState([false]);
@@ -61,6 +62,7 @@ export default function SearchPage() {
     setSelectedReturnDate("");
     setSelectedOutboundTour(null);
     setSelectedReturnTour(null);
+    setPassengerNames(Array(seatCount).fill(""));
     setExtraBaggageOutbound(Array(seatCount).fill(false));
     setExtraBaggageReturn(Array(seatCount).fill(false));
   }, [seatCount]);
@@ -199,11 +201,17 @@ export default function SearchPage() {
       setMessageType("error");
       return;
     }
+    const trimmedNames = passengerNames.map(name => name.trim());
     if (
       selectedOutboundSeats.length !== seatCount ||
       (selectedReturnTour && selectedReturnSeats.length !== seatCount)
     ) {
       setMessage("Выберите нужное количество мест");
+      setMessageType("error");
+      return;
+    }
+    if (trimmedNames.some(name => !name)) {
+      setMessage("Заполните имена пассажиров");
       setMessageType("error");
       return;
     }
@@ -220,6 +228,7 @@ export default function SearchPage() {
       const basePayload = {
         passenger_phone: phone,
         passenger_email: email,
+        passenger_names: trimmedNames,
         adult_count: adultCount,
         discount_count: discountCount
       };
@@ -254,6 +263,7 @@ export default function SearchPage() {
       setMessageType("success");
       setSelectedOutboundSeats([]);
       setSelectedReturnSeats([]);
+      setPassengerNames(Array(seatCount).fill(""));
       setPhone("");
       setEmail("");
       setExtraBaggageOutbound(Array(seatCount).fill(false));
@@ -542,8 +552,19 @@ export default function SearchPage() {
         <form onSubmit={e => e.preventDefault()}
               style={{ marginTop:20, display:"flex", flexDirection:"column", gap:8, maxWidth:300 }}>
           {[...Array(seatCount).keys()].map(idx => (
-            <div key={idx} style={{display:'flex',alignItems:'center',gap:4}}>
+            <div key={idx} style={{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
               <span>Пассажир {idx + 1}</span>
+              <input
+                type="text"
+                placeholder="Имя"
+                value={passengerNames[idx]}
+                onChange={e => {
+                  const arr = [...passengerNames];
+                  arr[idx] = e.target.value;
+                  setPassengerNames(arr);
+                }}
+                style={{flexGrow:1,minWidth:120}}
+              />
               <label style={{display:'flex',alignItems:'center',gap:2}}>
                 <input
                   type="checkbox"
