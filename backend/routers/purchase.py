@@ -15,6 +15,7 @@ from ._ticket_link_helpers import (
     TicketLinkResult,
     combine_departure_datetime,
     issue_ticket_links,
+    enrich_ticket_link_results,
 )
 from ..services import ticket_links
 from ..services.access_guard import guard_public_request
@@ -454,6 +455,7 @@ def create_purchase(data: PurchaseCreate, background_tasks: BackgroundTasks):
     try:
         purchase_id, amount_due, ticket_specs = _create_purchase(cur, data, "reserved")
         tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
+        tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -577,6 +579,7 @@ def book_seat(data: PurchaseCreate, request: Request, background_tasks: Backgrou
     try:
         purchase_id, amount_due, ticket_specs = _create_purchase(cur, data, "reserved")
         tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
+        tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -610,6 +613,7 @@ def purchase_and_pay(
             cur, data, "paid", "offline", actor
         )
         tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
+        tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
         conn.commit()
         if jti:
             logger.info("Purchase %s created and paid with token jti=%s", purchase_id, jti)

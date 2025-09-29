@@ -16,6 +16,7 @@ from ._ticket_link_helpers import (
     build_deep_link,
     combine_departure_datetime,
     issue_ticket_links,
+    enrich_ticket_link_results,
 )
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
@@ -850,13 +851,30 @@ def create_ticket(data: TicketCreate):
         raise HTTPException(500, "Failed to create ticket")
 
     tickets = issue_ticket_links([ticket_spec], data.lang)
+    tickets = enrich_ticket_link_results(tickets, data.lang)
     if not tickets:
         raise HTTPException(500, "Failed to issue ticket link")
 
-    return {
-        "ticket_id": ticket_spec["ticket_id"],
-        "deep_link": tickets[0]["deep_link"],
+    ticket_payload = tickets[0]
+    response: Dict[str, Any] = {
+        "ticket_id": ticket_payload["ticket_id"],
+        "deep_link": ticket_payload["deep_link"],
     }
+    for key in (
+        "seat_number",
+        "departure",
+        "arrival",
+        "trip_date",
+        "trip_date_text",
+        "route_label",
+        "duration_minutes",
+        "duration_text",
+    ):
+        value = ticket_payload.get(key)
+        if value is not None:
+            response[key] = value
+
+    return response
 
 
 @router.post("/reassign", status_code=204)
