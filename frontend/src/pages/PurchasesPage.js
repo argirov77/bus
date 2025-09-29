@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { API } from "../config";
+import { downloadTicketPdf } from "../utils/ticket";
 import "../styles/PurchasesPage.css";
 
 const formatDateShort = (date) => {
@@ -54,6 +55,15 @@ export default function PurchasesPage() {
 
   const toggleInfo = (id) => {
     setExpandedId((prev) => (prev === id ? null : id));
+  };
+
+  const handleTicketDownload = async (ticketId) => {
+    try {
+      await downloadTicketPdf(ticketId);
+    } catch (err) {
+      console.error("Не удалось скачать билет", err);
+      window.alert("Не удалось скачать билет. Попробуйте ещё раз.");
+    }
   };
 
   const statusBadge = (s) => <span className={`badge ${s}`}>{s}</span>;
@@ -139,6 +149,7 @@ export default function PurchasesPage() {
                               <th>Дата</th>
                               <th>Место</th>
                               <th>Багаж</th>
+                              <th>Действия</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -150,6 +161,15 @@ export default function PurchasesPage() {
                                 <td>{formatDateShort(t.tour_date)}</td>
                                 <td>{t.seat_num}</td>
                                 <td>{t.extra_baggage ? "Да" : "—"}</td>
+                                <td>
+                                  <button
+                                    type="button"
+                                    className="btn btn--sm"
+                                    onClick={() => handleTicketDownload(t.id)}
+                                  >
+                                    Скачать
+                                  </button>
+                                </td>
                               </tr>
                             ))}
                           </tbody>

@@ -11,6 +11,7 @@ import saveIcon from "../assets/icons/save.png";
 import addIcon from "../assets/icons/add.png";
 import cancelIcon from "../assets/icons/cancel.png";
 import seatIcon from "../assets/icons/seat.svg";
+import { downloadTicketPdf } from "../utils/ticket";
 
 import BusLayoutNeoplan from "../components/busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "../components/busLayouts/BusLayoutTravego";
@@ -68,6 +69,15 @@ export default function ToursPage() {
 
   // — force‐reload key for SeatAdmin —
   const [seatReload, setSeatReload] = useState(0);
+
+  const handleTicketDownload = async (ticketId) => {
+    try {
+      await downloadTicketPdf(ticketId);
+    } catch (err) {
+      console.error("Не удалось скачать билет", err);
+      window.alert("Не удалось скачать билет. Попробуйте ещё раз.");
+    }
+  };
 
   const fetchTours = (pageParam = page) => {
     const params = {
@@ -495,7 +505,14 @@ export default function ToursPage() {
                             : (ticket.extra_baggage ? '✔' : '')
                           }
                         </td>
-                        <td>
+                        <td className="ticket-actions">
+                          <button
+                            className="btn btn--sm"
+                            type="button"
+                            onClick={() => handleTicketDownload(ticket.ticket_id)}
+                          >
+                            Скачать
+                          </button>
                           {isEd
                             ? <>
                                 <IconButton className="btn--primary btn--sm" onClick={saveTicketEdit} icon={saveIcon} alt="Сохранить" />
