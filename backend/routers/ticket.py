@@ -48,7 +48,7 @@ class TicketOut(BaseModel):
     deep_link: str
 
 
-@router.get("/{ticket_id}/pdf")
+@router.get("/{ticket_id}/pdf", openapi_extra={"security": []})
 def get_ticket_pdf(
     ticket_id: int,
     request: Request,
