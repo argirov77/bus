@@ -229,7 +229,7 @@ def email_test_env(monkeypatch):
     def fake_get_connection():
         return FakeConn(state)
 
-    def fake_issue_ticket_links(specs, lang):
+    def fake_issue_ticket_links(specs, lang, conn=None):
         results = []
         for spec in specs:
             state["issue_counter"] += 1

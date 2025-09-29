@@ -76,7 +76,7 @@ def client(monkeypatch):
 
     token_counter = {"value": 0}
 
-    def fake_issue(ticket_id, purchase_id, scopes, lang, departure_dt):
+    def fake_issue(ticket_id, purchase_id, scopes, lang, departure_dt, conn=None):
         token_counter["value"] += 1
         return f"token-{token_counter['value']}"
 

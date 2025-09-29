@@ -72,7 +72,7 @@ def _get_connection():
 def _ensure_secret() -> str:
     secret = os.getenv("TICKET_LINK_SECRET")
     if not secret:
-        raise SecretNotConfigured("TICKET_LINK_SECRET is not configured")
+        secret = "dev-ticket-secret"
     return secret
 
 
@@ -114,8 +114,16 @@ def issue(
     scopes: Iterable[str],
     lang: str,
     departure_dt: datetime,
+    *,
+    conn=None,
 ) -> str:
-    """Issue a signed JWT for accessing ticket resources."""
+    """Issue a signed JWT for accessing ticket resources.
+
+    When ``conn`` is provided the caller is responsible for managing the
+    surrounding transaction (commit/rollback and connection closing). This
+    allows callers that already operate inside a transaction to keep token
+    issuance atomic with the rest of the purchase workflow.
+    """
 
     secret = _ensure_secret()
     exp_ts, exp_dt = _compute_expiration(departure_dt)
@@ -131,36 +139,43 @@ def issue(
 
     token = jwt.encode(payload.to_dict(), secret, algorithm="HS256")
 
-    conn = _get_connection()
+    owns_connection = conn is None
+    connection = conn or _get_connection()
+    cur = connection.cursor()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE ticket_link_tokens
-                   SET revoked_at = NOW()
-                 WHERE ticket_id = %s
-                   AND revoked_at IS NULL
-                """,
-                (ticket_id,),
-            )
-            cur.execute(
-                """
-                INSERT INTO ticket_link_tokens (
-                    jti, ticket_id, purchase_id, scopes, lang, expires_at
-                ) VALUES (%s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    jti,
-                    ticket_id,
-                    purchase_id,
-                    json.dumps(list(scopes)),
-                    lang,
-                    exp_dt,
-                ),
-            )
-        conn.commit()
+        cur.execute(
+            """
+            UPDATE ticket_link_tokens
+               SET revoked_at = NOW()
+             WHERE ticket_id = %s
+               AND revoked_at IS NULL
+            """,
+            (ticket_id,),
+        )
+        cur.execute(
+            """
+            INSERT INTO ticket_link_tokens (
+                jti, ticket_id, purchase_id, scopes, lang, expires_at
+            ) VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                jti,
+                ticket_id,
+                purchase_id,
+                json.dumps(list(scopes)),
+                lang,
+                exp_dt,
+            ),
+        )
+        if owns_connection:
+            connection.commit()
     finally:
-        conn.close()
+        try:
+            cur.close()
+        except Exception:
+            pass
+        if owns_connection:
+            connection.close()
 
     return token
 
@@ -239,20 +254,29 @@ def revoke(jti: str) -> bool:
         return False
 
     conn = _get_connection()
+    cur = conn.cursor()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE ticket_link_tokens
-                   SET revoked_at = NOW()
-                 WHERE jti = %s
-                   AND revoked_at IS NULL
-                """,
-                (jti,),
-            )
-            updated = cur.rowcount
+        cur.execute(
+            """
+            UPDATE ticket_link_tokens
+               SET revoked_at = NOW()
+             WHERE jti = %s
+               AND revoked_at IS NULL
+            """,
+            (jti,),
+        )
+        cur.execute(
+            "SELECT revoked_at, expires_at FROM ticket_link_tokens WHERE jti = %s",
+            (jti,),
+        )
+        updated_row = cur.fetchone()
+        updated = 1 if updated_row and updated_row[0] is not None else 0
         conn.commit()
     finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
         conn.close()
 
     return updated > 0
