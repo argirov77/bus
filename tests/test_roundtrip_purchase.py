@@ -1,6 +1,7 @@
 import importlib
 import os
 import sys
+from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 import pytest
 
@@ -59,6 +60,7 @@ class UniqueSalesConn:
 def client(monkeypatch):
     def fake_get_connection():
         return UniqueSalesConn()
+    token_counter = {"value": 0}
     payloads = {
         "token-pay": {
             "ticket_id": 1,
@@ -81,9 +83,38 @@ def client(monkeypatch):
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     import backend.database
     monkeypatch.setattr('backend.database.get_connection', fake_get_connection)
+    monkeypatch.setenv("TICKET_LINK_BASE_URL", "https://example.test")
+    def fake_issue(ticket_id, purchase_id, scopes, lang, departure_dt, conn=None):
+        token_counter["value"] += 1
+        return f"token-{token_counter['value']}"
+
     monkeypatch.setattr('backend.ticket_utils.free_ticket', lambda *a, **k: None)
     monkeypatch.setattr('backend.routers.purchase.free_ticket', lambda *a, **k: None)
     monkeypatch.setattr('backend.services.ticket_links.verify', fake_verify)
+    monkeypatch.setattr('backend.services.ticket_links.issue', fake_issue)
+    session_counter = {"value": 0}
+
+    def fake_get_or_create_view_session(
+        ticket_id: int,
+        *,
+        purchase_id: int | None,
+        lang: str,
+        departure_dt,
+        scopes,
+        conn=None,
+    ) -> tuple[str, datetime]:
+        ticket_links.issue(
+            ticket_id,
+            purchase_id,
+            scopes,
+            lang,
+            departure_dt,
+            conn=conn,
+        )
+        session_counter["value"] += 1
+        return f"opaque-{session_counter['value']}", datetime(2030, 1, 1, tzinfo=timezone.utc)
+
+    monkeypatch.setattr('backend.routers._ticket_link_helpers.get_or_create_view_session', fake_get_or_create_view_session)
     monkeypatch.setattr('backend.routers.purchase.render_ticket_pdf', lambda *a, **k: b'%PDF-FAKE%')
     monkeypatch.setattr(
         'backend.routers.purchase.render_ticket_email',

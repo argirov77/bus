@@ -73,7 +73,7 @@ def test_render_ticket_pdf_produces_bytes():
         "payment_status": {"status": "paid", "is_paid": True},
     }
 
-    deep_link = "https://app.example.com/ticket/2732866?token=abc"
+    deep_link = "https://app.example.com/q/opaque-abc"
 
     pdf_bytes = render_ticket_pdf(dto, deep_link)
 
