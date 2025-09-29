@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -66,6 +67,45 @@ def _utcnow() -> datetime:
 def _get_connection():
     from backend import database
     return database.get_connection()
+
+
+_SCHEMA_READY = False
+_SCHEMA_LOCK = threading.Lock()
+
+
+def _ensure_schema(connection) -> None:
+    """Create the ticket_link_tokens table on demand if it is missing."""
+
+    global _SCHEMA_READY
+    if _SCHEMA_READY:
+        return
+
+    with _SCHEMA_LOCK:
+        if _SCHEMA_READY:
+            return
+
+        with connection.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ticket_link_tokens (
+                    jti UUID PRIMARY KEY,
+                    ticket_id INTEGER NOT NULL,
+                    purchase_id INTEGER,
+                    scopes JSONB NOT NULL,
+                    lang VARCHAR(16) NOT NULL,
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    revoked_at TIMESTAMPTZ
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_ticket_link_tokens_ticket_id
+                    ON ticket_link_tokens (ticket_id)
+                """
+            )
+
+        _SCHEMA_READY = True
 
 
 def _ensure_secret() -> str:
@@ -139,6 +179,7 @@ def issue(
     owns_connection = conn is None
     connection = conn or _get_connection()
     try:
+        _ensure_schema(connection)
         with connection.cursor() as cur:
             # revoke all previous active tokens for this ticket
             cur.execute(

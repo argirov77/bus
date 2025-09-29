@@ -24,7 +24,11 @@ class FakeCursor:
 
     def execute(self, query, params=None):
         normalized = " ".join(query.split()).lower()
-        if "insert into ticket_link_tokens" in normalized:
+        if normalized.startswith("create table if not exists ticket_link_tokens"):
+            self._result = None
+        elif normalized.startswith("create index if not exists idx_ticket_link_tokens_ticket_id"):
+            self._result = None
+        elif "insert into ticket_link_tokens" in normalized:
             jti, ticket_id, purchase_id, scopes_json, lang, expires_at = params
             self.store[jti] = {
                 "ticket_id": ticket_id,
@@ -53,6 +57,13 @@ class FakeCursor:
             row = self.store.get(jti)
             if row:
                 self._result = (row["revoked_at"], row["expires_at"])
+            else:
+                self._result = None
+        elif "select revoked_at from ticket_link_tokens" in normalized:
+            jti = params[0]
+            row = self.store.get(jti)
+            if row:
+                self._result = (row["revoked_at"],)
             else:
                 self._result = None
         elif "select jti from ticket_link_tokens" in normalized:
