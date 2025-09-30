@@ -102,7 +102,9 @@ def get_ticket_pdf(
         logger.exception("Failed to resolve ticket link session for %s", ticket_id)
         raise HTTPException(500, "Failed to prepare ticket link") from exc
 
-    base_url = os.getenv("TICKET_LINK_BASE_URL") or os.getenv("APP_PUBLIC_URL", "https://t.example.com")
+    base_url = os.getenv("TICKET_LINK_BASE_URL") or os.getenv(
+        "APP_PUBLIC_URL", "http://localhost:8000"
+    )
     deep_link = build_deep_link(opaque, base_url=base_url)
 
     pdf_bytes = render_ticket_pdf(dto, deep_link)
