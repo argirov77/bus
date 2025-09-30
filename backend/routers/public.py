@@ -180,7 +180,7 @@ def _load_purchase_view(purchase_id: int, lang: str = _DEFAULT_LANG) -> Mapping[
             cur.execute(
                 """
                 SELECT id, status, amount_due, customer_name, customer_email,
-                       customer_phone, created_at, update_at
+                       customer_phone, update_at
                   FROM purchase
                  WHERE id = %s
                 """,
@@ -201,6 +201,7 @@ def _load_purchase_view(purchase_id: int, lang: str = _DEFAULT_LANG) -> Mapping[
             cur.close()
 
         tickets = [get_ticket_dto(tid, lang, conn) for tid in ticket_ids]
+        timestamp = row[6]
         return {
             "id": purchase_id,
             "status": row[1],
@@ -210,8 +211,8 @@ def _load_purchase_view(purchase_id: int, lang: str = _DEFAULT_LANG) -> Mapping[
                 "email": row[4],
                 "phone": row[5],
             },
-            "created_at": row[6].isoformat() if row[6] else None,
-            "updated_at": row[7].isoformat() if row[7] else None,
+            "created_at": timestamp.isoformat() if timestamp else None,
+            "updated_at": timestamp.isoformat() if timestamp else None,
             "tickets": tickets,
         }
     finally:
