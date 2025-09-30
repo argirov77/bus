@@ -97,6 +97,7 @@ def verify_challenge(
     *,
     conn=None,
     ttl_minutes: int = _DEFAULT_TOKEN_TTL_MINUTES,
+    ticket_id: int | None = None,
 ) -> OperationToken | None:
     owns_connection = conn is None
     connection = conn or get_connection()
@@ -115,6 +116,8 @@ def verify_challenge(
             if not row:
                 return None
             challenge = OTPChallenge(*row)
+            if ticket_id is not None and challenge.ticket_id != ticket_id:
+                return None
             now = _utcnow()
             if challenge.exp <= now:
                 return None
@@ -194,10 +197,36 @@ def consume_op_token(token: str, action: str, ticket_id: int, *, conn=None) -> b
             connection.close()
 
 
+def validate_op_token(token: str, action: str, ticket_id: int, *, conn=None) -> bool:
+    owns_connection = conn is None
+    connection = conn or get_connection()
+    try:
+        _ensure_schema(connection)
+        with connection.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                  FROM op_token
+                 WHERE token = %s
+                   AND action = %s
+                   AND ticket_id = %s
+                   AND used_at IS NULL
+                   AND exp > NOW()
+                """,
+                (token, action, ticket_id),
+            )
+            row = cur.fetchone()
+        return bool(row)
+    finally:
+        if owns_connection:
+            connection.close()
+
+
 __all__ = [
     "create_challenge",
     "verify_challenge",
     "consume_op_token",
+    "validate_op_token",
     "OTPChallenge",
     "OperationToken",
 ]
