@@ -458,7 +458,10 @@ def get_public_ticket(ticket_id: int, request: Request) -> Any:
     link_sessions.touch_session_usage(session.jti, scope="view")
 
     dto = _load_ticket_dto(resolved_ticket_id, _DEFAULT_LANG)
-    return jsonable_encoder(dto)
+    payload: dict[str, Any] = {"ticket": dto}
+    if isinstance(dto, Mapping):
+        payload.update(dto)
+    return jsonable_encoder(payload)
 
 
 @router.get("/purchase/{purchase_id}")
@@ -476,7 +479,10 @@ def get_public_purchase(purchase_id: int, request: Request) -> Any:
     link_sessions.touch_session_usage(session.jti, scope="view")
 
     dto = _load_purchase_view(resolved_purchase_id, _DEFAULT_LANG)
-    return jsonable_encoder(dto)
+    payload: dict[str, Any] = {"purchase": dto}
+    if isinstance(dto, Mapping):
+        payload.update(dto)
+    return jsonable_encoder(payload)
 
 
 @router.get("/tickets/{ticket_id}/pdf")
