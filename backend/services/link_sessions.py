@@ -34,7 +34,7 @@ def _utcnow() -> datetime:
 
 
 def _ensure_schema(connection) -> None:
-    """Ensure the ``link_sessions`` table exists."""
+    """Ensure the ``link_sessions`` table exists and is up to date."""
 
     global _SCHEMA_READY
     if _SCHEMA_READY:
@@ -47,19 +47,111 @@ def _ensure_schema(connection) -> None:
         with connection.cursor() as cur:
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS link_sessions (
-                    jti VARCHAR(255) PRIMARY KEY,
-                    ticket_id INTEGER NOT NULL,
-                    purchase_id INTEGER,
-                    scope VARCHAR(32) NOT NULL,
-                    exp TIMESTAMPTZ NOT NULL,
-                    redeemed TIMESTAMPTZ,
-                    used TIMESTAMPTZ,
-                    revoked TIMESTAMPTZ,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
+                SELECT column_name, data_type
+                  FROM information_schema.columns
+                 WHERE table_schema = current_schema()
+                   AND table_name = 'link_sessions'
                 """
             )
+            columns = {row[0]: row[1] for row in cur.fetchall()}
+
+            if not columns:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS link_sessions (
+                        jti VARCHAR(255) PRIMARY KEY,
+                        ticket_id INTEGER NOT NULL,
+                        purchase_id INTEGER,
+                        scope VARCHAR(32) NOT NULL,
+                        exp TIMESTAMPTZ NOT NULL,
+                        redeemed TIMESTAMPTZ,
+                        used TIMESTAMPTZ,
+                        revoked TIMESTAMPTZ,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+            else:
+                # Legacy deployments before migration 015 used a different layout
+                # for the ``link_sessions`` table. Adjust the structure in-place so
+                # that new code can operate without manual intervention.
+                if "expires_at" in columns and "exp" not in columns:
+                    cur.execute("ALTER TABLE link_sessions RENAME COLUMN expires_at TO exp")
+                    columns["exp"] = columns.pop("expires_at")
+                if "revoked_at" in columns and "revoked" not in columns:
+                    cur.execute("ALTER TABLE link_sessions RENAME COLUMN revoked_at TO revoked")
+                    columns["revoked"] = columns.pop("revoked_at")
+
+                jti_type = columns.get("jti")
+                if jti_type and "uuid" in jti_type:
+                    cur.execute(
+                        "ALTER TABLE link_sessions ALTER COLUMN jti TYPE VARCHAR(255) USING jti::text"
+                    )
+                    columns["jti"] = "character varying"
+
+                for legacy in ("opaque", "token"):
+                    if legacy in columns:
+                        cur.execute(f"ALTER TABLE link_sessions DROP COLUMN IF EXISTS {legacy}")
+                        columns.pop(legacy, None)
+
+                # Ensure optional columns from the new schema are present.
+                def ensure_column(name: str, ddl: str) -> None:
+                    if name not in columns:
+                        cur.execute(f"ALTER TABLE link_sessions ADD COLUMN {name} {ddl}")
+                        columns[name] = ddl
+
+                ensure_column("purchase_id", "INTEGER")
+                ensure_column("redeemed", "TIMESTAMPTZ")
+                ensure_column("used", "TIMESTAMPTZ")
+                ensure_column("revoked", "TIMESTAMPTZ")
+                ensure_column("created_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()")
+
+                if "id" in columns:
+                    cur.execute(
+                        """
+                        SELECT tc.constraint_name, kcu.column_name
+                          FROM information_schema.table_constraints AS tc
+                          JOIN information_schema.key_column_usage AS kcu
+                            ON tc.constraint_name = kcu.constraint_name
+                         WHERE tc.table_schema = current_schema()
+                           AND tc.table_name = 'link_sessions'
+                           AND tc.constraint_type = 'PRIMARY KEY'
+                        """
+                    )
+                    pk_info = cur.fetchone()
+                    if pk_info and pk_info[0]:
+                        cur.execute(
+                            f'ALTER TABLE link_sessions DROP CONSTRAINT IF EXISTS "{pk_info[0]}"'
+                        )
+                    cur.execute("ALTER TABLE link_sessions DROP COLUMN IF EXISTS id")
+                    cur.execute("DROP SEQUENCE IF EXISTS link_sessions_id_seq")
+
+            # Guarantee a primary key on the ``jti`` column.
+            cur.execute(
+                """
+                SELECT tc.constraint_name, kcu.column_name
+                  FROM information_schema.table_constraints AS tc
+                  JOIN information_schema.key_column_usage AS kcu
+                    ON tc.constraint_name = kcu.constraint_name
+                 WHERE tc.table_schema = current_schema()
+                   AND tc.table_name = 'link_sessions'
+                   AND tc.constraint_type = 'PRIMARY KEY'
+                """
+            )
+            pk_info = cur.fetchone()
+            if not pk_info or pk_info[1] != "jti":
+                if pk_info and pk_info[0]:
+                    cur.execute(
+                        f'ALTER TABLE link_sessions DROP CONSTRAINT IF EXISTS "{pk_info[0]}"'
+                    )
+                cur.execute(
+                    "ALTER TABLE link_sessions ADD CONSTRAINT link_sessions_pkey PRIMARY KEY (jti)"
+                )
+
+            # Refresh supporting indexes so they reference the expected columns.
+            cur.execute("DROP INDEX IF EXISTS idx_link_sessions_ticket_scope")
+            cur.execute("DROP INDEX IF EXISTS idx_link_sessions_purchase_scope")
+            cur.execute("DROP INDEX IF EXISTS idx_link_sessions_jti")
             cur.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_link_sessions_ticket_scope
