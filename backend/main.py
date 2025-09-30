@@ -1,14 +1,9 @@
-import os
-import re
+from fastapi import FastAPI
 import threading
 import time
-
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.base import BaseHTTPMiddleware
+import os
 
 # Ensure application runs in Bulgarian time (UTC+3) so all logs and time-based
 # functions reflect the expected timezone.
@@ -35,7 +30,6 @@ from .routers import (
 )
 from .routers.ticket_admin import router as admin_tickets_router
 from .routers.purchase_admin import router as admin_purchases_router
-from .services.public_session import ensure_purchase_session
 
 
 app = FastAPI()
@@ -45,9 +39,14 @@ app = FastAPI()
 def health() -> dict[str, str]:
     """Simple health check returning API status."""
     return {"status": "ok"}
-# Configure CORS to allow requests from the mini-cabinet front-end.
+# Configure CORS to allow requests from development front-end origins.
 origins = [
+    "http://localhost:4000",
+    "http://127.0.0.1:4000",
+    "http://localhost:3000",
     "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
 ]
 
 app.add_middleware(
@@ -59,61 +58,6 @@ app.add_middleware(
     expose_headers=["Content-Disposition"],
     max_age=86400,
 )
-
-
-_purchase_pdf_pattern = re.compile(r"^/purchase/(?P<purchase_id>\d+)/pdf/?$")
-_ticket_pdf_pattern = re.compile(r"^/tickets/(?P<ticket_id>\d+)/pdf/?$")
-
-
-def _extract_path_requirements(path: str) -> tuple[bool, int | None, int | None]:
-    """Determine whether a request path requires purchase session validation."""
-
-    purchase_id: int | None = None
-    ticket_id: int | None = None
-
-    stripped = path.split("?")[0]
-    match_purchase = _purchase_pdf_pattern.match(stripped)
-    if match_purchase:
-        purchase_id = int(match_purchase.group("purchase_id"))
-    match_ticket = _ticket_pdf_pattern.match(stripped)
-    if match_ticket:
-        ticket_id = int(match_ticket.group("ticket_id"))
-
-    segments = [segment for segment in stripped.strip("/").split("/") if segment]
-    if segments and segments[0] == "public":
-        if len(segments) >= 3 and segments[1] == "purchase" and segments[2].isdigit():
-            purchase_id = int(segments[2])
-        if len(segments) >= 3 and segments[1] == "tickets" and segments[2].isdigit():
-            ticket_id = int(segments[2])
-        return True, purchase_id, ticket_id
-
-    if match_purchase or match_ticket:
-        return True, purchase_id, ticket_id
-
-    return False, None, None
-
-
-class PurchaseSessionMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        should_guard, purchase_id, ticket_id = _extract_path_requirements(request.url.path)
-        if not should_guard:
-            return await call_next(request)
-
-        try:
-            context = await run_in_threadpool(
-                ensure_purchase_session,
-                request,
-                required_purchase_id=purchase_id,
-                required_ticket_id=ticket_id,
-            )
-        except HTTPException as exc:
-            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
-
-        request.state.purchase_session = context
-        return await call_next(request)
-
-
-app.add_middleware(PurchaseSessionMiddleware)
 
 # Подключаем роутеры
 app.include_router(stop.router)
