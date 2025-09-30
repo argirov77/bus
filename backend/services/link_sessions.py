@@ -1,24 +1,40 @@
-"""Utilities for managing short-lived ticket link sessions."""
-
 from __future__ import annotations
+
+import os
 import secrets
 import threading
-import uuid
-from datetime import datetime, timezone
-from typing import Iterable, Tuple
-
-import jwt
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Iterable, Optional, Tuple
 
 from ..database import get_connection
-from . import ticket_links
+
+_DEFAULT_TTL_DAYS = 7
+
+
+@dataclass(frozen=True)
+class LinkSession:
+    jti: str
+    ticket_id: int
+    purchase_id: Optional[int]
+    scope: str
+    exp: datetime
+    redeemed: Optional[datetime]
+    used: Optional[datetime]
+    revoked: Optional[datetime]
+    created_at: datetime
 
 
 _SCHEMA_READY = False
 _SCHEMA_LOCK = threading.Lock()
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _ensure_schema(connection) -> None:
-    """Create the ``link_sessions`` table on demand."""
+    """Ensure the ``link_sessions`` table exists."""
 
     global _SCHEMA_READY
     if _SCHEMA_READY:
@@ -32,15 +48,15 @@ def _ensure_schema(connection) -> None:
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS link_sessions (
-                    id SERIAL PRIMARY KEY,
+                    jti VARCHAR(255) PRIMARY KEY,
                     ticket_id INTEGER NOT NULL,
+                    purchase_id INTEGER,
                     scope VARCHAR(32) NOT NULL,
-                    opaque VARCHAR(128) NOT NULL UNIQUE,
-                    token TEXT NOT NULL,
-                    jti UUID NOT NULL,
-                    expires_at TIMESTAMPTZ NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    revoked_at TIMESTAMPTZ
+                    exp TIMESTAMPTZ NOT NULL,
+                    redeemed TIMESTAMPTZ,
+                    used TIMESTAMPTZ,
+                    revoked TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
                 """
             )
@@ -48,21 +64,18 @@ def _ensure_schema(connection) -> None:
                 """
                 CREATE INDEX IF NOT EXISTS idx_link_sessions_ticket_scope
                     ON link_sessions (ticket_id, scope)
-                    WHERE revoked_at IS NULL
+                    WHERE revoked IS NULL
                 """
             )
             cur.execute(
                 """
-                CREATE INDEX IF NOT EXISTS idx_link_sessions_jti
-                    ON link_sessions (jti)
+                CREATE INDEX IF NOT EXISTS idx_link_sessions_purchase_scope
+                    ON link_sessions (purchase_id, scope)
+                    WHERE revoked IS NULL
                 """
             )
 
         _SCHEMA_READY = True
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def _normalize_departure(dt: datetime | None) -> datetime:
@@ -73,64 +86,62 @@ def _normalize_departure(dt: datetime | None) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
-def _decode_payload(token: str) -> tuple[str, datetime | None]:
+def _get_ttl_days() -> int:
+    raw = os.getenv("LINK_SESSION_TTL_DAYS") or os.getenv("TICKET_LINK_TTL_DAYS")
+    if not raw:
+        return _DEFAULT_TTL_DAYS
     try:
-        payload = jwt.decode(token, options={"verify_signature": False})
-    except jwt.PyJWTError:
-        return "", None
-
-    jti = str(payload.get("jti") or "")
-    exp_value = payload.get("exp")
-    expires_at: datetime | None = None
-    if isinstance(exp_value, (int, float)):
-        expires_at = datetime.fromtimestamp(int(exp_value), tz=timezone.utc)
-
-    return jti, expires_at
+        ttl = int(raw)
+    except ValueError:
+        return _DEFAULT_TTL_DAYS
+    return max(ttl, 1)
 
 
-def _opaque_from_jti(jti: str) -> str:
-    cleaned = "".join(ch for ch in jti if ch.isalnum())
-    if cleaned:
-        return cleaned.lower()
-    return secrets.token_urlsafe(18)
+def _compute_expiration(departure_dt: datetime | None) -> datetime:
+    now = _utcnow()
+    ttl_days = _get_ttl_days()
+    expiry_limit = now + timedelta(days=ttl_days)
+    if departure_dt is None:
+        return expiry_limit
+    normalized = _normalize_departure(departure_dt)
+    return min(normalized + timedelta(days=1), expiry_limit)
 
 
-def _insert_session(
+def _generate_opaque() -> str:
+    # 24 bytes -> 192 bits of entropy. base64 url-safe without padding.
+    return secrets.token_urlsafe(24)
+
+
+def _row_to_session(row) -> LinkSession:
+    return LinkSession(
+        jti=row[0],
+        ticket_id=row[1],
+        purchase_id=row[2],
+        scope=row[3],
+        exp=row[4],
+        redeemed=row[5],
+        used=row[6],
+        revoked=row[7],
+        created_at=row[8],
+    )
+
+
+def _select_active_session(
     connection,
     *,
     ticket_id: int,
     scope: str,
-    token: str,
-    jti: str,
-    expires_at: datetime,
-) -> Tuple[str, datetime]:
-    opaque = _opaque_from_jti(jti)
+) -> Optional[Tuple[str, datetime]]:
     with connection.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO link_sessions (ticket_id, scope, opaque, token, jti, expires_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING opaque, expires_at
-            """,
-            (ticket_id, scope, opaque, token, jti, expires_at),
-        )
-        row = cur.fetchone()
-    if not row:
-        raise RuntimeError("Failed to create link session")
-    return row[0], row[1]
-
-
-def _select_active_session(connection, *, ticket_id: int, scope: str) -> tuple[str, datetime] | None:
-    with connection.cursor() as cur:
-        cur.execute(
-            """
-            SELECT opaque, expires_at
+            SELECT jti, exp
               FROM link_sessions
              WHERE ticket_id = %s
                AND scope = %s
-               AND revoked_at IS NULL
-               AND expires_at > NOW()
-             ORDER BY expires_at DESC
+               AND revoked IS NULL
+               AND exp > NOW()
+             ORDER BY exp DESC
              LIMIT 1
             """,
             (ticket_id, scope),
@@ -138,6 +149,30 @@ def _select_active_session(connection, *, ticket_id: int, scope: str) -> tuple[s
         row = cur.fetchone()
     if not row:
         return None
+    return row[0], row[1]
+
+
+def _insert_session(
+    connection,
+    *,
+    ticket_id: int,
+    purchase_id: int | None,
+    scope: str,
+    exp: datetime,
+) -> Tuple[str, datetime]:
+    opaque = _generate_opaque()
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO link_sessions (jti, ticket_id, purchase_id, scope, exp)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING jti, exp
+            """,
+            (opaque, ticket_id, purchase_id, scope, exp),
+        )
+        row = cur.fetchone()
+    if not row:
+        raise RuntimeError("Failed to create link session")
     return row[0], row[1]
 
 
@@ -149,50 +184,27 @@ def get_or_create_view_session(
     departure_dt: datetime | None,
     scopes: Iterable[str] | None = None,
     conn=None,
-) -> tuple[str, datetime]:
-    """Return an opaque identifier for the ticket view session."""
-
+) -> Tuple[str, datetime]:
     if ticket_id <= 0:
         raise ValueError("ticket_id must be positive")
-
-    lang_value = (lang or "bg").lower()
-    actual_scopes = tuple(scopes or ("view",))
-    departure_value = _normalize_departure(departure_dt)
 
     owns_connection = conn is None
     connection = conn or get_connection()
 
     try:
         _ensure_schema(connection)
-
         existing = _select_active_session(connection, ticket_id=ticket_id, scope="view")
         if existing:
             return existing
 
-        token = ticket_links.issue(
-            ticket_id=ticket_id,
-            purchase_id=purchase_id,
-            scopes=actual_scopes,
-            lang=lang_value,
-            departure_dt=departure_value,
-            conn=connection,
-        )
-
-        jti, token_exp = _decode_payload(token)
-        if not jti:
-            jti = str(uuid.uuid4())
-
-        expires_at = token_exp or departure_value
-
+        exp = _compute_expiration(departure_dt)
         opaque, expires = _insert_session(
             connection,
             ticket_id=ticket_id,
+            purchase_id=purchase_id,
             scope="view",
-            token=token,
-            jti=jti,
-            expires_at=expires_at,
+            exp=exp,
         )
-
         if owns_connection:
             connection.commit()
         return opaque, expires
@@ -204,5 +216,131 @@ def get_or_create_view_session(
                 pass
 
 
-__all__ = ["get_or_create_view_session"]
+def redeem_session(
+    opaque: str,
+    *,
+    scope: str | None = None,
+    conn=None,
+) -> Optional[LinkSession]:
+    owns_connection = conn is None
+    connection = conn or get_connection()
+    try:
+        _ensure_schema(connection)
+        params = [opaque]
+        condition = ""
+        if scope:
+            condition = " AND scope = %s"
+            params.append(scope)
+        with connection.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE link_sessions
+                   SET redeemed = COALESCE(redeemed, NOW())
+                 WHERE jti = %s{condition}
+                   AND revoked IS NULL
+                   AND exp > NOW()
+                RETURNING jti, ticket_id, purchase_id, scope, exp, redeemed, used, revoked, created_at
+                """,
+                params,
+            )
+            row = cur.fetchone()
+        if owns_connection:
+            connection.commit()
+        return _row_to_session(row) if row else None
+    finally:
+        if owns_connection:
+            try:
+                connection.close()
+            except Exception:
+                pass
 
+
+def get_session(
+    opaque: str,
+    *,
+    scope: str | None = None,
+    require_redeemed: bool = False,
+    conn=None,
+) -> Optional[LinkSession]:
+    owns_connection = conn is None
+    connection = conn or get_connection()
+    try:
+        _ensure_schema(connection)
+        params = [opaque]
+        condition = ""
+        if scope:
+            condition = " AND scope = %s"
+            params.append(scope)
+        with connection.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT jti, ticket_id, purchase_id, scope, exp, redeemed, used, revoked, created_at
+                  FROM link_sessions
+                 WHERE jti = %s{condition}
+                   AND revoked IS NULL
+                """,
+                params,
+            )
+            row = cur.fetchone()
+        if not row:
+            return None
+        session = _row_to_session(row)
+        if session.exp <= _utcnow():
+            return None
+        if require_redeemed and session.redeemed is None:
+            return None
+        return session
+    finally:
+        if owns_connection:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+
+def touch_session_usage(
+    opaque: str,
+    *,
+    scope: str | None = None,
+    conn=None,
+) -> Optional[LinkSession]:
+    owns_connection = conn is None
+    connection = conn or get_connection()
+    try:
+        _ensure_schema(connection)
+        params = [opaque]
+        condition = ""
+        if scope:
+            condition = " AND scope = %s"
+            params.append(scope)
+        with connection.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE link_sessions
+                   SET used = NOW()
+                 WHERE jti = %s{condition}
+                   AND revoked IS NULL
+                   AND exp > NOW()
+                RETURNING jti, ticket_id, purchase_id, scope, exp, redeemed, used, revoked, created_at
+                """,
+                params,
+            )
+            row = cur.fetchone()
+        if owns_connection:
+            connection.commit()
+        return _row_to_session(row) if row else None
+    finally:
+        if owns_connection:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+
+__all__ = [
+    "get_or_create_view_session",
+    "redeem_session",
+    "get_session",
+    "touch_session_usage",
+    "LinkSession",
+]

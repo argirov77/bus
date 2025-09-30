@@ -26,6 +26,7 @@ from .routers import (
     purchase,
     auth,
     bundle,
+    public,
 )
 from .routers.ticket_admin import router as admin_tickets_router
 from .routers.purchase_admin import router as admin_purchases_router
@@ -74,6 +75,8 @@ app.include_router(available.router)
 app.include_router(seat.router)
 app.include_router(search.router)
 app.include_router(bundle.router)
+app.include_router(public.session_router)
+app.include_router(public.router)
 app.include_router(admin_tickets_router)
 app.include_router(admin_purchases_router)
 app.include_router(auth.router)
