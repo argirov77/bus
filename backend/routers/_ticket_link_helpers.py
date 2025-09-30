@@ -111,7 +111,7 @@ def build_deep_link(opaque: str, *, base_url: str | None = None) -> str:
 
     configured = base_url or os.getenv("TICKET_LINK_BASE_URL")
     if not configured:
-        configured = os.getenv("APP_PUBLIC_URL", "https://t.example.com")
+        configured = os.getenv("APP_PUBLIC_URL", "http://localhost:8000")
     configured = configured.rstrip("/")
     return f"{configured}/q/{opaque}"
 
