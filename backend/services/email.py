@@ -171,12 +171,16 @@ def send_ticket_email(
 ) -> None:
     """Send a ticket email with the provided HTML body and PDF attachment."""
 
-    host = _get_env("SMTP_HOST")
-    port_raw = _get_env("SMTP_PORT")
-    username = _get_env("SMTP_USERNAME", required=False)
-    password = _get_env("SMTP_PASSWORD", required=False)
-    from_email = _get_env("SMTP_FROM")
-    from_name = _get_env("SMTP_FROM_NAME", required=False)
+    try:
+        host = _get_env("SMTP_HOST")
+        port_raw = _get_env("SMTP_PORT")
+        username = _get_env("SMTP_USERNAME", required=False)
+        password = _get_env("SMTP_PASSWORD", required=False)
+        from_email = _get_env("SMTP_FROM")
+        from_name = _get_env("SMTP_FROM_NAME", required=False)
+    except EmailConfigurationError:
+        logger.info("Skipping ticket email delivery because SMTP is not configured")
+        return
 
     port = int(port_raw) if port_raw else 587
 
