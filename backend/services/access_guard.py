@@ -92,6 +92,10 @@ def guard_public_request(
         token_id = request.headers.get("X-Ticket-Token") or None
 
     rate_key = token_id or ip or "unknown"
+    if purchase_id is not None:
+        rate_key = f"{rate_key}:purchase:{purchase_id}"
+    elif ticket_id is not None:
+        rate_key = f"{rate_key}:ticket:{ticket_id}"
     _enforce_rate_limit(f"{scope}:{rate_key}")
 
     logger.info(

@@ -429,10 +429,74 @@ def touch_session_usage(
                 pass
 
 
+def revoke_ticket_sessions(
+    ticket_id: int,
+    *,
+    scopes: Iterable[str] | None = None,
+    conn=None,
+) -> int:
+    """Mark all link sessions for a ticket (optionally limited by scope) as revoked.
+
+    Parameters
+    ----------
+    ticket_id:
+        Identifier of the ticket whose sessions should be revoked.
+    scopes:
+        Optional iterable of scopes to restrict the revocation to.  When omitted
+        all active sessions for the ticket are revoked.
+    conn:
+        Optional existing database connection.  When not provided a connection
+        is acquired automatically and closed after the operation.
+
+    Returns
+    -------
+    int
+        Number of sessions that have been marked as revoked.
+    """
+
+    if ticket_id <= 0:
+        raise ValueError("ticket_id must be positive")
+
+    owns_connection = conn is None
+    connection = conn or get_connection()
+    try:
+        _ensure_schema(connection)
+        params: list[object] = [ticket_id]
+        scope_condition = ""
+        if scopes:
+            scope_values = [scope for scope in scopes if scope]
+            if not scope_values:
+                return 0
+            placeholders = ",".join(["%s"] * len(scope_values))
+            params.extend(scope_values)
+            scope_condition = f" AND scope IN ({placeholders})"
+        with connection.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE link_sessions
+                   SET revoked = NOW()
+                 WHERE ticket_id = %s{scope_condition}
+                   AND revoked IS NULL
+                """,
+                params,
+            )
+            updated = cur.rowcount or 0
+        if owns_connection:
+            connection.commit()
+        return int(updated)
+    finally:
+        if owns_connection:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+
 __all__ = [
     "get_or_create_view_session",
     "redeem_session",
     "get_session",
     "touch_session_usage",
+    "revoke_ticket_sessions",
     "LinkSession",
 ]
