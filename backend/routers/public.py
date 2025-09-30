@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 import os
+import zipfile
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping
 
@@ -25,12 +27,13 @@ session_router = APIRouter(tags=["public"])
 router = APIRouter(prefix="/public", tags=["public"])
 
 _COOKIE_PREFIX = "minicab_"
+_PURCHASE_COOKIE_PREFIX = "minicab_purchase_"
 _DEFAULT_LANG = "bg"
 
 
 class OTPStartRequest(BaseModel):
-    action: str = Field(..., pattern=r"^(pay|reschedule|cancel)$")
-    ticket_id: int = Field(..., gt=0)
+    purchase_id: int = Field(..., gt=0)
+    action: str = Field(..., pattern=r"^(pay|reschedule|cancel|baggage)$")
 
 
 class OTPStartResponse(BaseModel):
@@ -44,8 +47,8 @@ class OTPVerifyRequest(BaseModel):
 
 
 class OTPVerifyResponse(BaseModel):
-    ok: bool
     op_token: str
+    ttl_sec: int
 
 
 class OperationTokenIn(BaseModel):
@@ -56,16 +59,29 @@ class RescheduleRequest(OperationTokenIn):
     new_tour_id: int = Field(..., gt=0)
 
 
-def _redirect_base_url(ticket_id: int) -> str:
-    return f"http://localhost:3001/ticket/{ticket_id}"
+def _redirect_base_url(purchase_id: int) -> str:
+    return f"http://localhost:3001/purchase/{purchase_id}"
 
 
 def _cookie_name(ticket_id: int) -> str:
     return f"{_COOKIE_PREFIX}{ticket_id}"
 
 
-def _extract_session_cookie(request: Request, ticket_id: int | None = None) -> tuple[int, str, str]:
+def _purchase_cookie_name(purchase_id: int) -> str:
+    return f"{_PURCHASE_COOKIE_PREFIX}{purchase_id}"
+
+
+def _extract_session_cookie(
+    request: Request, ticket_id: int | None = None, purchase_id: int | None = None
+) -> tuple[int, str, str]:
     cookies = request.cookies or {}
+    if purchase_id is not None:
+        name = _purchase_cookie_name(purchase_id)
+        value = cookies.get(name)
+        if not value:
+            raise HTTPException(status_code=401, detail="Missing purchase session")
+        return purchase_id, name, value
+
     if ticket_id is not None:
         name = _cookie_name(ticket_id)
         value = cookies.get(name)
@@ -75,6 +91,11 @@ def _extract_session_cookie(request: Request, ticket_id: int | None = None) -> t
 
     matches: list[tuple[int, str, str]] = []
     for key, value in cookies.items():
+        if key.startswith(_PURCHASE_COOKIE_PREFIX) and value:
+            suffix = key[len(_PURCHASE_COOKIE_PREFIX) :]
+            if suffix.isdigit():
+                matches.append((int(suffix), key, value))
+                continue
         if not key.startswith(_COOKIE_PREFIX) or not value:
             continue
         suffix = key[len(_COOKIE_PREFIX) :]
@@ -89,24 +110,56 @@ def _extract_session_cookie(request: Request, ticket_id: int | None = None) -> t
     return matches[0]
 
 
+def _resolve_purchase_id(session: link_sessions.LinkSession) -> int:
+    if session.purchase_id:
+        return int(session.purchase_id)
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT purchase_id FROM ticket WHERE id = %s", (session.ticket_id,))
+            row = cur.fetchone()
+        if not row or not row[0]:
+            raise HTTPException(status_code=404, detail="Purchase not found for ticket")
+        return int(row[0])
+    finally:
+        conn.close()
+
+
 def _require_view_session(
-    request: Request, ticket_id: int | None = None
-) -> tuple[link_sessions.LinkSession, int, str]:
-    resolved_ticket_id, cookie_name, session_id = _extract_session_cookie(request, ticket_id)
+    request: Request,
+    ticket_id: int | None = None,
+    purchase_id: int | None = None,
+) -> tuple[link_sessions.LinkSession, int, int, str]:
+    target_id, cookie_name, session_id = _extract_session_cookie(
+        request, ticket_id=ticket_id, purchase_id=purchase_id
+    )
 
     session = link_sessions.get_session(
         session_id,
         scope="view",
         require_redeemed=True,
     )
-    if not session or session.ticket_id != resolved_ticket_id:
+    if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
     now = datetime.now(timezone.utc)
     if session.exp <= now:
         raise HTTPException(status_code=401, detail="Session expired")
 
-    return session, resolved_ticket_id, cookie_name
+    resolved_purchase_id = _resolve_purchase_id(session)
+    if purchase_id is not None and resolved_purchase_id != purchase_id:
+        raise HTTPException(status_code=403, detail="Session does not match purchase")
+
+    if ticket_id is not None and session.ticket_id != ticket_id:
+        raise HTTPException(status_code=403, detail="Session does not match ticket")
+
+    if purchase_id is None and target_id != resolved_purchase_id:
+        # Cookie may have been issued for a specific ticket; keep compatibility by
+        # ensuring it matches the associated purchase.
+        if target_id != session.ticket_id:
+            raise HTTPException(status_code=403, detail="Session mismatch")
+
+    return session, session.ticket_id, resolved_purchase_id, cookie_name
 
 
 def _load_ticket_dto(ticket_id: int, lang: str = _DEFAULT_LANG) -> Mapping[str, Any]:
@@ -120,10 +173,66 @@ def _load_ticket_dto(ticket_id: int, lang: str = _DEFAULT_LANG) -> Mapping[str, 
         conn.close()
 
 
-def _build_liqpay_payload(ticket_id: int, purchase_id: int, amount: float) -> dict[str, Any]:
+def _load_purchase_view(purchase_id: int, lang: str = _DEFAULT_LANG) -> Mapping[str, Any]:
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, status, amount_due, customer_name, customer_email,
+                       customer_phone, created_at, update_at
+                  FROM purchase
+                 WHERE id = %s
+                """,
+                (purchase_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Purchase not found")
+
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT id FROM ticket WHERE purchase_id = %s ORDER BY id",
+                (purchase_id,),
+            )
+            ticket_ids = [int(r[0]) for r in cur.fetchall()]
+        finally:
+            cur.close()
+
+        tickets = [get_ticket_dto(tid, lang, conn) for tid in ticket_ids]
+        return {
+            "id": purchase_id,
+            "status": row[1],
+            "amount_due": float(row[2]) if row[2] is not None else None,
+            "customer": {
+                "name": row[3],
+                "email": row[4],
+                "phone": row[5],
+            },
+            "created_at": row[6].isoformat() if row[6] else None,
+            "updated_at": row[7].isoformat() if row[7] else None,
+            "tickets": tickets,
+        }
+    finally:
+        conn.close()
+
+
+def _build_liqpay_payload(
+    purchase_id: int,
+    amount: float,
+    *,
+    ticket_id: int | None = None,
+) -> dict[str, Any]:
     public_key = os.getenv("LIQPAY_PUBLIC_KEY", "sandbox")
     private_key = os.getenv("LIQPAY_PRIVATE_KEY", "sandbox")
     currency = os.getenv("LIQPAY_CURRENCY", "UAH")
+
+    description = ""
+    if ticket_id is not None:
+        description = f"Ticket #{ticket_id}"
+    else:
+        description = f"Purchase #{purchase_id}"
 
     payload = {
         "version": "3",
@@ -131,9 +240,9 @@ def _build_liqpay_payload(ticket_id: int, purchase_id: int, amount: float) -> di
         "action": "pay",
         "amount": round(max(amount, 0.0), 2),
         "currency": currency,
-        "description": f"Ticket #{ticket_id}",
-        "order_id": f"ticket-{ticket_id}-{purchase_id}",
-        "result_url": _redirect_base_url(ticket_id),
+        "description": description,
+        "order_id": f"purchase-{purchase_id}" if ticket_id is None else f"ticket-{ticket_id}-{purchase_id}",
+        "result_url": _redirect_base_url(purchase_id),
     }
 
     payload_json = json.dumps(payload, separators=(",", ":"))
@@ -305,11 +414,13 @@ def exchange_qr_session(opaque: str, request: Request) -> RedirectResponse:
     if session.exp <= now:
         raise HTTPException(status_code=410, detail="Session expired")
 
+    purchase_id = _resolve_purchase_id(session)
+
     guard_public_request(
         request,
         "qr_exchange",
         ticket_id=session.ticket_id,
-        purchase_id=session.purchase_id,
+        purchase_id=purchase_id,
     )
 
     remaining = int((session.exp - now).total_seconds())
@@ -317,11 +428,11 @@ def exchange_qr_session(opaque: str, request: Request) -> RedirectResponse:
         remaining = 60
 
     response = RedirectResponse(
-        url=_redirect_base_url(session.ticket_id),
+        url=_redirect_base_url(purchase_id),
         status_code=302,
     )
     response.set_cookie(
-        _cookie_name(session.ticket_id),
+        _purchase_cookie_name(purchase_id),
         session.jti,
         max_age=remaining,
         httponly=True,
@@ -333,12 +444,14 @@ def exchange_qr_session(opaque: str, request: Request) -> RedirectResponse:
 
 @router.get("/tickets/{ticket_id}")
 def get_public_ticket(ticket_id: int, request: Request) -> Any:
-    session, resolved_ticket_id, _cookie = _require_view_session(request, ticket_id)
+    session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
+        request, ticket_id=ticket_id
+    )
     guard_public_request(
         request,
         "ticket_view",
         ticket_id=resolved_ticket_id,
-        purchase_id=session.purchase_id,
+        purchase_id=resolved_purchase_id,
     )
 
     link_sessions.touch_session_usage(session.jti, scope="view")
@@ -347,14 +460,34 @@ def get_public_ticket(ticket_id: int, request: Request) -> Any:
     return jsonable_encoder(dto)
 
 
+@router.get("/purchase/{purchase_id}")
+def get_public_purchase(purchase_id: int, request: Request) -> Any:
+    session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
+        request, purchase_id=purchase_id
+    )
+    guard_public_request(
+        request,
+        "purchase_view",
+        ticket_id=resolved_ticket_id,
+        purchase_id=resolved_purchase_id,
+    )
+
+    link_sessions.touch_session_usage(session.jti, scope="view")
+
+    dto = _load_purchase_view(resolved_purchase_id, _DEFAULT_LANG)
+    return jsonable_encoder(dto)
+
+
 @router.get("/tickets/{ticket_id}/pdf")
 def get_public_ticket_pdf(ticket_id: int, request: Request) -> Response:
-    session, resolved_ticket_id, _cookie = _require_view_session(request, ticket_id)
+    session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
+        request, ticket_id=ticket_id
+    )
     guard_public_request(
         request,
         "ticket_pdf",
         ticket_id=resolved_ticket_id,
-        purchase_id=session.purchase_id,
+        purchase_id=resolved_purchase_id,
     )
 
     link_sessions.touch_session_usage(session.jti, scope="view")
@@ -369,17 +502,55 @@ def get_public_ticket_pdf(ticket_id: int, request: Request) -> Response:
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
+@router.get("/purchase/{purchase_id}/pdf")
+def get_public_purchase_pdf(purchase_id: int, request: Request) -> Response:
+    session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
+        request, purchase_id=purchase_id
+    )
+    guard_public_request(
+        request,
+        "purchase_pdf",
+        ticket_id=resolved_ticket_id,
+        purchase_id=resolved_purchase_id,
+    )
+
+    link_sessions.touch_session_usage(session.jti, scope="view")
+
+    purchase = _load_purchase_view(resolved_purchase_id, _DEFAULT_LANG)
+    tickets = purchase.get("tickets", []) if isinstance(purchase, Mapping) else []
+    deep_link = build_deep_link(session.jti)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for ticket in tickets:
+            ticket_info = ticket if isinstance(ticket, Mapping) else {}
+            ticket_obj = ticket_info.get("ticket") if isinstance(ticket_info.get("ticket"), Mapping) else None
+            ticket_id_value = None
+            if isinstance(ticket_obj, Mapping):
+                ticket_id_value = ticket_obj.get("id")
+            if ticket_id_value is None:
+                ticket_id_value = ticket_info.get("id")
+            if ticket_id_value is None:
+                continue
+            pdf_bytes = render_ticket_pdf(ticket_info, deep_link)
+            archive.writestr(f"ticket-{ticket_id_value}.pdf", pdf_bytes)
+
+    buffer.seek(0)
+    headers = {
+        "Content-Disposition": f'attachment; filename="purchase-{resolved_purchase_id}.zip"',
+    }
+    return Response(content=buffer.getvalue(), media_type="application/zip", headers=headers)
+
+
 @router.post("/otp/start", response_model=OTPStartResponse)
 def start_otp_flow(data: OTPStartRequest, request: Request) -> OTPStartResponse:
-    session, ticket_id, _cookie = _require_view_session(request, data.ticket_id)
-    if data.ticket_id != ticket_id:
-        raise HTTPException(status_code=403, detail="Session does not match ticket")
+    session, ticket_id, purchase_id, _cookie = _require_view_session(request)
 
     guard_public_request(
         request,
         "otp_start",
         ticket_id=ticket_id,
-        purchase_id=session.purchase_id,
+        purchase_id=purchase_id,
     )
     link_sessions.touch_session_usage(session.jti, scope="view")
 
@@ -387,13 +558,12 @@ def start_otp_flow(data: OTPStartRequest, request: Request) -> OTPStartResponse:
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT purchase_id FROM ticket WHERE id = %s",
-            (ticket_id,),
+            "SELECT 1 FROM ticket WHERE id = %s AND purchase_id = %s",
+            (ticket_id, purchase_id),
         )
         ticket_row = cur.fetchone()
         if not ticket_row:
-            raise HTTPException(status_code=404, detail="Ticket not found")
-        purchase_id = ticket_row[0]
+            raise HTTPException(status_code=403, detail="Ticket not part of purchase")
 
         dto = get_ticket_dto(ticket_id, _DEFAULT_LANG, conn)
         purchase_info = dto.get("purchase") if isinstance(dto, Mapping) else None
@@ -424,12 +594,12 @@ def start_otp_flow(data: OTPStartRequest, request: Request) -> OTPStartResponse:
 
 @router.post("/otp/verify", response_model=OTPVerifyResponse)
 def verify_otp_code(data: OTPVerifyRequest, request: Request) -> OTPVerifyResponse:
-    session, ticket_id, _cookie = _require_view_session(request)
+    session, ticket_id, purchase_id, _cookie = _require_view_session(request)
     guard_public_request(
         request,
         "otp_verify",
         ticket_id=ticket_id,
-        purchase_id=session.purchase_id,
+        purchase_id=purchase_id,
     )
     link_sessions.touch_session_usage(session.jti, scope="view")
 
@@ -440,18 +610,22 @@ def verify_otp_code(data: OTPVerifyRequest, request: Request) -> OTPVerifyRespon
     )
     if not token:
         raise HTTPException(status_code=400, detail="Invalid verification code")
+    if token.purchase_id and purchase_id and int(token.purchase_id) != purchase_id:
+        raise HTTPException(status_code=400, detail="Operation token mismatch")
 
-    return OTPVerifyResponse(ok=True, op_token=token.token)
+    ttl_seconds = max(int((token.exp - datetime.now(timezone.utc)).total_seconds()), 1)
+
+    return OTPVerifyResponse(op_token=token.token, ttl_sec=ttl_seconds)
 
 
 @router.post("/pay")
 def public_pay(data: OperationTokenIn, request: Request) -> Mapping[str, Any]:
-    session, ticket_id, _cookie = _require_view_session(request)
+    session, ticket_id, purchase_id, _cookie = _require_view_session(request)
     guard_public_request(
         request,
         "pay",
         ticket_id=ticket_id,
-        purchase_id=session.purchase_id,
+        purchase_id=purchase_id,
     )
     link_sessions.touch_session_usage(session.jti, scope="view")
 
@@ -461,7 +635,6 @@ def public_pay(data: OperationTokenIn, request: Request) -> Mapping[str, Any]:
         if not otp.consume_op_token(data.op_token, "pay", ticket_id, conn=conn):
             raise HTTPException(status_code=400, detail="Invalid operation token")
 
-        purchase_id = session.purchase_id
         if not purchase_id:
             cur.execute(
                 "SELECT purchase_id FROM ticket WHERE id = %s",
@@ -488,17 +661,17 @@ def public_pay(data: OperationTokenIn, request: Request) -> Mapping[str, Any]:
         cur.close()
         conn.close()
 
-    return _build_liqpay_payload(ticket_id, int(purchase_id), amount_due)
+    return _build_liqpay_payload(int(purchase_id), amount_due, ticket_id=ticket_id)
 
 
 @router.post("/reschedule")
 def public_reschedule(data: RescheduleRequest, request: Request) -> Mapping[str, Any]:
-    session, ticket_id, _cookie = _require_view_session(request)
+    session, ticket_id, purchase_id, _cookie = _require_view_session(request)
     guard_public_request(
         request,
         "reschedule",
         ticket_id=ticket_id,
-        purchase_id=session.purchase_id,
+        purchase_id=purchase_id,
     )
     link_sessions.touch_session_usage(session.jti, scope="view")
 
@@ -583,12 +756,12 @@ def public_reschedule(data: RescheduleRequest, request: Request) -> Mapping[str,
 
 @router.post("/cancel")
 def public_cancel(data: OperationTokenIn, request: Request) -> JSONResponse:
-    session, ticket_id, cookie_name = _require_view_session(request)
+    session, ticket_id, purchase_id, cookie_name = _require_view_session(request)
     guard_public_request(
         request,
         "cancel",
         ticket_id=ticket_id,
-        purchase_id=session.purchase_id,
+        purchase_id=purchase_id,
     )
     link_sessions.touch_session_usage(session.jti, scope="view")
 
@@ -599,10 +772,10 @@ def public_cancel(data: OperationTokenIn, request: Request) -> JSONResponse:
             raise HTTPException(status_code=400, detail="Invalid operation token")
 
         free_ticket(cur, ticket_id)
-        if session.purchase_id:
+        if purchase_id:
             cur.execute(
                 "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id = %s",
-                (session.purchase_id,),
+                (purchase_id,),
             )
         link_sessions.revoke_ticket_sessions(ticket_id, conn=conn)
         conn.commit()
