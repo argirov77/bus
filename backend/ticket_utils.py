@@ -69,19 +69,37 @@ def free_ticket(cur, ticket_id: int) -> None:
         (new_avail, seat_id),
     )
 
-    # Increment available.seats for each overlapping segment
-    for i in range(idx_from, idx_to):
-        d, a = stops[i], stops[i + 1]
-        cur.execute(
-            """
-            UPDATE available
-               SET seats = seats + 1
-             WHERE tour_id = %s
-               AND departure_stop_id = %s
-               AND arrival_stop_id = %s
-            """,
-            (tour_id, d, a),
-        )
+    # Increment available.seats for all overlapping combined trips
+    cur.execute(
+        """
+        UPDATE available
+           SET seats = seats + 1
+         WHERE tour_id = %s
+           AND (
+             (SELECT "order" FROM routestop
+              WHERE route_id=%s AND stop_id=departure_stop_id)
+             <
+             (SELECT "order" FROM routestop
+              WHERE route_id=%s AND stop_id=%s)
+           )
+           AND (
+             (SELECT "order" FROM routestop
+              WHERE route_id=%s AND stop_id=arrival_stop_id)
+             >
+             (SELECT "order" FROM routestop
+              WHERE route_id=%s AND stop_id=%s)
+           )
+        """,
+        (
+            tour_id,
+            route_id,
+            route_id,
+            arr,
+            route_id,
+            route_id,
+            dep,
+        ),
+    )
 
     # Remove the ticket itself
     cur.execute("DELETE FROM ticket WHERE id = %s", (ticket_id,))

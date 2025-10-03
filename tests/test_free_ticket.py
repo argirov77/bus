@@ -74,3 +74,18 @@ def test_free_ticket_revokes_tokens(monkeypatch):
     free_ticket(cursor, ticket_id=42)
 
     assert revoked == ["jti-1", "jti-2"]
+
+
+def test_free_ticket_updates_available_like_booking(monkeypatch):
+    monkeypatch.setattr(ticket_links, "revoke", lambda *_: True)
+
+    cursor = StubCursor()
+    free_ticket(cursor, ticket_id=99)
+
+    updates = [
+        params
+        for query, params in cursor.queries
+        if query.startswith("update available set seats = seats + 1")
+    ]
+    assert updates, "Expected available update query to be executed"
+    assert updates[-1] == (5, 11, 11, 3, 11, 11, 1)
