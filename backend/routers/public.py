@@ -7,7 +7,7 @@ import json
 import os
 import zipfile
 from datetime import datetime, timezone
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -71,6 +71,38 @@ def _purchase_cookie_name(purchase_id: int) -> str:
     return f"{_PURCHASE_COOKIE_PREFIX}{purchase_id}"
 
 
+def _iter_purchase_cookies(cookies: Mapping[str, str]) -> Iterable[tuple[int, str, str]]:
+    for key, value in cookies.items():
+        if not key.startswith(_PURCHASE_COOKIE_PREFIX) or not value:
+            continue
+        suffix = key[len(_PURCHASE_COOKIE_PREFIX) :]
+        if suffix.isdigit():
+            yield int(suffix), key, value
+
+
+def _iter_ticket_cookies(cookies: Mapping[str, str]) -> Iterable[tuple[int, str, str]]:
+    for key, value in cookies.items():
+        if not key.startswith(_COOKIE_PREFIX) or not value:
+            continue
+        suffix = key[len(_COOKIE_PREFIX) :]
+        if suffix.isdigit():
+            yield int(suffix), key, value
+
+
+def _pick_cookie(
+    matches: Sequence[tuple[int, str, str]] | Iterable[tuple[int, str, str]],
+    *,
+    missing_detail: str,
+    ambiguous_detail: str,
+) -> tuple[int, str, str]:
+    collected = matches if isinstance(matches, list) else list(matches)
+    if not collected:
+        raise HTTPException(status_code=401, detail=missing_detail)
+    if len(collected) > 1:
+        raise HTTPException(status_code=400, detail=ambiguous_detail)
+    return collected[0]
+
+
 def _extract_session_cookie(
     request: Request, ticket_id: int | None = None, purchase_id: int | None = None
 ) -> tuple[int, str, str]:
@@ -85,29 +117,27 @@ def _extract_session_cookie(
     if ticket_id is not None:
         name = _cookie_name(ticket_id)
         value = cookies.get(name)
-        if not value:
-            raise HTTPException(status_code=401, detail="Missing ticket session")
-        return ticket_id, name, value
+        if value:
+            return ticket_id, name, value
+        return _pick_cookie(
+            _iter_purchase_cookies(cookies),
+            missing_detail="Missing purchase session",
+            ambiguous_detail="Ambiguous purchase session",
+        )
 
-    matches: list[tuple[int, str, str]] = []
-    for key, value in cookies.items():
-        if key.startswith(_PURCHASE_COOKIE_PREFIX) and value:
-            suffix = key[len(_PURCHASE_COOKIE_PREFIX) :]
-            if suffix.isdigit():
-                matches.append((int(suffix), key, value))
-                continue
-        if not key.startswith(_COOKIE_PREFIX) or not value:
-            continue
-        suffix = key[len(_COOKIE_PREFIX) :]
-        if not suffix.isdigit():
-            continue
-        matches.append((int(suffix), key, value))
+    purchase_match = list(_iter_purchase_cookies(cookies))
+    if purchase_match:
+        return _pick_cookie(
+            purchase_match,
+            missing_detail="Missing purchase session",
+            ambiguous_detail="Ambiguous purchase session",
+        )
 
-    if not matches:
-        raise HTTPException(status_code=401, detail="Missing ticket session")
-    if len(matches) > 1:
-        raise HTTPException(status_code=400, detail="Ambiguous ticket session")
-    return matches[0]
+    return _pick_cookie(
+        _iter_ticket_cookies(cookies),
+        missing_detail="Missing ticket session",
+        ambiguous_detail="Ambiguous ticket session",
+    )
 
 
 def _resolve_purchase_id(session: link_sessions.LinkSession) -> int:
