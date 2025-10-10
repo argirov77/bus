@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import secrets
 import zipfile
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping, Sequence
@@ -15,9 +16,8 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 from ..database import get_connection
-from ..services import link_sessions, otp
+from ..services import link_sessions
 from ..services.access_guard import guard_public_request
-from ..services.email import send_otp_email
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
 from ..ticket_utils import free_ticket, recalc_available
@@ -28,35 +28,56 @@ router = APIRouter(prefix="/public", tags=["public"])
 
 _COOKIE_PREFIX = "minicab_"
 _PURCHASE_COOKIE_PREFIX = "minicab_purchase_"
+_CSRF_COOKIE_NAME = "mc_csrf"
 _DEFAULT_LANG = "bg"
 
 
-class OTPStartRequest(BaseModel):
-    purchase_id: int = Field(..., gt=0)
-    action: str = Field(..., pattern=r"^(pay|reschedule|cancel|baggage)$")
-
-
-class OTPStartResponse(BaseModel):
-    challenge_id: str
-    ttl_sec: int
-
-
-class OTPVerifyRequest(BaseModel):
-    challenge_id: str = Field(..., min_length=1)
-    code: str = Field(..., min_length=1)
-
-
-class OTPVerifyResponse(BaseModel):
-    op_token: str
-    ttl_sec: int
-
-
-class OperationTokenIn(BaseModel):
-    op_token: str = Field(..., min_length=1)
-
-
-class RescheduleRequest(OperationTokenIn):
+class RescheduleTicketSpec(BaseModel):
+    ticket_id: int = Field(..., gt=0)
     new_tour_id: int = Field(..., gt=0)
+    seat_num: int = Field(..., gt=0)
+
+
+class RescheduleRequest(BaseModel):
+    tickets: list[RescheduleTicketSpec] = Field(..., min_length=1)
+
+
+class BaggageTicketSpec(BaseModel):
+    ticket_id: int = Field(..., gt=0)
+    extra_baggage: int = Field(..., ge=0)
+
+
+class BaggageRequest(BaseModel):
+    tickets: list[BaggageTicketSpec] = Field(..., min_length=1)
+
+
+class CancelRequest(BaseModel):
+    ticket_ids: list[int] = Field(..., min_length=1)
+
+
+def _generate_csrf_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _require_csrf(request: Request) -> str:
+    cookie_value = request.cookies.get(_CSRF_COOKIE_NAME)
+    header_value = request.headers.get("X-CSRF")
+    if not cookie_value or not header_value:
+        raise HTTPException(status_code=403, detail="Missing CSRF token")
+    if not secrets.compare_digest(cookie_value, header_value):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+    return cookie_value
+
+
+def _log_sale(cur, purchase_id: int, category: str, amount: float, *, actor: str | None = None) -> None:
+    cur.execute(
+        "INSERT INTO sales (purchase_id, category, amount, actor, method) VALUES (%s,%s,%s,%s,%s)",
+        (purchase_id, category, amount, actor or "public", None),
+    )
+
+
+def _round_currency(value: float | None) -> float:
+    return round(float(value or 0.0), 2)
 
 
 def _redirect_base_url(purchase_id: int) -> str:
@@ -190,6 +211,56 @@ def _require_view_session(
             raise HTTPException(status_code=403, detail="Session mismatch")
 
     return session, session.ticket_id, resolved_purchase_id, cookie_name
+
+
+def _require_purchase_context(
+    request: Request,
+    purchase_id: int,
+    scope: str,
+) -> tuple[link_sessions.LinkSession, int, int, str]:
+    session, ticket_id, resolved_purchase_id, cookie_name = _require_view_session(
+        request, purchase_id=purchase_id
+    )
+    guard_public_request(
+        request,
+        scope,
+        ticket_id=ticket_id,
+        purchase_id=resolved_purchase_id,
+    )
+    _require_csrf(request)
+    link_sessions.touch_session_usage(session.jti, scope="view")
+    return session, ticket_id, resolved_purchase_id, cookie_name
+
+
+def _load_purchase_state(
+    cur,
+    purchase_id: int,
+    *,
+    for_update: bool = False,
+) -> tuple[float, str]:
+    query = "SELECT amount_due, status FROM purchase WHERE id = %s"
+    if for_update:
+        query += " FOR UPDATE"
+    cur.execute(query, (purchase_id,))
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Purchase not found")
+    amount_due = _round_currency(row[0])
+    status = str(row[1]) if row[1] is not None else "reserved"
+    return amount_due, status
+
+
+def _ensure_purchase_active(status: str) -> None:
+    if status in {"cancelled", "refunded"}:
+        raise HTTPException(status_code=409, detail="Purchase is not active")
+
+
+def _status_for_balance(current_status: str, new_amount_due: float, *, has_tickets: bool = True) -> str:
+    if not has_tickets:
+        return "cancelled"
+    if new_amount_due <= 0:
+        return "paid" if current_status != "refunded" else current_status
+    return "reserved"
 
 
 def _load_ticket_dto(ticket_id: int, lang: str = _DEFAULT_LANG) -> Mapping[str, Any]:
@@ -434,6 +505,253 @@ def _perform_reschedule(
         recalc_available(cur, target_tour_id)
 
 
+def _plan_reschedule(
+    cur,
+    purchase_id: int,
+    specs: Sequence[RescheduleTicketSpec],
+    *,
+    lock_tickets: bool = False,
+    lock_seats: bool = False,
+) -> tuple[list[dict[str, Any]], float]:
+    if not specs:
+        raise HTTPException(status_code=400, detail="No tickets provided")
+
+    seen: set[int] = set()
+    seat_state: dict[int, str] = {}
+    tour_route_cache: dict[int, int] = {}
+    route_stop_cache: dict[int, list[int]] = {}
+    plans: list[dict[str, Any]] = []
+    total_difference = 0.0
+
+    for spec in specs:
+        if spec.ticket_id in seen:
+            raise HTTPException(status_code=400, detail="Duplicate ticket in request")
+        seen.add(spec.ticket_id)
+
+        ticket_query = (
+            "SELECT seat_id, tour_id, departure_stop_id, arrival_stop_id, purchase_id FROM ticket WHERE id = %s"
+        )
+        if lock_tickets:
+            ticket_query += " FOR UPDATE"
+        cur.execute(ticket_query, (spec.ticket_id,))
+        ticket_row = cur.fetchone()
+        if not ticket_row:
+            raise HTTPException(status_code=404, detail="Ticket not found")
+        current_seat_id, current_tour_id, dep_id, arr_id, purchase_ref = ticket_row
+        if purchase_ref != purchase_id:
+            raise HTTPException(status_code=403, detail="Ticket does not belong to this purchase")
+
+        seat_query = "SELECT seat_num, available FROM seat WHERE id = %s"
+        if lock_seats:
+            seat_query += " FOR UPDATE"
+        cur.execute(seat_query, (current_seat_id,))
+        seat_row = cur.fetchone()
+        if not seat_row:
+            raise HTTPException(status_code=404, detail="Seat not found")
+        current_seat_num = int(seat_row[0])
+        current_avail = seat_row[1]
+
+        current_state = seat_state.get(current_seat_id)
+        if current_state is None:
+            current_state = _normalize_availability(current_avail)
+
+        current_route_id = tour_route_cache.get(current_tour_id)
+        if current_route_id is None:
+            cur.execute("SELECT route_id FROM tour WHERE id = %s", (current_tour_id,))
+            route_row = cur.fetchone()
+            if not route_row:
+                raise HTTPException(status_code=404, detail="Tour not found")
+            current_route_id = int(route_row[0])
+            tour_route_cache[current_tour_id] = current_route_id
+
+        current_stops = route_stop_cache.get(current_route_id)
+        if current_stops is None:
+            current_stops = _fetch_route_stops(cur, current_route_id)
+            route_stop_cache[current_route_id] = current_stops
+        current_segments, _ = _segments_between(current_stops, dep_id, arr_id)
+        released_state = _merge_available(current_state, current_segments)
+        seat_state[current_seat_id] = released_state
+
+        current_price = _resolve_ticket_price(cur, current_tour_id, dep_id, arr_id)
+        if current_price is None:
+            raise HTTPException(status_code=400, detail="Unable to calculate fare difference")
+
+        target_route_id = tour_route_cache.get(spec.new_tour_id)
+        if target_route_id is None:
+            cur.execute("SELECT route_id FROM tour WHERE id = %s", (spec.new_tour_id,))
+            route_row = cur.fetchone()
+            if not route_row:
+                raise HTTPException(status_code=404, detail="Target tour not found")
+            target_route_id = int(route_row[0])
+            tour_route_cache[spec.new_tour_id] = target_route_id
+
+        target_stops = route_stop_cache.get(target_route_id)
+        if target_stops is None:
+            target_stops = _fetch_route_stops(cur, target_route_id)
+            route_stop_cache[target_route_id] = target_stops
+        target_segments, _ = _segments_between(target_stops, dep_id, arr_id)
+
+        target_query = "SELECT id, available FROM seat WHERE tour_id = %s AND seat_num = %s"
+        if lock_seats:
+            target_query += " FOR UPDATE"
+        cur.execute(target_query, (spec.new_tour_id, spec.seat_num))
+        target_row = cur.fetchone()
+        if not target_row:
+            raise HTTPException(status_code=404, detail="Seat not found on target tour")
+        target_seat_id, target_avail = target_row
+        if target_avail == "0" and target_seat_id != current_seat_id:
+            raise HTTPException(status_code=409, detail="Seat is blocked on the selected tour")
+
+        target_state = seat_state.get(target_seat_id)
+        if target_state is None:
+            target_state = _normalize_availability(target_avail)
+        _ensure_segments_available(target_state, target_segments)
+        seat_state[target_seat_id] = _remove_segments(target_state, target_segments)
+
+        target_price = _resolve_ticket_price(cur, spec.new_tour_id, dep_id, arr_id)
+        if target_price is None:
+            raise HTTPException(status_code=400, detail="Unable to calculate fare difference")
+
+        difference = float(target_price - current_price)
+        total_difference += difference
+
+        plans.append(
+            {
+                "ticket_id": int(spec.ticket_id),
+                "current_tour_id": int(current_tour_id),
+                "target_tour_id": int(spec.new_tour_id),
+                "seat_num": int(spec.seat_num),
+                "current_seat_num": current_seat_num,
+                "current_price": float(current_price),
+                "target_price": float(target_price),
+                "difference": difference,
+                "current_seat_id": int(current_seat_id),
+                "target_seat_id": int(target_seat_id),
+                "departure_stop_id": int(dep_id),
+                "arrival_stop_id": int(arr_id),
+                "no_change": current_tour_id == spec.new_tour_id
+                and current_seat_id == target_seat_id,
+            }
+        )
+
+    return plans, total_difference
+
+
+def _plan_baggage(
+    cur,
+    purchase_id: int,
+    specs: Sequence[BaggageTicketSpec],
+    purchase_status: str,
+    *,
+    lock_tickets: bool = False,
+) -> tuple[list[dict[str, Any]], float]:
+    if not specs:
+        raise HTTPException(status_code=400, detail="No tickets provided")
+
+    seen: set[int] = set()
+    plans: list[dict[str, Any]] = []
+    total_delta = 0.0
+
+    for spec in specs:
+        if spec.ticket_id in seen:
+            raise HTTPException(status_code=400, detail="Duplicate ticket in request")
+        seen.add(spec.ticket_id)
+
+        ticket_query = (
+            "SELECT tour_id, departure_stop_id, arrival_stop_id, extra_baggage, purchase_id FROM ticket WHERE id = %s"
+        )
+        if lock_tickets:
+            ticket_query += " FOR UPDATE"
+        cur.execute(ticket_query, (spec.ticket_id,))
+        ticket_row = cur.fetchone()
+        if not ticket_row:
+            raise HTTPException(status_code=404, detail="Ticket not found")
+        tour_id, dep_id, arr_id, current_extra, purchase_ref = ticket_row
+        if purchase_ref != purchase_id:
+            raise HTTPException(status_code=403, detail="Ticket does not belong to this purchase")
+
+        current_extra_count = int(current_extra or 0)
+        new_extra_count = int(spec.extra_baggage)
+        if new_extra_count < current_extra_count and purchase_status == "paid":
+            raise HTTPException(status_code=409, detail="Cannot remove paid baggage")
+
+        base_price = _resolve_ticket_price(cur, tour_id, dep_id, arr_id)
+        if base_price is None:
+            raise HTTPException(status_code=400, detail="Unable to calculate baggage price")
+
+        delta_count = new_extra_count - current_extra_count
+        delta = float(base_price) * 0.1 * delta_count
+        delta = round(delta, 2)
+        total_delta += delta
+
+        plans.append(
+            {
+                "ticket_id": int(spec.ticket_id),
+                "tour_id": int(tour_id),
+                "departure_stop_id": int(dep_id),
+                "arrival_stop_id": int(arr_id),
+                "current_extra_baggage": current_extra_count,
+                "new_extra_baggage": new_extra_count,
+                "delta": delta,
+            }
+        )
+
+    return plans, total_delta
+
+
+def _plan_cancel(
+    cur,
+    purchase_id: int,
+    ticket_ids: Sequence[int],
+    *,
+    lock_tickets: bool = False,
+) -> tuple[list[dict[str, Any]], float]:
+    if not ticket_ids:
+        raise HTTPException(status_code=400, detail="No tickets provided")
+
+    seen: set[int] = set()
+    plans: list[dict[str, Any]] = []
+    total_delta = 0.0
+
+    for ticket_id in ticket_ids:
+        if ticket_id in seen:
+            raise HTTPException(status_code=400, detail="Duplicate ticket in request")
+        seen.add(ticket_id)
+
+        ticket_query = (
+            "SELECT tour_id, departure_stop_id, arrival_stop_id, extra_baggage, purchase_id FROM ticket WHERE id = %s"
+        )
+        if lock_tickets:
+            ticket_query += " FOR UPDATE"
+        cur.execute(ticket_query, (ticket_id,))
+        ticket_row = cur.fetchone()
+        if not ticket_row:
+            raise HTTPException(status_code=404, detail="Ticket not found")
+        tour_id, dep_id, arr_id, extra_baggage, purchase_ref = ticket_row
+        if purchase_ref != purchase_id:
+            raise HTTPException(status_code=403, detail="Ticket does not belong to this purchase")
+
+        base_price = _resolve_ticket_price(cur, tour_id, dep_id, arr_id)
+        if base_price is None:
+            raise HTTPException(status_code=400, detail="Unable to calculate ticket price")
+
+        baggage_price = float(base_price) * 0.1 * int(extra_baggage or 0)
+        ticket_value = float(base_price) + baggage_price
+        ticket_value = round(ticket_value, 2)
+        total_delta -= ticket_value
+
+        plans.append(
+            {
+                "ticket_id": int(ticket_id),
+                "tour_id": int(tour_id),
+                "value": ticket_value,
+                "extra_baggage": int(extra_baggage or 0),
+            }
+        )
+
+    return plans, total_delta
+
+
 @session_router.get("/q/{opaque}")
 def exchange_qr_session(opaque: str, request: Request) -> RedirectResponse:
     guard_public_request(request, "qr_exchange")
@@ -462,11 +780,20 @@ def exchange_qr_session(opaque: str, request: Request) -> RedirectResponse:
         url=_redirect_base_url(purchase_id),
         status_code=302,
     )
+    csrf_token = _generate_csrf_token()
     response.set_cookie(
         _purchase_cookie_name(purchase_id),
         session.jti,
         max_age=remaining,
         httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        _CSRF_COOKIE_NAME,
+        csrf_token,
+        max_age=remaining,
+        httponly=False,
         samesite="lax",
         path="/",
     )
@@ -579,242 +906,128 @@ def get_public_purchase_pdf(purchase_id: int, request: Request) -> Response:
     return Response(content=buffer.getvalue(), media_type="application/zip", headers=headers)
 
 
-@router.post("/otp/start", response_model=OTPStartResponse)
-def start_otp_flow(data: OTPStartRequest, request: Request) -> OTPStartResponse:
-    session, ticket_id, purchase_id, _cookie = _require_view_session(request)
-
-    guard_public_request(
-        request,
-        "otp_start",
-        ticket_id=ticket_id,
-        purchase_id=purchase_id,
+@router.post("/purchase/{purchase_id}/pay")
+def public_pay(purchase_id: int, request: Request) -> Mapping[str, Any]:
+    _session, ticket_id, resolved_purchase_id, _cookie = _require_purchase_context(
+        request, purchase_id, "pay"
     )
-    link_sessions.touch_session_usage(session.jti, scope="view")
+
+    amount_due = 0.0
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            amount_due, status = _load_purchase_state(cur, resolved_purchase_id)
+            _ensure_purchase_active(status)
+    finally:
+        conn.close()
+
+    if amount_due <= 0:
+        raise HTTPException(status_code=400, detail="Purchase has no outstanding balance")
+
+    return _build_liqpay_payload(resolved_purchase_id, amount_due, ticket_id=ticket_id)
+
+
+@router.post("/purchase/{purchase_id}/reschedule/quote")
+def public_reschedule_quote(
+    purchase_id: int, data: RescheduleRequest, request: Request
+) -> Mapping[str, Any]:
+    _session, _ticket_id, resolved_purchase_id, _cookie = _require_purchase_context(
+        request, purchase_id, "reschedule_quote"
+    )
 
     conn = get_connection()
     cur = conn.cursor()
     try:
-        cur.execute(
-            "SELECT 1 FROM ticket WHERE id = %s AND purchase_id = %s",
-            (ticket_id, purchase_id),
-        )
-        ticket_row = cur.fetchone()
-        if not ticket_row:
-            raise HTTPException(status_code=403, detail="Ticket not part of purchase")
-
-        dto = get_ticket_dto(ticket_id, _DEFAULT_LANG, conn)
-        purchase_info = dto.get("purchase") if isinstance(dto, Mapping) else None
-        customer = purchase_info.get("customer") if isinstance(purchase_info, Mapping) else None
-        email = customer.get("email") if isinstance(customer, Mapping) else None
-        if not email:
-            raise HTTPException(status_code=400, detail="Ticket has no contact email")
-
-        challenge = otp.create_challenge(
-            ticket_id,
-            purchase_id,
-            data.action,
-            conn=conn,
-        )
-        conn.commit()
-    except HTTPException:
-        conn.rollback()
-        raise
+        amount_due, status = _load_purchase_state(cur, resolved_purchase_id)
+        _ensure_purchase_active(status)
+        plans, difference = _plan_reschedule(cur, resolved_purchase_id, data.tickets)
     finally:
         cur.close()
         conn.close()
 
-    ttl_seconds = max(int((challenge.exp - datetime.now(timezone.utc)).total_seconds()), 1)
-    send_otp_email(email, challenge.code, lang=_DEFAULT_LANG)
+    total_difference = round(difference, 2)
+    new_amount_due = _round_currency(amount_due + difference)
 
-    return OTPStartResponse(challenge_id=challenge.id, ttl_sec=ttl_seconds)
-
-
-@router.post("/otp/verify", response_model=OTPVerifyResponse)
-def verify_otp_code(data: OTPVerifyRequest, request: Request) -> OTPVerifyResponse:
-    session, ticket_id, purchase_id, _cookie = _require_view_session(request)
-    guard_public_request(
-        request,
-        "otp_verify",
-        ticket_id=ticket_id,
-        purchase_id=purchase_id,
-    )
-    link_sessions.touch_session_usage(session.jti, scope="view")
-
-    token = otp.verify_challenge(
-        data.challenge_id,
-        data.code,
-        ticket_id=ticket_id,
-    )
-    if not token:
-        raise HTTPException(status_code=400, detail="Invalid verification code")
-    if token.purchase_id and purchase_id and int(token.purchase_id) != purchase_id:
-        raise HTTPException(status_code=400, detail="Operation token mismatch")
-
-    ttl_seconds = max(int((token.exp - datetime.now(timezone.utc)).total_seconds()), 1)
-
-    return OTPVerifyResponse(op_token=token.token, ttl_sec=ttl_seconds)
-
-
-@router.post("/pay")
-def public_pay(data: OperationTokenIn, request: Request) -> Mapping[str, Any]:
-    session, ticket_id, purchase_id, _cookie = _require_view_session(request)
-    guard_public_request(
-        request,
-        "pay",
-        ticket_id=ticket_id,
-        purchase_id=purchase_id,
-    )
-    link_sessions.touch_session_usage(session.jti, scope="view")
-
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        if not otp.consume_op_token(data.op_token, "pay", ticket_id, conn=conn):
-            raise HTTPException(status_code=400, detail="Invalid operation token")
-
-        if not purchase_id:
-            cur.execute(
-                "SELECT purchase_id FROM ticket WHERE id = %s",
-                (ticket_id,),
-            )
-            row = cur.fetchone()
-            purchase_id = row[0] if row else None
-        if not purchase_id:
-            raise HTTPException(status_code=400, detail="Ticket has no purchase")
-
-        cur.execute(
-            "SELECT amount_due FROM purchase WHERE id = %s",
-            (purchase_id,),
-        )
-        purchase_row = cur.fetchone()
-        if not purchase_row:
-            raise HTTPException(status_code=404, detail="Purchase not found")
-        amount_due = float(purchase_row[0] or 0)
-        conn.commit()
-    except HTTPException:
-        conn.rollback()
-        raise
-    finally:
-        cur.close()
-        conn.close()
-
-    return _build_liqpay_payload(int(purchase_id), amount_due, ticket_id=ticket_id)
-
-
-@router.post("/reschedule")
-def public_reschedule(data: RescheduleRequest, request: Request) -> Mapping[str, Any]:
-    session, ticket_id, purchase_id, _cookie = _require_view_session(request)
-    guard_public_request(
-        request,
-        "reschedule",
-        ticket_id=ticket_id,
-        purchase_id=purchase_id,
-    )
-    link_sessions.touch_session_usage(session.jti, scope="view")
-
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        if not otp.validate_op_token(data.op_token, "reschedule", ticket_id, conn=conn):
-            raise HTTPException(status_code=400, detail="Invalid operation token")
-
-        cur.execute(
-            """
-            SELECT seat_id, tour_id, departure_stop_id, arrival_stop_id
-              FROM ticket
-             WHERE id = %s
-             FOR UPDATE
-            """,
-            (ticket_id,),
-        )
-        ticket_row = cur.fetchone()
-        if not ticket_row:
-            raise HTTPException(status_code=404, detail="Ticket not found")
-        seat_id, current_tour_id, departure_stop_id, arrival_stop_id = ticket_row
-
-        cur.execute("SELECT seat_num FROM seat WHERE id = %s", (seat_id,))
-        seat_row = cur.fetchone()
-        if not seat_row:
-            raise HTTPException(status_code=404, detail="Seat not found")
-        seat_num = int(seat_row[0])
-
-        if current_tour_id == data.new_tour_id:
-            if not otp.consume_op_token(data.op_token, "reschedule", ticket_id, conn=conn):
-                raise HTTPException(status_code=400, detail="Operation token expired")
-            conn.commit()
-            return {
-                "need_payment": False,
-                "difference": 0.0,
-                "ticket_id": ticket_id,
-                "new_tour_id": current_tour_id,
+    response = {
+        "tickets": [
+            {
+                "ticket_id": plan["ticket_id"],
+                "current_tour_id": plan["current_tour_id"],
+                "new_tour_id": plan["target_tour_id"],
+                "seat_num": plan["seat_num"],
+                "current_price": round(plan["current_price"], 2),
+                "new_price": round(plan["target_price"], 2),
+                "difference": round(plan["difference"], 2),
+                "no_change": bool(plan["no_change"]),
             }
-
-        current_price = _resolve_ticket_price(cur, current_tour_id, departure_stop_id, arrival_stop_id)
-        target_price = _resolve_ticket_price(cur, data.new_tour_id, departure_stop_id, arrival_stop_id)
-        if current_price is None or target_price is None:
-            raise HTTPException(status_code=400, detail="Unable to calculate fare difference")
-
-        difference_value = float(target_price - current_price)
-        if difference_value > 0:
-            conn.rollback()
-            return {
-                "need_payment": True,
-                "difference": difference_value,
-            }
-
-        _perform_reschedule(
-            cur,
-            ticket_id=ticket_id,
-            current_seat_id=seat_id,
-            target_tour_id=data.new_tour_id,
-            seat_num=seat_num,
-            departure_stop_id=departure_stop_id,
-            arrival_stop_id=arrival_stop_id,
-        )
-
-        if not otp.consume_op_token(data.op_token, "reschedule", ticket_id, conn=conn):
-            raise HTTPException(status_code=400, detail="Operation token expired")
-
-        conn.commit()
-    except HTTPException:
-        conn.rollback()
-        raise
-    finally:
-        cur.close()
-        conn.close()
-
-    return {
-        "need_payment": False,
-        "difference": difference_value,
-        "ticket_id": ticket_id,
-        "new_tour_id": data.new_tour_id,
+            for plan in plans
+        ],
+        "total_difference": total_difference,
+        "current_amount_due": amount_due,
+        "new_amount_due": new_amount_due,
+        "need_payment": new_amount_due > 0,
     }
+    return jsonable_encoder(response)
 
 
-@router.post("/cancel")
-def public_cancel(data: OperationTokenIn, request: Request) -> JSONResponse:
-    session, ticket_id, purchase_id, cookie_name = _require_view_session(request)
-    guard_public_request(
-        request,
-        "cancel",
-        ticket_id=ticket_id,
-        purchase_id=purchase_id,
+@router.post("/purchase/{purchase_id}/reschedule")
+def public_reschedule(
+    purchase_id: int, data: RescheduleRequest, request: Request
+) -> Mapping[str, Any]:
+    session, _ticket_id, resolved_purchase_id, _cookie = _require_purchase_context(
+        request, purchase_id, "reschedule"
     )
-    link_sessions.touch_session_usage(session.jti, scope="view")
 
     conn = get_connection()
     cur = conn.cursor()
+    plans: list[dict[str, Any]] = []
+    amount_due = 0.0
+    difference = 0.0
+    new_amount_due = 0.0
+    status = "reserved"
     try:
-        if not otp.consume_op_token(data.op_token, "cancel", ticket_id, conn=conn):
-            raise HTTPException(status_code=400, detail="Invalid operation token")
+        amount_due, status = _load_purchase_state(
+            cur, resolved_purchase_id, for_update=True
+        )
+        _ensure_purchase_active(status)
+        plans, difference = _plan_reschedule(
+            cur,
+            resolved_purchase_id,
+            data.tickets,
+            lock_tickets=True,
+            lock_seats=True,
+        )
 
-        free_ticket(cur, ticket_id)
-        if purchase_id:
-            cur.execute(
-                "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id = %s",
-                (purchase_id,),
+        for plan in plans:
+            if plan["no_change"]:
+                continue
+            _perform_reschedule(
+                cur,
+                ticket_id=plan["ticket_id"],
+                current_seat_id=plan["current_seat_id"],
+                target_tour_id=plan["target_tour_id"],
+                seat_num=plan["seat_num"],
+                departure_stop_id=plan["departure_stop_id"],
+                arrival_stop_id=plan["arrival_stop_id"],
             )
-        link_sessions.revoke_ticket_sessions(ticket_id, conn=conn)
+
+        new_amount_due = _round_currency(amount_due + difference)
+        status_update = _status_for_balance(status, new_amount_due, has_tickets=True)
+        cur.execute(
+            "UPDATE purchase SET amount_due=%s, status=%s, update_at=NOW() WHERE id=%s",
+            (new_amount_due, status_update, resolved_purchase_id),
+        )
+
+        total_difference = round(difference, 2)
+        if total_difference != 0:
+            _log_sale(
+                cur,
+                resolved_purchase_id,
+                "reschedule",
+                total_difference,
+                actor=session.jti,
+            )
+
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -823,8 +1036,238 @@ def public_cancel(data: OperationTokenIn, request: Request) -> JSONResponse:
         cur.close()
         conn.close()
 
-    response = JSONResponse({"status": "cancelled", "ticket_id": ticket_id})
-    response.set_cookie(cookie_name, "", max_age=0, httponly=True, samesite="lax", path="/")
+    response = {
+        "tickets": [
+            {
+                "ticket_id": plan["ticket_id"],
+                "current_tour_id": plan["current_tour_id"],
+                "new_tour_id": plan["target_tour_id"],
+                "seat_num": plan["seat_num"],
+                "current_price": round(plan["current_price"], 2),
+                "new_price": round(plan["target_price"], 2),
+                "difference": round(plan["difference"], 2),
+                "no_change": bool(plan["no_change"]),
+            }
+            for plan in plans
+        ],
+        "total_difference": round(difference, 2),
+        "current_amount_due": amount_due,
+        "new_amount_due": new_amount_due,
+        "need_payment": new_amount_due > 0,
+    }
+    return jsonable_encoder(response)
+
+
+@router.post("/purchase/{purchase_id}/baggage/quote")
+def public_baggage_quote(
+    purchase_id: int, data: BaggageRequest, request: Request
+) -> Mapping[str, Any]:
+    _session, _ticket_id, resolved_purchase_id, _cookie = _require_purchase_context(
+        request, purchase_id, "baggage_quote"
+    )
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        amount_due, status = _load_purchase_state(cur, resolved_purchase_id)
+        _ensure_purchase_active(status)
+        plans, delta = _plan_baggage(cur, resolved_purchase_id, data.tickets, status)
+    finally:
+        cur.close()
+        conn.close()
+
+    total_delta = round(delta, 2)
+    new_amount_due = _round_currency(amount_due + delta)
+
+    response = {
+        "tickets": [
+            {
+                "ticket_id": plan["ticket_id"],
+                "current_extra_baggage": plan["current_extra_baggage"],
+                "new_extra_baggage": plan["new_extra_baggage"],
+                "delta": plan["delta"],
+            }
+            for plan in plans
+        ],
+        "total_delta": total_delta,
+        "current_amount_due": amount_due,
+        "new_amount_due": new_amount_due,
+        "need_payment": new_amount_due > 0,
+    }
+    return jsonable_encoder(response)
+
+
+@router.post("/purchase/{purchase_id}/baggage")
+def public_baggage(
+    purchase_id: int, data: BaggageRequest, request: Request
+) -> Mapping[str, Any]:
+    session, _ticket_id, resolved_purchase_id, _cookie = _require_purchase_context(
+        request, purchase_id, "baggage"
+    )
+
+    conn = get_connection()
+    cur = conn.cursor()
+    plans: list[dict[str, Any]] = []
+    amount_due = 0.0
+    delta = 0.0
+    new_amount_due = 0.0
+    status = "reserved"
+    try:
+        amount_due, status = _load_purchase_state(
+            cur, resolved_purchase_id, for_update=True
+        )
+        _ensure_purchase_active(status)
+        plans, delta = _plan_baggage(
+            cur,
+            resolved_purchase_id,
+            data.tickets,
+            status,
+            lock_tickets=True,
+        )
+
+        for plan in plans:
+            if plan["current_extra_baggage"] == plan["new_extra_baggage"]:
+                continue
+            cur.execute(
+                "UPDATE ticket SET extra_baggage=%s WHERE id=%s",
+                (plan["new_extra_baggage"], plan["ticket_id"]),
+            )
+
+        new_amount_due = _round_currency(amount_due + delta)
+        status_update = _status_for_balance(status, new_amount_due, has_tickets=True)
+        cur.execute(
+            "UPDATE purchase SET amount_due=%s, status=%s, update_at=NOW() WHERE id=%s",
+            (new_amount_due, status_update, resolved_purchase_id),
+        )
+
+        total_delta = round(delta, 2)
+        if total_delta != 0:
+            _log_sale(
+                cur,
+                resolved_purchase_id,
+                "baggage",
+                total_delta,
+                actor=session.jti,
+            )
+
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+    response = {
+        "tickets": [
+            {
+                "ticket_id": plan["ticket_id"],
+                "current_extra_baggage": plan["current_extra_baggage"],
+                "new_extra_baggage": plan["new_extra_baggage"],
+                "delta": plan["delta"],
+            }
+            for plan in plans
+        ],
+        "total_delta": round(delta, 2),
+        "current_amount_due": amount_due,
+        "new_amount_due": new_amount_due,
+        "need_payment": new_amount_due > 0,
+    }
+    return jsonable_encoder(response)
+
+
+@router.post("/purchase/{purchase_id}/cancel")
+def public_cancel(
+    purchase_id: int, data: CancelRequest, request: Request
+) -> JSONResponse:
+    session, _ticket_id, resolved_purchase_id, cookie_name = _require_purchase_context(
+        request, purchase_id, "cancel"
+    )
+
+    conn = get_connection()
+    cur = conn.cursor()
+    plans: list[dict[str, Any]] = []
+    amount_due = 0.0
+    delta = 0.0
+    new_amount_due = 0.0
+    status = "reserved"
+    remaining_tickets = 0
+    try:
+        amount_due, status = _load_purchase_state(
+            cur, resolved_purchase_id, for_update=True
+        )
+        _ensure_purchase_active(status)
+        plans, delta = _plan_cancel(
+            cur,
+            resolved_purchase_id,
+            data.ticket_ids,
+            lock_tickets=True,
+        )
+
+        for plan in plans:
+            free_ticket(cur, plan["ticket_id"])
+            link_sessions.revoke_ticket_sessions(plan["ticket_id"], conn=conn)
+
+        cur.execute(
+            "SELECT COUNT(*) FROM ticket WHERE purchase_id = %s",
+            (resolved_purchase_id,),
+        )
+        count_row = cur.fetchone()
+        remaining_tickets = int(count_row[0]) if count_row else 0
+        has_tickets = remaining_tickets > 0
+
+        new_amount_due = _round_currency(amount_due + delta)
+        status_update = _status_for_balance(
+            status, new_amount_due, has_tickets=has_tickets
+        )
+        cur.execute(
+            "UPDATE purchase SET amount_due=%s, status=%s, update_at=NOW() WHERE id=%s",
+            (new_amount_due, status_update, resolved_purchase_id),
+        )
+
+        total_delta = round(delta, 2)
+        if total_delta != 0:
+            _log_sale(
+                cur,
+                resolved_purchase_id,
+                "cancelled",
+                total_delta,
+                actor=session.jti,
+            )
+
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+    payload = {
+        "cancelled_ticket_ids": [plan["ticket_id"] for plan in plans],
+        "amount_delta": round(delta, 2),
+        "current_amount_due": amount_due,
+        "new_amount_due": new_amount_due,
+        "remaining_tickets": remaining_tickets,
+    }
+    response = JSONResponse(jsonable_encoder(payload))
+    if remaining_tickets == 0:
+        response.set_cookie(
+            _purchase_cookie_name(resolved_purchase_id),
+            "",
+            max_age=0,
+            httponly=True,
+            samesite="lax",
+            path="/",
+        )
+        response.set_cookie(
+            _CSRF_COOKIE_NAME,
+            "",
+            max_age=0,
+            httponly=False,
+            samesite="lax",
+            path="/",
+        )
     return response
 
 
