@@ -1,7 +1,5 @@
 import os
 import time
-from pathlib import Path
-from threading import Lock
 from typing import Iterator, Optional
 
 import psycopg2
@@ -139,6 +137,29 @@ def _ensure_database_exists() -> None:
         raise last_exc
 
 
+_ensure_database_exists()
+
+# --- SQLAlchemy setup (if you use it elsewhere) ---
+engine = create_engine(DATABASE_URL, echo=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# --- psycopg2 helper for your existing routers ---
+
+def get_connection():
+    """Returns a new psycopg2 connection using DATABASE_URL.
+
+    The connection's timezone is explicitly set to Bulgarian local time so that
+    any timestamps produced by PostgreSQL (e.g. via ``NOW()``) reflect
+    the desired ``UTC+3`` offset.
+    """
+    conn = psycopg2.connect(DATABASE_URL)
+    with conn.cursor() as cur:
+        cur.execute("SET TIME ZONE 'Europe/Sofia'")
+    return conn
+
+from pathlib import Path
+
+
 def run_migrations() -> None:
     """Apply SQL migrations found in db/migrations."""
     migrations_dir = Path(__file__).resolve().parents[1] / "db" / "migrations"
@@ -170,48 +191,4 @@ def run_migrations() -> None:
     conn.close()
 
 
-# --- SQLAlchemy setup (if you use it elsewhere) ---
-engine = None  # Will be initialised lazily by _refresh_sqlalchemy_bindings().
-SessionLocal = sessionmaker(autocommit=False, autoflush=False)
-
-_database_ready = False
-_ready_lock = Lock()
-
-
-def _refresh_sqlalchemy_bindings() -> None:
-    global engine
-    engine = create_engine(DATABASE_URL, echo=True)
-    SessionLocal.configure(bind=engine)
-
-
-def _ensure_database_ready() -> None:
-    """Ensure the database exists, migrations are applied and SQLAlchemy is configured."""
-
-    global _database_ready
-    if _database_ready:
-        return
-
-    with _ready_lock:
-        if _database_ready:
-            return
-        _ensure_database_exists()
-        run_migrations()
-        _refresh_sqlalchemy_bindings()
-        _database_ready = True
-
-
-# --- psycopg2 helper for your existing routers ---
-
-def get_connection():
-    """Returns a new psycopg2 connection using DATABASE_URL.
-
-    The connection's timezone is explicitly set to Bulgarian local time so that
-    any timestamps produced by PostgreSQL (e.g. via ``NOW()``) reflect
-    the desired ``UTC+3`` offset.
-    """
-
-    _ensure_database_ready()
-    conn = psycopg2.connect(DATABASE_URL)
-    with conn.cursor() as cur:
-        cur.execute("SET TIME ZONE 'Europe/Sofia'")
-    return conn
+run_migrations()
