@@ -344,9 +344,18 @@ export default function ToursPage() {
                         onChange={e=>setEditingTourData({...editingTourData,pricelist_id:e.target.value})}
                       >
                         <option value="">—</option>
-                        {pricelists.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                        {pricelists.map(p=>(
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.currency || "UAH"})
+                          </option>
+                        ))}
                       </select>
-                    : <span className="chip chip--price">{pricelists.find(p=>p.id===t.pricelist_id)?.name || "-"}</span>
+                    : <span className="chip chip--price">
+                        {(() => {
+                          const pricelist = pricelists.find(p=>p.id===t.pricelist_id);
+                          return pricelist ? `${pricelist.name} (${pricelist.currency || "UAH"})` : "-";
+                        })()}
+                      </span>
                   }
                 </td>
                 <td>
@@ -554,7 +563,11 @@ export default function ToursPage() {
                   onChange={e=>setNewTour({...newTour,pricelist_id:e.target.value})}
                 >
                   <option value="">Прайс-лист</option>
-                  {pricelists.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                  {pricelists.map(p=>(
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.currency || "UAH"})
+                    </option>
+                  ))}
                 </select>
                 <input className="input" required type="date"
                   value={newTour.date}

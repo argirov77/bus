@@ -20,8 +20,10 @@ function PricelistPage() {
 
   // Для создания и редактирования прайс-листов
   const [newPricelistName, setNewPricelistName] = useState("");
+  const [newPricelistCurrency, setNewPricelistCurrency] = useState("UAH");
   const [editingPricelistId, setEditingPricelistId] = useState(null);
   const [editingPricelistName, setEditingPricelistName] = useState("");
+  const [editingPricelistCurrency, setEditingPricelistCurrency] = useState("UAH");
 
   const [activePricelistId, setActivePricelistId] = useState(null);
 
@@ -62,10 +64,15 @@ function PricelistPage() {
   const handleCreatePricelist = (e) => {
     e.preventDefault();
     if (!newPricelistName.trim()) return;
-    axios.post(`${API}/pricelists`, { name: newPricelistName.trim() })
+    const payload = {
+      name: newPricelistName.trim(),
+      currency: newPricelistCurrency.trim() || "UAH"
+    };
+    axios.post(`${API}/pricelists`, payload)
       .then(res => {
         setPricelists([...pricelists, res.data]);
         setNewPricelistName("");
+        setNewPricelistCurrency("UAH");
       })
       .catch(err => console.error(err));
   };
@@ -74,18 +81,24 @@ function PricelistPage() {
   const handleEditPricelist = (pl) => {
     setEditingPricelistId(pl.id);
     setEditingPricelistName(pl.name);
+    setEditingPricelistCurrency(pl.currency || "UAH");
   };
 
   // Отмена редактирования прайс-листа
   const handleCancelEditPricelist = () => {
     setEditingPricelistId(null);
     setEditingPricelistName("");
+    setEditingPricelistCurrency("UAH");
   };
 
   // Сохранить изменения в прайс-листе
   const handleUpdatePricelist = (e) => {
     e.preventDefault();
-    axios.put(`${API}/pricelists/${editingPricelistId}`, { name: editingPricelistName.trim() })
+    const payload = {
+      name: editingPricelistName.trim(),
+      currency: editingPricelistCurrency.trim() || "UAH"
+    };
+    axios.put(`${API}/pricelists/${editingPricelistId}`, payload)
       .then(res => {
         setPricelists(pricelists.map(pl => pl.id === editingPricelistId ? res.data : pl));
         // Переселектить, если редактируемый прайс-лист активен
@@ -162,6 +175,12 @@ function PricelistPage() {
           onChange={e => setNewPricelistName(e.target.value)}
           required
         />
+        <input
+          type="text"
+          placeholder="Валюта"
+          value={newPricelistCurrency}
+          onChange={e => setNewPricelistCurrency(e.target.value)}
+        />
         <IconButton type="submit" icon={addIcon} alt="Добавить прайс-лист" className="btn--primary" />
       </form>
 
@@ -176,6 +195,12 @@ function PricelistPage() {
                   onChange={e => setEditingPricelistName(e.target.value)}
                   required
                 />
+                <input
+                  type="text"
+                  value={editingPricelistCurrency}
+                  onChange={e => setEditingPricelistCurrency(e.target.value)}
+                  placeholder="Валюта"
+                />
                 <IconButton type="submit" icon={saveIcon} alt="Сохранить" />
                 <IconButton type="button" onClick={handleCancelEditPricelist} icon={cancelIcon} alt="Отмена" />
               </form>
@@ -185,7 +210,7 @@ function PricelistPage() {
                   className={`btn btn--sm ${selectedPricelist?.id === pl.id ? "btn--primary" : "btn--ghost"}`}
                   onClick={() => handleSelectPricelist(pl)}
                 >
-                  {pl.name}
+                  {pl.name} ({pl.currency || "UAH"})
                 </button>
                 <label style={{ marginLeft: '4px' }}>
                   <input
@@ -206,7 +231,7 @@ function PricelistPage() {
 
       {selectedPricelist && (
         <>
-          <h3>Цены для: {selectedPricelist.name}</h3>
+          <h3>Цены для: {selectedPricelist.name} ({selectedPricelist.currency || "UAH"})</h3>
 
           <table className="styled-table">
             <thead>
@@ -230,7 +255,7 @@ function PricelistPage() {
                         onChange={e => setEditingPriceData({ price: e.target.value })}
                       />
                     ) : (
-                      p.price
+                      <>{p.price} {selectedPricelist.currency || "UAH"}</>
                     )}
                   </td>
                   <td className="actions-cell">
