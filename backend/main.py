@@ -104,7 +104,7 @@ def _cancel_expired_loop():
                     free_ticket(cur, t_row[0])
 
                 cur.execute(
-                    "UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s",
+                    "UPDATE purchase SET status='cancelled', updated_at=NOW() WHERE id=%s",
                     (pid,),
                 )
                 cur.execute(

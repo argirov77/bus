@@ -59,7 +59,7 @@ def list_purchases(
             f"""
             SELECT
               pu.id,
-              pu.update_at,
+              pu.updated_at,
               pu.customer_name,
               pu.customer_email,
               pu.customer_phone,
