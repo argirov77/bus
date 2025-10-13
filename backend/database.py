@@ -44,16 +44,53 @@ def _candidate_urls(base_url: str) -> Iterator[str]:
     seen: set[str] = set()
     url: URL = make_url(base_url)
 
-    hosts: list[Optional[str]] = [url.host]
-    for fallback in (DEFAULT_DB_HOST, "localhost"):
-        if fallback not in hosts:
-            hosts.append(fallback)
+    # Always try the exact URL first.
+    original = str(url)
+    if original not in seen:
+        seen.add(original)
+        yield original
+
+    hosts: list[Optional[str]] = []
+
+    def add_host(candidate: Optional[str]) -> None:
+        if candidate and candidate not in hosts:
+            hosts.append(candidate)
+
+    add_host(url.host)
+    add_host(DEFAULT_DB_HOST)
+    # Additional fallbacks make it easier to connect when the API runs inside a
+    # container while PostgreSQL stays on the host machine or uses the default
+    # docker-compose service name.
+    for fallback in ("db", "postgres", "host.docker.internal", "127.0.0.1", "localhost"):
+        add_host(fallback)
+
+    ports: list[int] = []
+    if url.port is not None:
+        ports.append(url.port)
+    # Honour optional overrides commonly used in docker-compose setups.
+    for env_var in ("POSTGRES_HOST_PORT", "POSTGRES_PORT"):
+        value = os.getenv(env_var)
+        if value:
+            try:
+                port = int(value)
+            except ValueError:
+                continue
+            if port not in ports:
+                ports.append(port)
+    # Fallback to the default docker-compose host mapping.
+    if 5433 not in ports:
+        ports.append(5433)
+    if 5432 not in ports:
+        ports.append(5432)
 
     for host in hosts:
-        candidate = str(url.set(host=host)) if host else base_url
-        if candidate not in seen:
-            seen.add(candidate)
-            yield candidate
+        if host is None:
+            continue
+        for port in ports:
+            candidate = str(url.set(host=host, port=port))
+            if candidate not in seen:
+                seen.add(candidate)
+                yield candidate
 
 
 def _create_database(db_url: str) -> None:
