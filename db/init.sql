@@ -108,7 +108,8 @@ ALTER SEQUENCE public.passenger_id_seq OWNED BY public.passenger.id;
 
 CREATE TABLE public.pricelist (
     id integer PRIMARY KEY,
-    name character varying(255) NOT NULL
+    name character varying(255) NOT NULL,
+    currency character varying(16) DEFAULT 'UAH'::character varying NOT NULL
 );
 
 
@@ -574,8 +575,8 @@ COPY public.available (id, tour_id, departure_stop_id, arrival_stop_id, seats) F
 -- Data for Name: pricelist; Type: TABLE DATA; Schema: public; Owner: postgres
 --
 
-COPY public.pricelist (id, name) FROM stdin;
-2	Regular Price
+COPY public.pricelist (id, name, currency) FROM stdin;
+2	Regular Price	UAH
 \.
 
 

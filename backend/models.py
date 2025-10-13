@@ -52,6 +52,7 @@ class RouteStop(RouteStopBase):
 # --- Модели за Pricelist ---
 class PricelistBase(BaseModel):
     name: str
+    currency: str = "UAH"
 
 class PricelistCreate(PricelistBase):
     pass

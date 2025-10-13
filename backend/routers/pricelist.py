@@ -19,12 +19,15 @@ def get_pricelists():
     """
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, name FROM pricelist ORDER BY id ASC;")
+    cur.execute("SELECT id, name, currency FROM pricelist ORDER BY id ASC;")
     rows = cur.fetchall()
     cur.close()
     conn.close()
 
-    return [{"id": r[0], "name": r[1], "is_demo": False} for r in rows]
+    return [
+        {"id": r[0], "name": r[1], "currency": r[2], "is_demo": False}
+        for r in rows
+    ]
 
 @router.post("/", response_model=Pricelist, status_code=status.HTTP_201_CREATED)
 @router.post("", response_model=Pricelist, status_code=status.HTTP_201_CREATED, include_in_schema=False)
@@ -35,15 +38,15 @@ def create_pricelists(item: PricelistCreate):
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO pricelist (name) VALUES (%s) RETURNING id, name;",
-        (item.name,)
+        "INSERT INTO pricelist (name, currency) VALUES (%s, %s) RETURNING id, name, currency;",
+        (item.name, item.currency)
     )
-    new_id, new_name = cur.fetchone()
+    new_id, new_name, new_currency = cur.fetchone()
     conn.commit()
     cur.close()
     conn.close()
 
-    return {"id": new_id, "name": new_name, "is_demo": False}
+    return {"id": new_id, "name": new_name, "currency": new_currency, "is_demo": False}
 
 @router.put("/{pricelist_id}", response_model=Pricelist)
 def update_pricelist(pricelist_id: int, item: PricelistCreate):
@@ -53,8 +56,8 @@ def update_pricelist(pricelist_id: int, item: PricelistCreate):
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
-        "UPDATE pricelist SET name = %s WHERE id = %s RETURNING id, name;",
-        (item.name, pricelist_id)
+        "UPDATE pricelist SET name = %s, currency = %s WHERE id = %s RETURNING id, name, currency;",
+        (item.name, item.currency, pricelist_id)
     )
     updated = cur.fetchone()
     if not updated:
@@ -65,7 +68,7 @@ def update_pricelist(pricelist_id: int, item: PricelistCreate):
     conn.commit()
     cur.close()
     conn.close()
-    return {"id": updated[0], "name": updated[1], "is_demo": False}
+    return {"id": updated[0], "name": updated[1], "currency": updated[2], "is_demo": False}
 
 
 @router.put("/{pricelist_id}/demo", response_model=Pricelist)
@@ -73,13 +76,13 @@ def update_pricelist_demo(pricelist_id: int, data: PricelistDemoUpdate):
     """Mark or unmark a pricelist as demo. Only one pricelist may be demo."""
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT id, name FROM pricelist WHERE id=%s", (pricelist_id,))
+    cur.execute("SELECT id, name, currency FROM pricelist WHERE id=%s", (pricelist_id,))
     row = cur.fetchone()
     cur.close()
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="Pricelist not found")
-    return {"id": row[0], "name": row[1], "is_demo": False}
+    return {"id": row[0], "name": row[1], "currency": row[2], "is_demo": False}
 
 @router.delete("/{pricelist_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_pricelist(pricelist_id: int):

@@ -202,7 +202,8 @@ def get_ticket_dto(ticket_id: int, lang: str, conn) -> Dict[str, object]:
             pu.status,
             pu.payment_method,
             pu.update_at,
-            pr.price
+            pr.price,
+            pl.currency
         FROM ticket t
         JOIN passenger pa ON pa.id = t.passenger_id
         LEFT JOIN seat s ON s.id = t.seat_id
@@ -213,6 +214,7 @@ def get_ticket_dto(ticket_id: int, lang: str, conn) -> Dict[str, object]:
             ON pr.pricelist_id = tr.pricelist_id
            AND pr.departure_stop_id = t.departure_stop_id
            AND pr.arrival_stop_id = t.arrival_stop_id
+        LEFT JOIN pricelist pl ON pl.id = tr.pricelist_id
         WHERE t.id = %s
     """
 
@@ -267,7 +269,10 @@ def get_ticket_dto(ticket_id: int, lang: str, conn) -> Dict[str, object]:
             payment_method,
             updated_at,
             price,
+            currency,
         ) = row
+
+        currency = currency or "UAH"
 
         booking_terms_enum = BookingTermsEnum(booking_terms_value)
 
@@ -387,6 +392,7 @@ def get_ticket_dto(ticket_id: int, lang: str, conn) -> Dict[str, object]:
         "segment": segment,
         "pricing": {
             "price": _decimal_to_float(price),
+            "currency_code": currency,
         },
         "purchase": purchase_info,
         "payment_status": payment_details,
