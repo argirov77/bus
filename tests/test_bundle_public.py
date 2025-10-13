@@ -27,6 +27,8 @@ class DummyCursor:
     def fetchone(self):
         if "select id from pricelist where is_demo" in self.query:
             return [5]
+        if "select currency from pricelist" in self.query:
+            return ["UAH"]
         if "select name from route" in self.query and "where id" in self.query:
             rid = self.params[0]
             return [f"Route{rid}"]
@@ -94,6 +96,7 @@ def test_pricelist_bundle(client):
     resp = client.post("/selected_pricelist", json={"lang": "en"})
     assert resp.status_code == 200
     data = resp.json()
+    assert data["currency"] == "UAH"
     assert data["prices"][0]["departure_name"] == "A_en"
 
 
@@ -103,6 +106,7 @@ def test_pricelist_bundle_unsupported_language(client):
     resp = client.post("/selected_pricelist", json={"lang": "ru"})
     assert resp.status_code == 200
     data = resp.json()
+    assert data["currency"] == "UAH"
     # Our dummy cursor returns "A_en" for the departure stop regardless of
     # language; the key point is that the request succeeds instead of failing
     # with a server error.
@@ -116,6 +120,7 @@ def test_pricelist_bundle_missing_column(client):
     resp = client.post("/selected_pricelist", json={"lang": "bg"})
     assert resp.status_code == 200
     data = resp.json()
+    assert data["currency"] == "UAH"
     assert data["prices"][0]["departure_name"] == "A_en"
 
 
@@ -143,6 +148,8 @@ def test_pricelist_bundle_missing_is_demo(client, monkeypatch):
     monkeypatch.setattr("backend.routers.bundle.get_connection", lambda: NoDemoConn())
     resp = client.post("/selected_pricelist", json={"lang": "en"})
     assert resp.status_code == 200
+    data = resp.json()
+    assert data["currency"] == "UAH"
 
 def test_selected_route_options(client):
     resp = client.options(

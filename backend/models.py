@@ -260,6 +260,7 @@ class PriceLocalized(BaseModel):
 
 class PricelistBundleOut(BaseModel):
     pricelist_id: int
+    currency: str
     prices: List[PriceLocalized]
 
 # --- New models for selected routes/pricelist endpoints ---
@@ -267,11 +268,14 @@ class PricelistBundleOut(BaseModel):
 class IdItem(BaseModel):
     id: int
 
+class PricelistItem(IdItem):
+    currency: str
+
 class AdminSelectedRoutesOut(BaseModel):
     routes: List[IdItem]
 
 class AdminSelectedPricelistOut(BaseModel):
-    pricelist: IdItem
+    pricelist: PricelistItem
 
 class AdminSelectedRoutesIn(BaseModel):
     routes: List[int]

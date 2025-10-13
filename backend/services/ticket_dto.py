@@ -20,6 +20,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..models import BookingTermsEnum
+from ..pricelist_utils import fetch_pricelist_currency
 
 
 # Mapping between supported languages and the column that stores a translated
@@ -202,8 +203,7 @@ def get_ticket_dto(ticket_id: int, lang: str, conn) -> Dict[str, object]:
             pu.status,
             pu.payment_method,
             pu.update_at,
-            pr.price,
-            pl.currency
+            pr.price
         FROM ticket t
         JOIN passenger pa ON pa.id = t.passenger_id
         LEFT JOIN seat s ON s.id = t.seat_id
@@ -214,7 +214,6 @@ def get_ticket_dto(ticket_id: int, lang: str, conn) -> Dict[str, object]:
             ON pr.pricelist_id = tr.pricelist_id
            AND pr.departure_stop_id = t.departure_stop_id
            AND pr.arrival_stop_id = t.arrival_stop_id
-        LEFT JOIN pricelist pl ON pl.id = tr.pricelist_id
         WHERE t.id = %s
     """
 
@@ -269,10 +268,9 @@ def get_ticket_dto(ticket_id: int, lang: str, conn) -> Dict[str, object]:
             payment_method,
             updated_at,
             price,
-            currency,
         ) = row
 
-        currency = currency or "UAH"
+        currency = fetch_pricelist_currency(conn, pricelist_id)
 
         booking_terms_enum = BookingTermsEnum(booking_terms_value)
 

@@ -14,6 +14,7 @@ from ..models import (
     SuccessResponse,
 )
 from psycopg2.errors import UndefinedColumn
+from ..pricelist_utils import fetch_pricelist_currency
 
 router = APIRouter(tags=["bundle"])
 
@@ -53,7 +54,9 @@ def get_selected_pricelist():
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "Bundle not found")
-        return {"pricelist": {"id": row[0]}}
+        pricelist_id = row[0]
+        currency = fetch_pricelist_currency(conn, pricelist_id)
+        return {"pricelist": {"id": pricelist_id, "currency": currency}}
     finally:
         cur.close()
         conn.close()
@@ -208,6 +211,7 @@ def selected_pricelist(data: LangRequest):
         if not row:
             raise HTTPException(404, "Demo pricelist not found")
         pricelist_id = row[0]
+        currency = fetch_pricelist_currency(conn, pricelist_id)
         # Build the query dynamically with the requested translation column.
         query_tpl = """
             SELECT p.departure_stop_id, COALESCE(s1.{col}, s1.stop_name),
@@ -248,7 +252,7 @@ def selected_pricelist(data: LangRequest):
             }
             for r in cur.fetchall()
         ]
-        return {"pricelist_id": pricelist_id, "prices": prices}
+        return {"pricelist_id": pricelist_id, "currency": currency, "prices": prices}
     finally:
         cur.close()
         conn.close()
