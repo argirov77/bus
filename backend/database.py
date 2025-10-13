@@ -1,10 +1,13 @@
 import os
+import threading
 import time
+from pathlib import Path
 from typing import Iterator, Optional
 
 import psycopg2
 from psycopg2 import sql
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -31,6 +34,12 @@ def _admin_url(db_url: str) -> str:
 
 
 DEFAULT_ADMIN_URL = _admin_url(DATABASE_URL)
+
+
+_INITIALIZATION_LOCK = threading.Lock()
+_DATABASE_INITIALIZED = False
+engine: Optional[Engine] = None
+SessionLocal: Optional[sessionmaker] = None
 
 
 def _candidate_urls(base_url: str) -> Iterator[str]:
@@ -109,30 +118,7 @@ def _ensure_database_exists() -> None:
         raise last_exc
 
 
-_ensure_database_exists()
-
-# --- SQLAlchemy setup (if you use it elsewhere) ---
-engine = create_engine(DATABASE_URL, echo=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# --- psycopg2 helper for your existing routers ---
-
-def get_connection():
-    """Returns a new psycopg2 connection using DATABASE_URL.
-
-    The connection's timezone is explicitly set to Bulgarian local time so that
-    any timestamps produced by PostgreSQL (e.g. via ``NOW()``) reflect
-    the desired ``UTC+3`` offset.
-    """
-    conn = psycopg2.connect(DATABASE_URL)
-    with conn.cursor() as cur:
-        cur.execute("SET TIME ZONE 'Europe/Sofia'")
-    return conn
-
-from pathlib import Path
-
-
-def run_migrations() -> None:
+def _run_migrations() -> None:
     """Apply SQL migrations found in db/migrations."""
     migrations_dir = Path(__file__).resolve().parents[1] / "db" / "migrations"
     if not migrations_dir.exists():
@@ -163,4 +149,43 @@ def run_migrations() -> None:
     conn.close()
 
 
-run_migrations()
+def initialize_database(force: bool = False) -> None:
+    """Ensure the configured database exists and migrations are applied."""
+
+    global DATABASE_URL, DEFAULT_ADMIN_URL, engine, SessionLocal, _DATABASE_INITIALIZED
+
+    if _DATABASE_INITIALIZED and not force:
+        return
+
+    with _INITIALIZATION_LOCK:
+        if _DATABASE_INITIALIZED and not force:
+            return
+
+        _ensure_database_exists()
+        engine = create_engine(DATABASE_URL, echo=True)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        _run_migrations()
+
+        _DATABASE_INITIALIZED = True
+
+
+def get_connection():
+    """Return a new psycopg2 connection using ``DATABASE_URL``.
+
+    The connection's timezone is explicitly set to Bulgarian local time so that
+    any timestamps produced by PostgreSQL (e.g. via ``NOW()``) reflect the
+    desired ``UTC+3`` offset.
+    """
+
+    initialize_database()
+
+    conn = psycopg2.connect(DATABASE_URL)
+    with conn.cursor() as cur:
+        cur.execute("SET TIME ZONE 'Europe/Sofia'")
+    return conn
+
+
+def run_migrations() -> None:
+    """Public helper to (re)apply migrations on demand."""
+
+    initialize_database(force=True)
