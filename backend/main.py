@@ -82,12 +82,20 @@ app.include_router(auth.router)
 
 
 def _cancel_expired_loop():
+    from psycopg2 import OperationalError
+
     while True:
         time.sleep(60)
         from .database import get_connection
         from .ticket_utils import free_ticket
 
-        conn = get_connection()
+        try:
+            conn = get_connection()
+        except OperationalError:
+            # Database might be temporarily unavailable (e.g. during local
+            # development when PostgreSQL is not running). Instead of crashing
+            # the background thread, wait for the next iteration.
+            continue
         cur = conn.cursor()
         try:
             cur.execute(
@@ -121,11 +129,17 @@ def _cancel_expired_loop():
 
 
 def _finish_departed_tours_loop():
+    from psycopg2 import OperationalError
+
     while True:
         time.sleep(60)
         from .database import get_connection
 
-        conn = get_connection()
+        try:
+            conn = get_connection()
+        except OperationalError:
+            # Skip processing while the database is unreachable.
+            continue
         cur = conn.cursor()
         try:
             cur.execute(
