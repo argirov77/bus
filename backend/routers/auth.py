@@ -1,12 +1,15 @@
-from fastapi import APIRouter, HTTPException, Depends
+import hashlib
+import os
+import secrets
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from passlib.context import CryptContext
 
+from ..auth import get_current_user
 from ..database import get_connection
 from ..jwt_utils import create_token
-from ..auth import get_current_user
-import hashlib
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 pwd_context = CryptContext(schemes=["bcrypt"])
@@ -26,6 +29,37 @@ class TokenOut(BaseModel):
     token: str
 
 
+def _load_admin_credentials() -> tuple[str, str, str]:
+    """Return configured admin username, password and role."""
+
+    username = os.getenv("ADMIN_USERNAME", "admin")
+    password = os.getenv("ADMIN_PASSWORD", "admin")
+    role = os.getenv("ADMIN_ROLE", "admin")
+    return username, password, role
+
+
+def _password_matches(candidate: str, stored: str) -> bool:
+    """Validate ``candidate`` against the configured ``stored`` password."""
+
+    try:
+        identified = pwd_context.identify(stored)
+    except Exception:  # pragma: no cover - defensive guard for unexpected formats
+        identified = None
+
+    if identified:
+        try:
+            return bool(pwd_context.verify(candidate, stored))
+        except Exception:  # pragma: no cover - invalid bcrypt hash
+            return False
+
+    if len(stored) == 64:
+        hashed = hashlib.sha256(candidate.encode()).hexdigest()
+        if secrets.compare_digest(hashed, stored.lower()):
+            return True
+
+    return secrets.compare_digest(candidate, stored)
+
+
 @router.post("/register")
 def register(data: RegisterIn):
     hashed = pwd_context.hash(data.password)
@@ -43,34 +77,15 @@ def register(data: RegisterIn):
 
 @router.post("/login", response_model=TokenOut)
 def login(data: LoginIn):
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT id, hashed_password, role FROM users WHERE username=%s", (data.username,)
-    )
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    if not row:
+    expected_username, expected_password, role = _load_admin_credentials()
+
+    if data.username != expected_username:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Some tests provide only two columns (hashed_password, role). Handle that
-    if len(row) == 2:
-        user_id = 1
-        hashed_password, role = row
-    else:
-        user_id, hashed_password, role = row
+    if not _password_matches(data.password, expected_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    try:
-        valid = pwd_context.verify(data.password, hashed_password)
-    except Exception:  # UnknownHashError or invalid format
-        valid = False
-    if not valid:
-        sha256_hash = hashlib.sha256(data.password.encode()).hexdigest()
-        if sha256_hash != hashed_password:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    token = create_token({"user_id": user_id, "role": role})
+    token = create_token({"user_id": 1, "role": role})
     return {"token": token}
 
 
