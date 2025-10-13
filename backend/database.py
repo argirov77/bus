@@ -1,8 +1,11 @@
 import os
 import time
+from typing import Iterator, Optional
+
 import psycopg2
 from psycopg2 import sql
 from sqlalchemy import create_engine
+from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy.orm import sessionmaker
 
 # Determine database host from environment. When running under docker-compose
@@ -10,34 +13,100 @@ from sqlalchemy.orm import sessionmaker
 # For local development we fall back to "localhost" so the application can run
 # against a local PostgreSQL instance without extra configuration.
 DEFAULT_DB_HOST = os.getenv("DB_HOST", "localhost")
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    f"postgresql://postgres:postgres@{DEFAULT_DB_HOST}:5432/test1",
-)
-
-# Derive admin connection string to the default "postgres" database
-DEFAULT_ADMIN_URL = DATABASE_URL.rsplit("/", 1)[0] + "/postgres"
 
 
-def _ensure_database_exists() -> None:
-    """Create the configured database if it doesn't exist."""
+def _default_database_url() -> str:
+    return os.getenv(
+        "DATABASE_URL",
+        f"postgresql://postgres:postgres@{DEFAULT_DB_HOST}:5432/test1",
+    )
+
+
+DATABASE_URL = _default_database_url()
+
+
+def _admin_url(db_url: str) -> str:
+    url = make_url(db_url)
+    return str(url.set(database="postgres"))
+
+
+DEFAULT_ADMIN_URL = _admin_url(DATABASE_URL)
+
+
+def _candidate_urls(base_url: str) -> Iterator[str]:
+    """Generate potential database URLs trying sensible host fallbacks.
+
+    We start with the configured URL and progressively fall back to
+    DB_HOST and localhost to support running outside docker-compose where the
+    ``db`` hostname is unavailable.
+    """
+
+    seen: set[str] = set()
+    url: URL = make_url(base_url)
+
+    hosts: list[Optional[str]] = [url.host]
+    for fallback in (DEFAULT_DB_HOST, "localhost"):
+        if fallback not in hosts:
+            hosts.append(fallback)
+
+    for host in hosts:
+        candidate = str(url.set(host=host)) if host else base_url
+        if candidate not in seen:
+            seen.add(candidate)
+            yield candidate
+
+
+def _create_database(db_url: str) -> None:
+    admin_url = _admin_url(db_url)
+    admin = psycopg2.connect(admin_url)
+    admin.autocommit = True
+    cur = admin.cursor()
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        conn.close()
-    except psycopg2.OperationalError as exc:
-        if "does not exist" not in str(exc):
-            raise
-
-        db_name = DATABASE_URL.rsplit("/", 1)[-1]
-        admin = psycopg2.connect(DEFAULT_ADMIN_URL)
-        admin.autocommit = True
-        cur = admin.cursor()
-        cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(db_name)))
+        cur.execute(
+            sql.SQL("CREATE DATABASE {}").format(
+                sql.Identifier(make_url(db_url).database)
+            )
+        )
+    finally:
         cur.close()
         admin.close()
 
-        # give the server a moment to register the new database
-        time.sleep(1)
+    # give the server a moment to register the new database
+    time.sleep(1)
+
+
+def _ensure_database_exists() -> None:
+    """Create the configured database if it doesn't exist.
+
+    The function also gracefully falls back to localhost when the docker
+    hostname (e.g. ``db``) is unavailable so the API can run in isolation
+    during tests.
+    """
+
+    global DATABASE_URL, DEFAULT_ADMIN_URL
+
+    last_exc: Optional[Exception] = None
+    for candidate in _candidate_urls(DATABASE_URL):
+        try:
+            conn = psycopg2.connect(candidate)
+            conn.close()
+        except psycopg2.OperationalError as exc:
+            message = str(exc)
+            last_exc = exc
+            if "does not exist" in message:
+                _create_database(candidate)
+                DATABASE_URL = candidate
+                DEFAULT_ADMIN_URL = _admin_url(candidate)
+                return
+            # try next candidate host
+            continue
+        else:
+            DATABASE_URL = candidate
+            DEFAULT_ADMIN_URL = _admin_url(candidate)
+            return
+
+    if last_exc is not None:
+        raise last_exc
 
 
 _ensure_database_exists()
