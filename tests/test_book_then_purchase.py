@@ -17,7 +17,7 @@ class DummyCursor:
         self.query = query
         self.queries.append((query, params))
         q = query.lower()
-        if 'insert into purchase' in q and params:
+        if 'insert into purchase' in q and 'purchase_line_item' not in q and params:
             # params: name, email, phone, amount_due, payment_method
             self.purchase_amount = params[3]
             if "'paid'" in q:
@@ -37,6 +37,8 @@ class DummyCursor:
             return [self.purchase_amount, self.purchase_status]
         if 'select amount_due, customer_email from purchase' in q:
             return [self.purchase_amount, 'a@b.com']
+        if 'select total_due from purchase' in q:
+            return [self.purchase_amount]
         if 'select route_id, pricelist_id from tour' in q:
             return [1, 1]
         if 'select id, available from seat' in q:
@@ -208,4 +210,4 @@ def test_reserved_to_paid_purchase(client):
     assert store['cursor'].purchase_amount == 20
     assert any('update purchase set amount_due' in q[0].lower() and 'status' in q[0].lower() for q in store['cursor'].queries)
     assert any('insert into sales' in q[0].lower() for q in store['cursor'].queries)
-    assert any('update_at=now()' in q[0].lower() for q in store['cursor'].queries)
+    assert any('updated_at=now()' in q[0].lower() for q in store['cursor'].queries)
