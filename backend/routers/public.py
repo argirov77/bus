@@ -320,6 +320,39 @@ def _load_purchase_view(purchase_id: int, lang: str = _DEFAULT_LANG) -> Mapping[
         conn.close()
 
 
+def _verify_ticket_purchase_access(ticket_id: int, purchase_id: int, email: str) -> None:
+    normalized_email = (email or "").strip().lower()
+    if not normalized_email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT p.id, p.customer_email
+                  FROM ticket AS t
+                  JOIN purchase AS p ON p.id = t.purchase_id
+                 WHERE t.id = %s
+                """,
+                (ticket_id,),
+            )
+            row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    resolved_purchase_id, stored_email = int(row[0]), row[1]
+    if resolved_purchase_id != purchase_id:
+        raise HTTPException(status_code=403, detail="Ticket does not belong to purchase")
+
+    stored_normalized = (stored_email or "").strip().lower()
+    if not stored_normalized or stored_normalized != normalized_email:
+        raise HTTPException(status_code=403, detail="Email does not match purchase")
+
+
 def _build_liqpay_payload(
     purchase_id: int,
     amount: float,
@@ -844,20 +877,41 @@ def get_public_purchase(purchase_id: int, request: Request) -> Any:
 
 @router.get("/tickets/{ticket_id}/pdf")
 def get_public_ticket_pdf(ticket_id: int, request: Request) -> Response:
-    session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
-        request, ticket_id=ticket_id
-    )
-    guard_public_request(
-        request,
-        "ticket_pdf",
-        ticket_id=resolved_ticket_id,
-        purchase_id=resolved_purchase_id,
-    )
+    purchase_param = request.query_params.get("purchase_id")
+    email_param = request.query_params.get("email")
 
-    link_sessions.touch_session_usage(session.jti, scope="view")
+    session: link_sessions.LinkSession | None = None
+    if purchase_param is not None or email_param is not None:
+        if not purchase_param or not email_param:
+            raise HTTPException(status_code=400, detail="Missing purchase verification")
+        try:
+            resolved_purchase_id = int(purchase_param)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid purchase identifier") from exc
+
+        guard_public_request(
+            request,
+            "ticket_pdf",
+            ticket_id=ticket_id,
+            purchase_id=resolved_purchase_id,
+        )
+        _verify_ticket_purchase_access(ticket_id, resolved_purchase_id, email_param)
+        resolved_ticket_id = ticket_id
+    else:
+        session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
+            request, ticket_id=ticket_id
+        )
+        guard_public_request(
+            request,
+            "ticket_pdf",
+            ticket_id=resolved_ticket_id,
+            purchase_id=resolved_purchase_id,
+        )
+
+        link_sessions.touch_session_usage(session.jti, scope="view")
 
     dto = _load_ticket_dto(resolved_ticket_id, _DEFAULT_LANG)
-    deep_link = build_deep_link(session.jti)
+    deep_link = build_deep_link(session.jti) if session else None
     pdf_bytes = render_ticket_pdf(dto, deep_link)
 
     headers = {
