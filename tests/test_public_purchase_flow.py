@@ -1,9 +1,9 @@
 import importlib
 import os
 import sys
-from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -18,7 +18,49 @@ def public_client(monkeypatch):
         "touch_calls": [],
         "dto_calls": [],
         "render_calls": [],
+        "verify_calls": [],
+        "ticket_access": {},
     }
+
+    class _DummyCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def execute(self, *_args, **_kwargs):
+            return None
+
+        def fetchone(self):
+            return None
+
+        def fetchall(self):
+            return []
+
+        def close(self):
+            return None
+
+    class _DummyConnection:
+        def __init__(self):
+            self.autocommit = False
+
+        def cursor(self):
+            return _DummyCursor()
+
+        def commit(self):
+            return None
+
+        def rollback(self):
+            return None
+
+        def close(self):
+            return None
+
+    def fake_connect(*_args, **_kwargs):
+        return _DummyConnection()
+
+    monkeypatch.setattr("psycopg2.connect", fake_connect)
 
     from backend.routers import public as public_module
 
@@ -49,6 +91,16 @@ def public_client(monkeypatch):
         state["render_calls"].append((dto, deep_link))
         return b"%PDF%"
 
+    def fake_verify_ticket_purchase_access(ticket_id, purchase_id, email):
+        state["verify_calls"].append((ticket_id, purchase_id, email))
+        record = state["ticket_access"].get(ticket_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Ticket not found")
+        if record["purchase_id"] != purchase_id:
+            raise HTTPException(status_code=403, detail="Ticket does not belong to purchase")
+        if record["email"].strip().lower() != email.strip().lower():
+            raise HTTPException(status_code=403, detail="Email does not match purchase")
+
     monkeypatch.setattr(
         public_module.link_sessions,
         "redeem_session",
@@ -74,6 +126,11 @@ def public_client(monkeypatch):
         "render_ticket_pdf",
         fake_render_ticket_pdf,
     )
+    monkeypatch.setattr(
+        public_module,
+        "_verify_ticket_purchase_access",
+        fake_verify_ticket_purchase_access,
+    )
 
     if "backend.main" in sys.modules:
         importlib.reload(sys.modules["backend.main"])
@@ -84,36 +141,55 @@ def public_client(monkeypatch):
     return TestClient(app), state
 
 
-def test_qr_redirect_sets_purchase_cookie_and_allows_ticket_pdf(public_client):
-    from backend.services.link_sessions import LinkSession
-
+def test_public_ticket_pdf_accepts_purchase_credentials(public_client):
     client, state = public_client
 
-    now = datetime.now(timezone.utc)
-    session = LinkSession(
-        jti="opaque-test",
-        ticket_id=7,
-        purchase_id=42,
-        scope="view",
-        exp=now + timedelta(hours=1),
-        redeemed=now,
-        used=None,
-        revoked=None,
-        created_at=now,
+    ticket_id = 7
+    purchase_id = 42
+    email = "customer@example.com"
+    state["ticket_access"][ticket_id] = {"purchase_id": purchase_id, "email": email}
+
+    response = client.get(
+        f"/public/tickets/{ticket_id}/pdf",
+        params={"purchase_id": purchase_id, "email": email},
     )
-    state["sessions"][session.jti] = session
 
-    response = client.get(f"/q/{session.jti}", follow_redirects=False)
-    assert response.status_code == 302
-    assert response.headers["location"] == "http://localhost:3001/purchase/42"
-    assert response.cookies.get("minicab_purchase_42") == session.jti
-    assert state["redeem_calls"] == [(session.jti, "view")]
+    assert response.status_code == 200
+    assert response.content == b"%PDF%"
+    assert state["verify_calls"] == [(ticket_id, purchase_id, email)]
+    assert state["dto_calls"][-1] == (ticket_id, "bg")
+    assert state["render_calls"][-1][1] is None
 
-    pdf_response = client.get(f"/public/tickets/{session.ticket_id}/pdf")
-    assert pdf_response.status_code == 200
-    assert pdf_response.content == b"%PDF%"
 
-    assert state["get_calls"][-1] == (session.jti, "view", True)
-    assert state["touch_calls"][-1] == (session.jti, "view")
-    assert state["dto_calls"][-1] == (session.ticket_id, "bg")
-    assert state["render_calls"][-1][1] == f"http://localhost:8000/q/{session.jti}"
+def test_public_ticket_pdf_rejects_mismatched_purchase(public_client):
+    client, state = public_client
+
+    ticket_id = 11
+    purchase_id = 77
+    email = "customer@example.com"
+    state["ticket_access"][ticket_id] = {"purchase_id": purchase_id, "email": email}
+
+    response = client.get(
+        f"/public/tickets/{ticket_id}/pdf",
+        params={"purchase_id": purchase_id + 1, "email": email},
+    )
+
+    assert response.status_code == 403
+    assert state["verify_calls"][-1] == (ticket_id, purchase_id + 1, email)
+
+
+def test_public_ticket_pdf_rejects_wrong_email(public_client):
+    client, state = public_client
+
+    ticket_id = 19
+    purchase_id = 105
+    email = "customer@example.com"
+    state["ticket_access"][ticket_id] = {"purchase_id": purchase_id, "email": email}
+
+    response = client.get(
+        f"/public/tickets/{ticket_id}/pdf",
+        params={"purchase_id": purchase_id, "email": "other@example.com"},
+    )
+
+    assert response.status_code == 403
+    assert state["verify_calls"][-1] == (ticket_id, purchase_id, "other@example.com")
