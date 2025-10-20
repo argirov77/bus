@@ -13,7 +13,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, RedirectResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 from ..database import get_connection
 from ..services import link_sessions
@@ -21,7 +21,8 @@ from ..services.access_guard import guard_public_request
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
 from ..ticket_utils import free_ticket, recalc_available
-from ._ticket_link_helpers import build_deep_link
+from ._ticket_link_helpers import build_deep_link, combine_departure_datetime
+from ..services.link_sessions import get_or_create_view_session
 
 session_router = APIRouter(tags=["public"])
 router = APIRouter(prefix="/public", tags=["public"])
@@ -30,6 +31,12 @@ _COOKIE_PREFIX = "minicab_"
 _PURCHASE_COOKIE_PREFIX = "minicab_purchase_"
 _CSRF_COOKIE_NAME = "mc_csrf"
 _DEFAULT_LANG = "bg"
+
+
+class TicketPdfRequest(BaseModel):
+    purchase_id: int = Field(..., gt=0)
+    purchaser_email: EmailStr = Field(...)
+    lang: str | None = Field(None, description="Preferred language for the PDF")
 
 
 class RescheduleTicketSpec(BaseModel):
@@ -842,26 +849,82 @@ def get_public_purchase(purchase_id: int, request: Request) -> Any:
     return jsonable_encoder(payload)
 
 
-@router.get("/tickets/{ticket_id}/pdf")
-def get_public_ticket_pdf(ticket_id: int, request: Request) -> Response:
-    session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
-        request, ticket_id=ticket_id
-    )
+@router.post("/tickets/{ticket_id}/pdf")
+def get_public_ticket_pdf(ticket_id: int, request: Request, data: TicketPdfRequest) -> Response:
     guard_public_request(
         request,
         "ticket_pdf",
-        ticket_id=resolved_ticket_id,
-        purchase_id=resolved_purchase_id,
+        ticket_id=ticket_id,
+        purchase_id=data.purchase_id,
     )
 
-    link_sessions.touch_session_usage(session.jti, scope="view")
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT t.purchase_id, p.customer_email, p.lang
+                  FROM ticket AS t
+                  JOIN purchase AS p ON p.id = t.purchase_id
+                 WHERE t.id = %s
+                """,
+                (ticket_id,),
+            )
+            row = cur.fetchone()
+    finally:
+        conn.close()
 
-    dto = _load_ticket_dto(resolved_ticket_id, _DEFAULT_LANG)
-    deep_link = build_deep_link(session.jti)
+    if not row:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    resolved_purchase_id = int(row[0])
+    if resolved_purchase_id != data.purchase_id:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    stored_email = (row[1] or "").strip()
+    if not stored_email or stored_email.casefold() != data.purchaser_email.casefold():
+        raise HTTPException(status_code=403, detail="Invalid purchaser email")
+
+    purchase_lang = str(row[2]) if row[2] is not None else None
+    resolved_lang = (data.lang or purchase_lang or _DEFAULT_LANG).lower()
+
+    dto = _load_ticket_dto(ticket_id, resolved_lang)
+
+    segment = dto.get("segment") if isinstance(dto, Mapping) else {}
+    segment = segment or {}
+    departure_ctx = segment.get("departure") if isinstance(segment, Mapping) else {}
+    departure_ctx = departure_ctx or {}
+    tour = dto.get("tour") if isinstance(dto, Mapping) else {}
+    tour = tour or {}
+
+    tour_date = tour.get("date") if isinstance(tour, Mapping) else None
+    departure_time = (
+        departure_ctx.get("time") if isinstance(departure_ctx, Mapping) else None
+    )
+
+    departure_dt = None
+    if tour_date:
+        try:
+            departure_dt = combine_departure_datetime(tour_date, departure_time)
+        except ValueError:
+            departure_dt = None
+
+    try:
+        opaque, _expires_at = get_or_create_view_session(
+            ticket_id,
+            purchase_id=resolved_purchase_id,
+            lang=resolved_lang,
+            departure_dt=departure_dt,
+            scopes={"view"},
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=500, detail="Failed to prepare ticket link") from exc
+
+    deep_link = build_deep_link(opaque)
     pdf_bytes = render_ticket_pdf(dto, deep_link)
 
     headers = {
-        "Content-Disposition": f'inline; filename="ticket-{resolved_ticket_id}.pdf"',
+        "Content-Disposition": f'inline; filename="ticket-{ticket_id}.pdf"',
     }
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
