@@ -35,6 +35,7 @@ _DEFAULT_LANG = "bg"
 
 class TicketPdfRequest(BaseModel):
     purchase_id: int = Field(..., gt=0)
+    ticket_id: int = Field(..., gt=0)
     purchaser_email: EmailStr = Field(...)
     lang: str | None = Field(None, description="Preferred language for the PDF")
 
@@ -849,8 +850,9 @@ def get_public_purchase(purchase_id: int, request: Request) -> Any:
     return jsonable_encoder(payload)
 
 
-@router.post("/tickets/{ticket_id}/pdf")
-def get_public_ticket_pdf(ticket_id: int, request: Request, data: TicketPdfRequest) -> Response:
+@router.post("/tickets/pdf")
+def get_public_ticket_pdf(request: Request, data: TicketPdfRequest) -> Response:
+    ticket_id = data.ticket_id
     guard_public_request(
         request,
         "ticket_pdf",

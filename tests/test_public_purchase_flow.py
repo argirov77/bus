@@ -150,8 +150,9 @@ def test_public_ticket_pdf_renders_with_matching_details(public_client):
     _prepare_ticket(state, ticket_id=7, purchase_id=42, email="Customer@example.com", lang="BG")
 
     response = client.post(
-        "/public/tickets/7/pdf",
+        "/public/tickets/pdf",
         json={
+            "ticket_id": 7,
             "purchase_id": 42,
             "purchaser_email": "customer@example.com",
         },
@@ -174,8 +175,9 @@ def test_public_ticket_pdf_rejects_mismatched_email(public_client):
     _prepare_ticket(state, ticket_id=5, purchase_id=99, email="owner@example.com")
 
     response = client.post(
-        "/public/tickets/5/pdf",
+        "/public/tickets/pdf",
         json={
+            "ticket_id": 5,
             "purchase_id": 99,
             "purchaser_email": "other@example.com",
         },
@@ -190,8 +192,9 @@ def test_public_ticket_pdf_rejects_wrong_purchase(public_client):
     _prepare_ticket(state, ticket_id=3, purchase_id=77, email="owner@example.com")
 
     response = client.post(
-        "/public/tickets/3/pdf",
+        "/public/tickets/pdf",
         json={
+            "ticket_id": 3,
             "purchase_id": 100,
             "purchaser_email": "owner@example.com",
         },
