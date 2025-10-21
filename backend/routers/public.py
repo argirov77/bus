@@ -50,6 +50,11 @@ class RescheduleRequest(BaseModel):
     tickets: list[RescheduleTicketSpec] = Field(..., min_length=1)
 
 
+class TicketRescheduleRequest(BaseModel):
+    tour_id: int = Field(..., gt=0)
+    seat_num: int = Field(..., gt=0)
+
+
 class BaggageTicketSpec(BaseModel):
     ticket_id: int = Field(..., gt=0)
     extra_baggage: int = Field(..., ge=0)
@@ -854,6 +859,72 @@ def get_public_ticket(ticket_id: int, request: Request) -> Any:
     )
 
     link_sessions.touch_session_usage(session.jti, scope="view")
+
+    dto = _load_ticket_dto(resolved_ticket_id, _DEFAULT_LANG)
+    payload: dict[str, Any] = {"ticket": dto}
+    if isinstance(dto, Mapping):
+        payload.update(dto)
+    return jsonable_encoder(payload)
+
+
+@router.post("/tickets/{ticket_id}/reschedule")
+def reschedule_public_ticket(
+    ticket_id: int, data: TicketRescheduleRequest, request: Request
+) -> Any:
+    session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
+        request, ticket_id=ticket_id
+    )
+    guard_public_request(
+        request,
+        "ticket_reschedule",
+        ticket_id=resolved_ticket_id,
+        purchase_id=resolved_purchase_id,
+    )
+    _require_csrf(request)
+    link_sessions.touch_session_usage(session.jti, scope="view")
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT seat_id, tour_id, departure_stop_id, arrival_stop_id
+              FROM ticket
+             WHERE id = %s
+             FOR UPDATE
+            """,
+            (resolved_ticket_id,),
+        )
+        ticket_row = cur.fetchone()
+        if not ticket_row:
+            raise HTTPException(status_code=404, detail="Ticket not found")
+
+        current_seat_id, _current_tour_id, departure_stop_id, arrival_stop_id = ticket_row
+        if current_seat_id is None:
+            raise HTTPException(status_code=400, detail="Ticket has no assigned seat")
+        if departure_stop_id is None or arrival_stop_id is None:
+            raise HTTPException(status_code=400, detail="Ticket has no route information")
+
+        _perform_reschedule(
+            cur,
+            ticket_id=resolved_ticket_id,
+            current_seat_id=int(current_seat_id),
+            target_tour_id=data.tour_id,
+            seat_num=data.seat_num,
+            departure_stop_id=int(departure_stop_id),
+            arrival_stop_id=int(arrival_stop_id),
+        )
+
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:  # pragma: no cover - defensive
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        cur.close()
+        conn.close()
 
     dto = _load_ticket_dto(resolved_ticket_id, _DEFAULT_LANG)
     payload: dict[str, Any] = {"ticket": dto}
