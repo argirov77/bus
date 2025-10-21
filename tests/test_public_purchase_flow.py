@@ -1,6 +1,7 @@
 import importlib
 import os
 import sys
+from datetime import datetime, timezone
 
 import pytest
 from fastapi import HTTPException
@@ -20,6 +21,7 @@ def public_client(monkeypatch):
         "render_calls": [],
         "verify_calls": [],
         "ticket_access": {},
+        "view_session_calls": [],
     }
 
     class _DummyCursor:
@@ -126,6 +128,26 @@ def public_client(monkeypatch):
         "render_ticket_pdf",
         fake_render_ticket_pdf,
     )
+    
+    def fake_get_or_create_view_session(
+        ticket_id,
+        *,
+        purchase_id,
+        lang,
+        departure_dt,
+        scopes=None,
+        conn=None,
+    ):
+        state["view_session_calls"].append(
+            (ticket_id, purchase_id, lang, departure_dt, tuple(scopes) if scopes else None)
+        )
+        return "opaque123", datetime.now(timezone.utc)
+
+    monkeypatch.setattr(
+        public_module,
+        "get_or_create_view_session",
+        fake_get_or_create_view_session,
+    )
     monkeypatch.setattr(
         public_module,
         "_verify_ticket_purchase_access",
@@ -158,7 +180,8 @@ def test_public_ticket_pdf_accepts_purchase_credentials(public_client):
     assert response.content == b"%PDF%"
     assert state["verify_calls"] == [(ticket_id, purchase_id, email)]
     assert state["dto_calls"][-1] == (ticket_id, "bg")
-    assert state["render_calls"][-1][1] is None
+    assert state["view_session_calls"][-1][:4] == (ticket_id, purchase_id, "bg", None)
+    assert state["render_calls"][-1][1] == "http://localhost:8000/q/opaque123"
 
 
 def test_public_ticket_pdf_rejects_mismatched_purchase(public_client):
