@@ -4,6 +4,7 @@ import base64
 import hashlib
 import io
 import json
+import logging
 import os
 import secrets
 import zipfile
@@ -17,11 +18,16 @@ from pydantic import BaseModel, Field
 
 from ..database import get_connection
 from ..services import link_sessions
+from ..services.link_sessions import get_or_create_view_session
 from ..services.access_guard import guard_public_request
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
 from ..ticket_utils import free_ticket, recalc_available
-from ._ticket_link_helpers import build_deep_link
+from ._ticket_link_helpers import (
+    DEFAULT_TICKET_SCOPES,
+    build_deep_link,
+    combine_departure_datetime,
+)
 
 session_router = APIRouter(tags=["public"])
 router = APIRouter(prefix="/public", tags=["public"])
@@ -30,6 +36,8 @@ _COOKIE_PREFIX = "minicab_"
 _PURCHASE_COOKIE_PREFIX = "minicab_purchase_"
 _CSRF_COOKIE_NAME = "mc_csrf"
 _DEFAULT_LANG = "bg"
+
+logger = logging.getLogger(__name__)
 
 
 class RescheduleTicketSpec(BaseModel):
@@ -891,7 +899,47 @@ def get_public_ticket_pdf(
     _verify_ticket_purchase_access(ticket_id, purchase_id, email)
 
     dto = _load_ticket_dto(ticket_id, _DEFAULT_LANG)
-    pdf_bytes = render_ticket_pdf(dto, None)
+
+    deep_link: str | None = None
+    purchase_info = dto.get("purchase") if isinstance(dto, Mapping) else None
+    segment = dto.get("segment") if isinstance(dto, Mapping) else None
+    departure_ctx = {}
+    if isinstance(segment, Mapping):
+        departure_ctx = segment.get("departure") or {}
+    tour = dto.get("tour") if isinstance(dto, Mapping) else None
+    tour_date = tour.get("date") if isinstance(tour, Mapping) else None
+    departure_time = departure_ctx.get("time") if isinstance(departure_ctx, Mapping) else None
+
+    departure_dt: datetime | None = None
+    if tour_date:
+        try:
+            departure_dt = combine_departure_datetime(tour_date, departure_time)
+        except ValueError:
+            departure_dt = None
+
+    resolved_purchase_id = purchase_id
+    if isinstance(purchase_info, Mapping):
+        purchase_ref = purchase_info.get("id")
+        if purchase_ref:
+            resolved_purchase_id = purchase_ref
+
+    try:
+        opaque, _expires_at = get_or_create_view_session(
+            ticket_id,
+            purchase_id=resolved_purchase_id,
+            lang=_DEFAULT_LANG,
+            departure_dt=departure_dt,
+            scopes=DEFAULT_TICKET_SCOPES,
+        )
+    except Exception:  # pragma: no cover - defensive fallback
+        logger.exception("Failed to prepare public ticket deep link for %s", ticket_id)
+    else:
+        base_url = os.getenv("TICKET_LINK_BASE_URL") or os.getenv(
+            "APP_PUBLIC_URL", "http://localhost:8000"
+        )
+        deep_link = build_deep_link(opaque, base_url=base_url)
+
+    pdf_bytes = render_ticket_pdf(dto, deep_link)
 
     headers = {
         "Content-Disposition": f'inline; filename="ticket-{ticket_id}.pdf"',
