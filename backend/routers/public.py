@@ -10,7 +10,7 @@ import zipfile
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping, Sequence
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
@@ -876,46 +876,25 @@ def get_public_purchase(purchase_id: int, request: Request) -> Any:
 
 
 @router.get("/tickets/{ticket_id}/pdf")
-def get_public_ticket_pdf(ticket_id: int, request: Request) -> Response:
-    purchase_param = request.query_params.get("purchase_id")
-    email_param = request.query_params.get("email")
+def get_public_ticket_pdf(
+    ticket_id: int,
+    request: Request,
+    purchase_id: int = Query(..., gt=0),
+    email: str = Query(..., min_length=1),
+) -> Response:
+    guard_public_request(
+        request,
+        "ticket_pdf",
+        ticket_id=ticket_id,
+        purchase_id=purchase_id,
+    )
+    _verify_ticket_purchase_access(ticket_id, purchase_id, email)
 
-    session: link_sessions.LinkSession | None = None
-    if purchase_param is not None or email_param is not None:
-        if not purchase_param or not email_param:
-            raise HTTPException(status_code=400, detail="Missing purchase verification")
-        try:
-            resolved_purchase_id = int(purchase_param)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Invalid purchase identifier") from exc
-
-        guard_public_request(
-            request,
-            "ticket_pdf",
-            ticket_id=ticket_id,
-            purchase_id=resolved_purchase_id,
-        )
-        _verify_ticket_purchase_access(ticket_id, resolved_purchase_id, email_param)
-        resolved_ticket_id = ticket_id
-    else:
-        session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
-            request, ticket_id=ticket_id
-        )
-        guard_public_request(
-            request,
-            "ticket_pdf",
-            ticket_id=resolved_ticket_id,
-            purchase_id=resolved_purchase_id,
-        )
-
-        link_sessions.touch_session_usage(session.jti, scope="view")
-
-    dto = _load_ticket_dto(resolved_ticket_id, _DEFAULT_LANG)
-    deep_link = build_deep_link(session.jti) if session else None
-    pdf_bytes = render_ticket_pdf(dto, deep_link)
+    dto = _load_ticket_dto(ticket_id, _DEFAULT_LANG)
+    pdf_bytes = render_ticket_pdf(dto, None)
 
     headers = {
-        "Content-Disposition": f'inline; filename="ticket-{resolved_ticket_id}.pdf"',
+        "Content-Disposition": f'inline; filename="ticket-{ticket_id}.pdf"',
     }
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
