@@ -1249,6 +1249,41 @@ def public_baggage_quote(
     return jsonable_encoder(response)
 
 
+@router.post("/purchase/{purchase_id}/cancel/preview")
+def public_cancel_preview(
+    purchase_id: int, data: CancelRequest, request: Request
+) -> Mapping[str, Any]:
+    _session, _ticket_id, resolved_purchase_id, _cookie_name = _require_purchase_context(
+        request, purchase_id, "cancel_preview"
+    )
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        amount_due, status = _load_purchase_state(cur, resolved_purchase_id)
+        _ensure_purchase_active(status)
+        plans, delta = _plan_cancel(
+            cur,
+            resolved_purchase_id,
+            data.ticket_ids,
+            lock_tickets=False,
+        )
+    finally:
+        cur.close()
+        conn.close()
+
+    new_amount_due = _round_currency(amount_due + delta)
+
+    response = {
+        "ticket_ids": [plan["ticket_id"] for plan in plans],
+        "amount_delta": round(delta, 2),
+        "current_amount_due": amount_due,
+        "new_amount_due": new_amount_due,
+        "need_payment": new_amount_due > 0,
+    }
+    return jsonable_encoder(response)
+
+
 @router.post("/purchase/{purchase_id}/baggage")
 def public_baggage(
     purchase_id: int, data: BaggageRequest, request: Request

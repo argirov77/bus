@@ -2,6 +2,7 @@ import importlib
 import os
 import sys
 from datetime import datetime, timezone
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
@@ -216,3 +217,85 @@ def test_public_ticket_pdf_rejects_wrong_email(public_client):
 
     assert response.status_code == 403
     assert state["verify_calls"][-1] == (ticket_id, purchase_id, "other@example.com")
+
+
+def test_public_cancel_preview_returns_expected_amounts(public_client, monkeypatch):
+    client, _state = public_client
+    public_module = sys.modules["backend.routers.public"]
+
+    class _DummySession:
+        jti = "preview-jti"
+
+    call_state: dict[str, Any] = {}
+
+    def fake_require_purchase_context(request, purchase_id, scope):
+        call_state["require_scope"] = scope
+        call_state["require_purchase_id"] = purchase_id
+        return _DummySession(), None, purchase_id, "cookie"
+
+    class _DummyCursor:
+        def close(self):
+            call_state["cursor_closed"] = True
+
+    class _DummyConnection:
+        def cursor(self):
+            call_state["cursor_requested"] = True
+            return _DummyCursor()
+
+        def close(self):
+            call_state["connection_closed"] = True
+
+    def fake_load_purchase_state(cur, purchase_id, *, for_update=False):
+        call_state["load_state_args"] = (purchase_id, for_update)
+        return 30.0, "reserved"
+
+    def fake_plan_cancel(cur, purchase_id, ticket_ids, *, lock_tickets=False):
+        call_state["plan_args"] = {
+            "purchase_id": purchase_id,
+            "ticket_ids": tuple(ticket_ids),
+            "lock_tickets": lock_tickets,
+        }
+        return (
+            [
+                {"ticket_id": 101, "value": 10.0, "tour_id": 7, "extra_baggage": 0},
+                {"ticket_id": 102, "value": 12.5, "tour_id": 7, "extra_baggage": 1},
+            ],
+            -22.5,
+        )
+
+    free_called: list[tuple[Any, ...]] = []
+
+    def fake_free_ticket(*args, **kwargs):
+        free_called.append(args)
+
+    monkeypatch.setattr(public_module, "_require_purchase_context", fake_require_purchase_context)
+    monkeypatch.setattr(public_module, "get_connection", lambda: _DummyConnection())
+    monkeypatch.setattr(public_module, "_load_purchase_state", fake_load_purchase_state)
+    monkeypatch.setattr(public_module, "_plan_cancel", fake_plan_cancel)
+    monkeypatch.setattr(public_module, "free_ticket", fake_free_ticket)
+
+    response = client.post(
+        "/public/purchase/5/cancel/preview",
+        json={"ticket_ids": [101, 102]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ticket_ids": [101, 102],
+        "amount_delta": -22.5,
+        "current_amount_due": 30.0,
+        "new_amount_due": 7.5,
+        "need_payment": True,
+    }
+
+    assert call_state["require_scope"] == "cancel_preview"
+    assert call_state["require_purchase_id"] == 5
+    assert call_state["cursor_closed"] is True
+    assert call_state["connection_closed"] is True
+    assert call_state["load_state_args"] == (5, False)
+    assert call_state["plan_args"] == {
+        "purchase_id": 5,
+        "ticket_ids": (101, 102),
+        "lock_tickets": False,
+    }
+    assert free_called == []
