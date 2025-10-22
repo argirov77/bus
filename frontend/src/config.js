@@ -12,6 +12,17 @@ const guessApiUrl = () => {
       return null;
     }
 
+    const normalizedHostname = hostname.toLowerCase();
+    const isLocalHostName =
+      normalizedHostname === "localhost" ||
+      normalizedHostname === "127.0.0.1" ||
+      normalizedHostname === "0.0.0.0" ||
+      normalizedHostname.endsWith(".local");
+
+    if (!isLocalHostName) {
+      return null;
+    }
+
     // Front-end dev server usually runs on 3000 while API on 8000.
     if (port === "3000") {
       return `${protocol}//${hostname}:${DEFAULT_FALLBACK_PORT}`;
@@ -28,7 +39,10 @@ const guessApiUrl = () => {
   }
 };
 
-const fallbackApiUrl = guessApiUrl() || `http://localhost:${DEFAULT_FALLBACK_PORT}`;
+const DEFAULT_REMOTE_API_URL = "http://38.79.154.248:8000";
+
+const guessedApiUrl = guessApiUrl();
+const fallbackApiUrl = guessedApiUrl || DEFAULT_REMOTE_API_URL;
 
 export const API_URL = process.env.REACT_APP_API_URL || fallbackApiUrl;
 export const API = API_URL; // backward compatibility
