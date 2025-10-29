@@ -115,6 +115,27 @@ echo "REACT_APP_API_URL=http://localhost:${BACKEND_PORT:-8000}" > frontend/.env
    - API будет доступен на `http://localhost:${BACKEND_PORT:-8000}`.
    - Фронтенд откроется на `http://localhost:${FRONTEND_PORT:-3000}`.
 
+### Включение HTTPS для бэкенда
+Контейнер FastAPI умеет обслуживать HTTPS напрямую. Для этого потребуется
+предоставить файлы сертификата и ключа (например, полученные через Let's Encrypt)
+и указать их в переменных окружения:
+
+1. Поместите сертификат и ключ в директорию `certs/` (файлы будут доступны
+   внутри контейнера по пути `/certs`). Например:
+   - `certs/fullchain.pem`
+   - `certs/privkey.pem`
+2. Обновите `.env`:
+   ```bash
+   BACKEND_SSL_CERTFILE=/certs/fullchain.pem
+   BACKEND_SSL_KEYFILE=/certs/privkey.pem
+   BACKEND_HEALTHCHECK_URL=https://localhost:${BACKEND_PORT:-8000}/health
+   ```
+3. Перезапустите `docker compose up`. Uvicorn автоматически включит TLS и будет
+   обслуживать API по `https://`.
+
+Если ключ защищён паролем, задайте `BACKEND_SSL_KEYFILE_PASSWORD`. При работе с
+частными удостоверяющими центрами можно указать путь к CA в `BACKEND_SSL_CA_FILE`.
+
 Для остановки контейнеров выполните:
 ```bash
 docker compose down
@@ -183,11 +204,17 @@ psql postgresql://postgres:postgres@localhost:${POSTGRES_HOST_PORT:-5433}/test1
 
 ## Настройка CORS
 Бэкенд читает переменную `CORS_ORIGINS` (список адресов через запятую). По умолчанию разрешены
-`http://localhost:3000`, `http://localhost:3001` и `http://localhost:4000`. Чтобы добавить новый домен, обновите переменную:
+локальные адреса разработки и публичные деплойменты по аналогии с исходным проектом
+(`http://localhost:3000`, `http://localhost:3001`, `http://localhost:4000`, `https://client-mt.netlify.app`
+и др.). Чтобы добавить новый домен, обновите переменную:
 
 ```bash
 CORS_ORIGINS=http://localhost:3000,https://example.com
 ```
+
+При пустом значении `CORS_ORIGINS` используется набор значений по умолчанию. Чтобы разрешить
+несколько адресов, разделяйте их запятыми без пробелов или с ними — пробелы автоматически
+игнорируются.
 
 ## Основные API-маршруты
 Бэкенд использует множество роутеров (см. директорию `backend/routers`). Ниже перечислены ключевые группы.
