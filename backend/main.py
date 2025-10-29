@@ -4,7 +4,6 @@ import time
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
-from typing import Final
 
 # Ensure application runs in Bulgarian time (UTC+3) so all logs and time-based
 # functions reflect the expected timezone.
@@ -35,52 +34,27 @@ from .routers.purchase_admin import router as admin_purchases_router
 
 app = FastAPI()
 
-
-def _parse_cors_origins() -> list[str]:
-    """Return the configured CORS origins.
-
-    The project historically allowed several localhost origins.  To keep
-    backwards compatibility and support production deployments (including the
-    HTTPS reverse proxy on the VPS), the list is now controlled via the
-    ``CORS_ORIGINS`` environment variable.  When the variable is empty we fall
-    back to the original defaults.
-    """
-
-    default_origins: Final[list[str]] = [
-        "http://localhost:4000",
-        "http://127.0.0.1:4000",
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-        "https://client-mt.netlify.app",
-        "http://38.79.154.248:3000",
-        "http://172.18.0.4:3000",
-    ]
-
-    raw = os.getenv("CORS_ORIGINS", "")
-    if not raw.strip():
-        return default_origins
-
-    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
-
-    # ``*`` is only valid when credentials are disabled, so we log the intent by
-    # returning an explicit wildcard and letting the middleware validate the
-    # combination.  Downstream deployments can disable credentials if needed.
-    return origins or default_origins
-
-
 # Healthcheck endpoint
 @app.get("/health")
 def health() -> dict[str, str]:
     """Simple health check returning API status."""
     return {"status": "ok"}
-
-
 # Configure CORS to allow requests from development front-end origins.
+origins = [
+    "http://localhost:4000",
+    "http://127.0.0.1:4000",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "https://client-mt.netlify.app",
+    "http://38.79.154.248:3000",
+    "http://172.18.0.4:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_parse_cors_origins(),
+    allow_origins=origins,           # or allow_origin_regex=r"http://localhost:\d+$"
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Requested-With"],

@@ -23,8 +23,6 @@ services:
       - db
     ports:
       - "${BACKEND_PORT:-8000}:8000"
-    volumes:
-      - ./certs:/certs:ro
 
   frontend:
     build:
