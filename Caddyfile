@@ -1,0 +1,31 @@
+{
+    # Reduce log verbosity for successful ACME challenges
+    admin off
+}
+
+(api_cors_headers) {
+    header {
+        Access-Control-Allow-Origin https://client-mt.netlify.app
+        Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With"
+        Access-Control-Allow-Credentials true
+        Access-Control-Max-Age 86400
+        Access-Control-Expose-Headers "Content-Disposition"
+    }
+}
+
+{$CADDY_DOMAIN:api.38-79-154-248.nip.io} {
+    @preflight {
+        method OPTIONS
+    }
+
+    handle @preflight {
+        import api_cors_headers
+        respond "" 204
+    }
+
+    handle {
+        import api_cors_headers
+        reverse_proxy backend:8000
+    }
+}

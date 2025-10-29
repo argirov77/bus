@@ -35,5 +35,24 @@ services:
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
 
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      # Ensure Caddy knows the primary site address; the TLS certificate will be
+      # automatically requested for this hostname.
+      - CADDY_DOMAIN=api.38-79-154-248.nip.io
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
