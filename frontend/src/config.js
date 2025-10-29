@@ -39,7 +39,7 @@ const guessApiUrl = () => {
   }
 };
 
-const DEFAULT_REMOTE_API_URL = "https://api.38-79-154-248.nip.io";
+const DEFAULT_REMOTE_API_URL = "http://38.79.154.248:8000";
 
 const guessedApiUrl = guessApiUrl();
 const fallbackApiUrl = guessedApiUrl || DEFAULT_REMOTE_API_URL;
