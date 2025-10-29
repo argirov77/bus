@@ -48,13 +48,11 @@ RUN apt-get update \
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /app/backend /app/backend
 
-RUN chmod +x /app/backend/start.sh
-
 ENV PATH="/opt/venv/bin:$PATH"
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s \
-  CMD ["sh", "-c", "curl -fk \"${BACKEND_HEALTHCHECK_URL:-http://localhost:${BACKEND_PORT:-8000}/health}\" || exit 1"]
+  CMD curl -f http://localhost:${BACKEND_PORT:-8000}/health || exit 1
 
-# ← run backend through a small launcher that enables optional HTTPS support.
-CMD ["/app/backend/start.sh"]
+# ← run as module inside the "backend" package. Allow custom port via BACKEND_PORT
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-8000}"]
