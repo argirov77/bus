@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+import json
 import threading
 import time
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,16 +59,28 @@ def _parse_cors_origins() -> list[str]:
         "http://172.18.0.4:3000",
     ]
 
-    raw = os.getenv("CORS_ORIGINS", "")
-    if not raw.strip():
-        return default_origins
+    def _load_from_env(var_name: str) -> list[str]:
+        raw = os.getenv(var_name, "").strip()
+        if not raw:
+            return []
 
-    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            parsed = None
 
-    # ``*`` is only valid when credentials are disabled, so we log the intent by
-    # returning an explicit wildcard and letting the middleware validate the
-    # combination.  Downstream deployments can disable credentials if needed.
-    return origins or default_origins
+        if isinstance(parsed, list) and all(isinstance(item, str) for item in parsed):
+            return [item.strip() for item in parsed if item.strip()]
+
+        origins = [origin.strip().strip("'\"") for origin in raw.split(",") if origin.strip()]
+        return origins
+
+    for env_var in ("BACKEND_CORS_ORIGINS", "ALLOWED_ORIGINS", "CORS_ORIGINS"):
+        origins = _load_from_env(env_var)
+        if origins:
+            return origins
+
+    return default_origins
 
 
 # Healthcheck endpoint
