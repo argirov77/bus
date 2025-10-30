@@ -202,7 +202,7 @@ def get_ticket_dto(ticket_id: int, lang: str, conn) -> Dict[str, object]:
             pu.deadline,
             pu.status,
             pu.payment_method,
-            pu.update_at,
+            pu.updated_at,
             pr.price
         FROM ticket t
         JOIN passenger pa ON pa.id = t.passenger_id

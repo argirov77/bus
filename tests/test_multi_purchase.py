@@ -17,7 +17,7 @@ class DummyCursor:
         self.query = query
         self.queries.append((query, params))
         q = query.lower()
-        if 'insert into purchase' in q and params:
+        if 'insert into purchase' in q and 'purchase_line_item' not in q and params:
             # params: customer_name, email, phone, amount_due, payment_method
             self.purchase_amount = params[3]
         if 'update purchase set amount_due' in q and params:
@@ -29,6 +29,8 @@ class DummyCursor:
             return [self.purchase_amount, self.purchase_status]
         if 'select amount_due, customer_email from purchase' in q:
             return [self.purchase_amount, 'a@b.com']
+        if 'select total_due from purchase' in q:
+            return [self.purchase_amount]
         if 'select route_id, pricelist_id from tour' in q:
             return [1, 1]
         if 'select id, available from seat' in q:
