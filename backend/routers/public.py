@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import hashlib
 import io
 import json
 import logging
@@ -11,7 +9,7 @@ import zipfile
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping, Sequence
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
@@ -20,6 +18,7 @@ from ..database import get_connection
 from ..services import link_sessions
 from ..services.link_sessions import get_or_create_view_session
 from ..services.access_guard import guard_public_request
+from ..services import liqpay
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
 from ..ticket_utils import free_ticket, recalc_available
@@ -372,38 +371,96 @@ def _build_liqpay_payload(
     *,
     ticket_id: int | None = None,
 ) -> dict[str, Any]:
-    public_key = os.getenv("LIQPAY_PUBLIC_KEY", "sandbox")
-    private_key = os.getenv("LIQPAY_PRIVATE_KEY", "sandbox")
-    currency = os.getenv("LIQPAY_CURRENCY", "UAH")
+    return liqpay.build_payment_payload(
+        purchase_id,
+        amount,
+        ticket_id=ticket_id,
+        result_url=_redirect_base_url(purchase_id),
+    )
 
-    description = ""
-    if ticket_id is not None:
-        description = f"Ticket #{ticket_id}"
-    else:
-        description = f"Purchase #{purchase_id}"
 
-    payload = {
-        "version": "3",
-        "public_key": public_key,
-        "action": "pay",
-        "amount": round(max(amount, 0.0), 2),
-        "currency": currency,
-        "description": description,
-        "order_id": f"purchase-{purchase_id}" if ticket_id is None else f"ticket-{ticket_id}-{purchase_id}",
-        "result_url": _redirect_base_url(purchase_id),
-    }
+def _extract_purchase_id_from_order(order_id: str) -> int | None:
+    if not order_id:
+        return None
+    if order_id.startswith("purchase-"):
+        suffix = order_id[len("purchase-") :]
+        return int(suffix) if suffix.isdigit() else None
+    if order_id.startswith("ticket-"):
+        parts = order_id.split("-")
+        if len(parts) >= 3 and parts[-1].isdigit():
+            return int(parts[-1])
+    return None
 
-    payload_json = json.dumps(payload, separators=(",", ":"))
-    data = base64.b64encode(payload_json.encode("utf-8")).decode("utf-8")
-    signature_raw = f"{private_key}{data}{private_key}".encode("utf-8")
-    signature = base64.b64encode(hashlib.sha1(signature_raw).digest()).decode("utf-8")
 
-    return {
-        "provider": "liqpay",
-        "data": data,
-        "signature": signature,
-        "payload": payload,
-    }
+@router.post("/payment/liqpay/callback")
+async def liqpay_callback(request: Request, background_tasks: BackgroundTasks) -> Mapping[str, Any]:
+    form = await request.form()
+    data = form.get("data")
+    signature = form.get("signature")
+
+    if not data or not signature:
+        try:
+            body = await request.json()
+        except Exception as exc:  # pragma: no cover - defensive
+            raise HTTPException(status_code=400, detail="Missing LiqPay data") from exc
+        data = body.get("data") if isinstance(body, Mapping) else None
+        signature = body.get("signature") if isinstance(body, Mapping) else None
+
+    if not data or not signature:
+        raise HTTPException(status_code=400, detail="Missing LiqPay data")
+
+    if not liqpay.verify_signature(data, signature):
+        raise HTTPException(status_code=400, detail="Invalid LiqPay signature")
+
+    payload = liqpay.decode_payload(data)
+    order_id = str(payload.get("order_id") or "")
+    purchase_id = _extract_purchase_id_from_order(order_id)
+    if purchase_id is None:
+        raise HTTPException(status_code=400, detail="Unrecognized LiqPay order")
+
+    status = str(payload.get("status") or "")
+    if status not in {"success", "sandbox", "wait_accept"}:
+        return {"ok": True, "status": status, "purchase_id": purchase_id}
+
+    from ._ticket_link_helpers import issue_ticket_links
+    from .purchase import _collect_ticket_specs_for_purchase, _log_action, _queue_ticket_emails
+
+    conn = get_connection()
+    cur = conn.cursor()
+    tickets: list[dict[str, Any]] = []
+    customer_email: str | None = None
+    try:
+        cur.execute(
+            "SELECT amount_due, status, customer_email FROM purchase WHERE id=%s",
+            (purchase_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Purchase not found")
+
+        amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
+        if purchase_status == "paid":
+            return {"ok": True, "status": "already_paid", "purchase_id": purchase_id}
+        if purchase_status != "reserved":
+            raise HTTPException(status_code=409, detail="Purchase cannot be paid")
+
+        ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
+        cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
+        _log_action(cur, purchase_id, "paid", amount_due, by="liqpay", method="liqpay")
+        tickets = issue_ticket_links(ticket_specs, None, conn=conn)
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:  # pragma: no cover - defensive
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        cur.close()
+        conn.close()
+
+    _queue_ticket_emails(background_tasks, tickets, None, customer_email)
+    return {"ok": True, "status": "paid", "purchase_id": purchase_id}
 
 
 def _fetch_route_stops(cur, route_id: int) -> list[int]:
