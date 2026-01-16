@@ -51,10 +51,18 @@ origins = [
     "http://38.79.154.248:3000",
     "http://172.18.0.4:3000",
 ]
+local_network_origin_regex = (
+    r"^http://(localhost|127\.0\.0\.1"
+    r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|192\.168\.\d{1,3}\.\d{1,3}"
+    r"|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})"
+    r":(3000|3001)$"
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,  # or allow_origin_regex=r"http://localhost:\d+$"
+    allow_origin_regex=local_network_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
