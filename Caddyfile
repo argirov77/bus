@@ -1,0 +1,13 @@
+{$PUBLIC_API_HOST} {
+	encode gzip
+	route {
+		reverse_proxy backend:8000
+	}
+}
+
+http://{$ADMIN_HOST} {
+	encode gzip
+	route {
+		reverse_proxy backend:8000
+	}
+}
