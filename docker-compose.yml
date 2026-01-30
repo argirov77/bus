@@ -38,6 +38,7 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+      - frontend
     ports:
       - "80:80"
       - "443:443"
