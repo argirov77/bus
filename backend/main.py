@@ -1,9 +1,9 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 import threading
 import time
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
-import re
 
 # Ensure application runs in Bulgarian time (UTC+3) so all logs and time-based
 # functions reflect the expected timezone.
@@ -39,83 +39,36 @@ app = FastAPI()
 def health() -> dict[str, str]:
     """Simple health check returning API status."""
     return {"status": "ok"}
-def _split_origins(value: str | None) -> list[str]:
-    if not value:
-        return []
-    return [origin.strip() for origin in value.split(",") if origin.strip()]
-
-
-cors_origins = [
-    "https://client-mt.netlify.app",
+# Configure CORS to allow requests from development front-end origins.
+origins = [
     "http://localhost:4000",
     "http://127.0.0.1:4000",
     "http://localhost:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:3001",
+    "https://client-mt.netlify.app",
     "http://38.79.154.248:3000",
     "http://172.18.0.4:3000",
 ]
-cors_origins.extend(_split_origins(os.getenv("CORS_ORIGINS")))
-cors_origins.extend(_split_origins(os.getenv("INTERNAL_ADMIN_ORIGINS")))
-
-internal_admin_origin_regex = os.getenv(
-    "INTERNAL_ADMIN_ORIGIN_REGEX",
+local_network_origin_regex = (
     r"^http://(localhost|127\.0\.0\.1"
     r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
     r"|192\.168\.\d{1,3}\.\d{1,3}"
     r"|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})"
-    r"(:\d{2,5})?$",
+    r":(3000|3001)$"
 )
 
-allowed_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-default_allowed_headers = [
-    "Authorization",
-    "Content-Type",
-    "Accept",
-    "Origin",
-    "User-Agent",
-    "DNT",
-    "Cache-Control",
-    "X-Requested-With",
-    "If-Modified-Since",
-    "Keep-Alive",
-    "X-Access-Token",
-    "X-Access-Refresh-Token",
-]
-
-
-def _is_origin_allowed(origin: str | None) -> bool:
-    if not origin:
-        return False
-    if origin in cors_origins:
-        return True
-    return bool(re.match(internal_admin_origin_regex, origin))
-
-
-@app.middleware("http")
-async def cors_middleware(request: Request, call_next):
-    origin = request.headers.get("origin")
-    is_allowed = _is_origin_allowed(origin)
-
-    if request.method == "OPTIONS" and "access-control-request-method" in request.headers:
-        response = Response(status_code=204)
-    else:
-        response = await call_next(request)
-
-    if is_allowed:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Expose-Headers"] = "Content-Disposition"
-        response.headers["Vary"] = "Origin"
-
-        request_headers = request.headers.get("access-control-request-headers")
-        allow_headers = request_headers or ", ".join(default_allowed_headers)
-        response.headers["Access-Control-Allow-Headers"] = allow_headers
-        response.headers["Access-Control-Allow-Methods"] = ", ".join(allowed_methods)
-        response.headers["Access-Control-Max-Age"] = "86400"
-
-    return response
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # or allow_origin_regex=r"http://localhost:\d+$"
+    allow_origin_regex=local_network_origin_regex,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
+    max_age=86400,
+)
 
 # Подключаем роутеры
 app.include_router(stop.router)
