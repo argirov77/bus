@@ -35,8 +35,8 @@
   вспомогательные сервисы (например, `ticket_utils.py` для операций с билетами и `services` для
   бизнес-логики).
 - **Frontend** — React-приложение, работающее поверх REST API.
-- **Инфраструктура** — `docker-compose` поднимает три контейнера: `db`, `backend` и `frontend`.
-  Python-зависимости устанавливаются внутри контейнеров, что предотвращает конфликты с системными пакетами.
+- **Инфраструктура** — `docker-compose` поднимает контейнеры `db`, `backend`, `frontend` и reverse-proxy **Caddy**
+  для HTTPS-терминации. Python-зависимости устанавливаются внутри контейнеров, что предотвращает конфликты с системными пакетами.
 
 ## Структура репозитория
 ```
@@ -126,8 +126,8 @@ LIQPAY_CURRENCY=UAH
    ```bash
    docker compose up
    ```
-   - API будет доступен на `http://localhost:${BACKEND_PORT:-8000}`.
-   - Фронтенд откроется на `http://localhost:${FRONTEND_PORT:-3000}`.
+   - API будет доступен через Caddy на домене из `PUBLIC_API_HOST` (HTTPS).
+   - Админка может работать по HTTP на домене из `ADMIN_HOST` или напрямую по Docker-сети.
 
 Для остановки контейнеров выполните:
 ```bash
@@ -197,11 +197,36 @@ psql postgresql://postgres:postgres@localhost:${POSTGRES_HOST_PORT:-5433}/test1
 
 ## Настройка CORS
 Бэкенд читает переменную `CORS_ORIGINS` (список адресов через запятую). По умолчанию разрешены
-`http://localhost:3000`, `http://localhost:3001` и `http://localhost:4000`. Чтобы добавить новый домен, обновите переменную:
+локальные адреса (`http://localhost:3000`, `http://localhost:3001`, `http://localhost:4000`) и
+`https://client-mt.netlify.app`. Чтобы добавить новый домен, обновите переменную:
 
 ```bash
 CORS_ORIGINS=http://localhost:3000,https://example.com
 ```
+
+Если админский фронтенд работает на другом origin (например, `http://admin.<ip>.nip.io`), добавьте его в
+`CORS_ORIGINS` или `INTERNAL_ADMIN_ORIGINS`, чтобы preflight-запросы проходили корректно.
+
+## HTTPS reverse-proxy (Caddy)
+Для продакшн-деплоя используется контейнер `caddy`, который:
+- слушает порты **80/443** на хосте и автоматически получает TLS-сертификат Let’s Encrypt,
+- проксирует HTTPS-запросы на backend внутри Docker-сети,
+- при необходимости отдаёт админский фронтенд по HTTP.
+
+### Настройка доменов (nip.io)
+В `.env` укажите временные домены на базе IP (обязательно с дефисами):
+
+```bash
+PUBLIC_API_HOST=api.38-79-154-248.nip.io
+ADMIN_HOST=admin.38-79-154-248.nip.io
+```
+
+После этого:
+- **Публичный API:** `https://api.38-79-154-248.nip.io` → `backend:8000`
+- **Админка по HTTP:** `http://admin.38-79-154-248.nip.io` → `frontend:3000`
+
+Бэкенд не публикуется наружу на `:8000` (он доступен только внутри Docker-сети для Caddy и внутренних сервисов).
+Перед деплоем убедитесь, что в firewall разрешены входящие **80/443**, а **8000** закрыт для внешнего доступа.
 
 ## Основные API-маршруты
 Бэкенд использует множество роутеров (см. директорию `backend/routers`). Ниже перечислены ключевые группы.
@@ -262,4 +287,3 @@ pytest
 - `docker compose exec backend alembic upgrade head` — пример миграции БД (если вы добавите Alembic).
 - `docker compose exec db psql -U postgres test1` — подключение к базе из контейнера.
 - `npm run build --prefix frontend` — сборка фронтенда для продакшена.
-
