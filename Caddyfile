@@ -8,6 +8,6 @@
 http://{$ADMIN_HOST} {
 	encode gzip
 	route {
-		reverse_proxy frontend:3000
+		reverse_proxy backend:8000
 	}
 }
