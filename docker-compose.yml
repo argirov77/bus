@@ -21,8 +21,8 @@ services:
       - .env
     depends_on:
       - db
-    expose:
-      - "8000"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
 
   frontend:
     build:
@@ -33,20 +33,5 @@ services:
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
 
-  caddy:
-    image: caddy:2.7.6-alpine
-    restart: unless-stopped
-    depends_on:
-      - backend
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:
