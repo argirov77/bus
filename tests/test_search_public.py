@@ -54,6 +54,7 @@ def fake_get_connection():
 @pytest.fixture
 def client(monkeypatch):
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://example.test")
     monkeypatch.setattr("psycopg2.connect", lambda *a, **kw: DummyConn())
     import backend.database
     monkeypatch.setattr("backend.database.get_connection", fake_get_connection)
@@ -87,21 +88,21 @@ def test_departures_options(client):
     resp = client.options(
         "/search/departures",
         headers={
-            "Origin": "http://localhost:4000",
+            "Origin": "https://example.test",
             "Access-Control-Request-Method": "POST",
         },
     )
     assert resp.status_code == 200
-    assert resp.headers.get("access-control-allow-origin") == "http://localhost:4000"
+    assert resp.headers.get("access-control-allow-origin") == "https://example.test"
 
 
 def test_arrivals_options(client):
     resp = client.options(
         "/search/arrivals",
         headers={
-            "Origin": "http://localhost:4000",
+            "Origin": "https://example.test",
             "Access-Control-Request-Method": "POST",
         },
     )
     assert resp.status_code == 200
-    assert resp.headers.get("access-control-allow-origin") == "http://localhost:4000"
+    assert resp.headers.get("access-control-allow-origin") == "https://example.test"

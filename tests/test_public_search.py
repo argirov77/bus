@@ -44,6 +44,7 @@ def client(monkeypatch):
     def fake_conn(*args, **kwargs):
         return DummyConn()
 
+    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://example.test")
     monkeypatch.setattr('psycopg2.connect', fake_conn)
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     import backend.database

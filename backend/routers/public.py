@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 import json
 import logging
-import os
 import secrets
 import zipfile
 from datetime import datetime, timezone
@@ -14,6 +13,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
+from ..config import get_client_frontend_origin
 from ..database import get_connection
 from ..services import link_sessions
 from ..services.link_sessions import get_or_create_view_session
@@ -93,7 +93,60 @@ def _round_currency(value: float | None) -> float:
 
 
 def _redirect_base_url(purchase_id: int) -> str:
-    return f"http://localhost:3001/purchase/{purchase_id}"
+    base_url = get_client_frontend_origin()
+    return f"{base_url}/cabinet?purchaseId={purchase_id}"
+
+
+def _invalid_ticket_redirect_url() -> str:
+    base_url = get_client_frontend_origin()
+    return f"{base_url}/?ticket=invalid"
+
+
+def _exchange_qr_session(opaque: str, request: Request) -> RedirectResponse:
+    guard_public_request(request, "qr_exchange")
+    session = link_sessions.redeem_session(opaque, scope="view")
+    if not session:
+        return RedirectResponse(url=_invalid_ticket_redirect_url(), status_code=302)
+
+    now = datetime.now(timezone.utc)
+    if session.exp <= now:
+        return RedirectResponse(url=_invalid_ticket_redirect_url(), status_code=302)
+
+    purchase_id = _resolve_purchase_id(session)
+
+    guard_public_request(
+        request,
+        "qr_exchange",
+        ticket_id=session.ticket_id,
+        purchase_id=purchase_id,
+    )
+
+    remaining = int((session.exp - now).total_seconds())
+    if remaining <= 0:
+        remaining = 60
+
+    response = RedirectResponse(
+        url=_redirect_base_url(purchase_id),
+        status_code=302,
+    )
+    csrf_token = _generate_csrf_token()
+    response.set_cookie(
+        _purchase_cookie_name(purchase_id),
+        session.jti,
+        max_age=remaining,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        _CSRF_COOKIE_NAME,
+        csrf_token,
+        max_age=remaining,
+        httponly=False,
+        samesite="lax",
+        path="/",
+    )
+    return response
 
 
 def _cookie_name(ticket_id: int) -> str:
@@ -855,52 +908,17 @@ def _plan_cancel(
     return plans, total_delta
 
 
+@session_router.get("/q")
+def exchange_qr_session_query(
+    request: Request,
+    token: str = Query(..., min_length=1),
+) -> RedirectResponse:
+    return _exchange_qr_session(token, request)
+
+
 @session_router.get("/q/{opaque}")
 def exchange_qr_session(opaque: str, request: Request) -> RedirectResponse:
-    guard_public_request(request, "qr_exchange")
-    session = link_sessions.redeem_session(opaque, scope="view")
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    now = datetime.now(timezone.utc)
-    if session.exp <= now:
-        raise HTTPException(status_code=410, detail="Session expired")
-
-    purchase_id = _resolve_purchase_id(session)
-
-    guard_public_request(
-        request,
-        "qr_exchange",
-        ticket_id=session.ticket_id,
-        purchase_id=purchase_id,
-    )
-
-    remaining = int((session.exp - now).total_seconds())
-    if remaining <= 0:
-        remaining = 60
-
-    response = RedirectResponse(
-        url=_redirect_base_url(purchase_id),
-        status_code=302,
-    )
-    csrf_token = _generate_csrf_token()
-    response.set_cookie(
-        _purchase_cookie_name(purchase_id),
-        session.jti,
-        max_age=remaining,
-        httponly=True,
-        samesite="lax",
-        path="/",
-    )
-    response.set_cookie(
-        _CSRF_COOKIE_NAME,
-        csrf_token,
-        max_age=remaining,
-        httponly=False,
-        samesite="lax",
-        path="/",
-    )
-    return response
+    return _exchange_qr_session(opaque, request)
 
 
 @router.get("/tickets/{ticket_id}")
@@ -1062,10 +1080,7 @@ def get_public_ticket_pdf(
     except Exception:  # pragma: no cover - defensive fallback
         logger.exception("Failed to prepare public ticket deep link for %s", ticket_id)
     else:
-        base_url = os.getenv("TICKET_LINK_BASE_URL") or os.getenv(
-            "APP_PUBLIC_URL", "http://localhost:8000"
-        )
-        deep_link = build_deep_link(opaque, base_url=base_url)
+        deep_link = build_deep_link(opaque)
 
     pdf_bytes = render_ticket_pdf(dto, deep_link)
 
