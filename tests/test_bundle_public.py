@@ -70,6 +70,7 @@ def fake_get_connection():
 @pytest.fixture
 def client(monkeypatch):
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://example.test")
     monkeypatch.setattr("psycopg2.connect", lambda *a, **kw: DummyConn())
     import backend.database
     monkeypatch.setattr("backend.database.get_connection", fake_get_connection)
@@ -162,4 +163,3 @@ def test_selected_route_options(client):
     assert resp.status_code == 200
     # The CORS middleware should echo back the requesting origin.
     assert resp.headers.get("access-control-allow-origin") == "http://localhost:4000"
-

@@ -3,7 +3,6 @@
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from datetime import datetime
-import os
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -102,10 +101,7 @@ def get_ticket_pdf(
         logger.exception("Failed to resolve ticket link session for %s", ticket_id)
         raise HTTPException(500, "Failed to prepare ticket link") from exc
 
-    base_url = os.getenv("TICKET_LINK_BASE_URL") or os.getenv(
-        "APP_PUBLIC_URL", "http://localhost:8000"
-    )
-    deep_link = build_deep_link(opaque, base_url=base_url)
+    deep_link = build_deep_link(opaque)
 
     pdf_bytes = render_ticket_pdf(dto, deep_link)
     headers = {

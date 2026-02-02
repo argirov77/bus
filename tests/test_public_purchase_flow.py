@@ -64,6 +64,7 @@ def public_client(monkeypatch):
         return _DummyConnection()
 
     monkeypatch.setattr("psycopg2.connect", fake_connect)
+    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://example.test")
 
     from backend.routers import public as public_module
 
@@ -182,7 +183,7 @@ def test_public_ticket_pdf_accepts_purchase_credentials(public_client):
     assert state["verify_calls"] == [(ticket_id, purchase_id, email)]
     assert state["dto_calls"][-1] == (ticket_id, "bg")
     assert state["view_session_calls"][-1][:4] == (ticket_id, purchase_id, "bg", None)
-    assert state["render_calls"][-1][1] == "http://localhost:8000/q/opaque123"
+    assert state["render_calls"][-1][1] == "https://example.test/api/public/q?token=opaque123"
 
 
 def test_public_ticket_pdf_rejects_mismatched_purchase(public_client):
