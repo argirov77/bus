@@ -19,6 +19,7 @@ from ..services import link_sessions
 from ..services.link_sessions import get_or_create_view_session
 from ..services.access_guard import guard_public_request
 from ..services import liqpay
+from ..services import ticket_links
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
 from ..ticket_utils import free_ticket, recalc_available
@@ -26,6 +27,8 @@ from ._ticket_link_helpers import (
     DEFAULT_TICKET_SCOPES,
     build_deep_link,
     combine_departure_datetime,
+    resolve_public_app_url,
+    resolve_public_api_base,
 )
 
 session_router = APIRouter(tags=["public"])
@@ -93,7 +96,8 @@ def _round_currency(value: float | None) -> float:
 
 
 def _redirect_base_url(purchase_id: int) -> str:
-    return f"http://localhost:3001/purchase/{purchase_id}"
+    base = resolve_public_app_url()
+    return f"{base}/purchase/{purchase_id}"
 
 
 def _cookie_name(ticket_id: int) -> str:
@@ -903,6 +907,32 @@ def exchange_qr_session(opaque: str, request: Request) -> RedirectResponse:
     return response
 
 
+@session_router.get("/ticket-link")
+def exchange_ticket_link(request: Request, token: str = Query(...)) -> RedirectResponse:
+    guard_public_request(request, "ticket_link")
+    try:
+        payload = ticket_links.verify(token)
+    except ticket_links.TicketLinkError as exc:
+        raise HTTPException(status_code=401, detail="Invalid or missing ticket token") from exc
+
+    ticket_id = payload.get("ticket_id")
+    purchase_id = payload.get("purchase_id")
+    guard_public_request(
+        request,
+        "ticket_link",
+        ticket_id=ticket_id,
+        purchase_id=purchase_id,
+    )
+
+    if purchase_id is not None:
+        target = _redirect_base_url(int(purchase_id))
+    else:
+        base = resolve_public_app_url()
+        target = f"{base}/?ticket_id={ticket_id}"
+
+    return RedirectResponse(url=target, status_code=302)
+
+
 @router.get("/tickets/{ticket_id}")
 def get_public_ticket(ticket_id: int, request: Request) -> Any:
     session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
@@ -1062,10 +1092,7 @@ def get_public_ticket_pdf(
     except Exception:  # pragma: no cover - defensive fallback
         logger.exception("Failed to prepare public ticket deep link for %s", ticket_id)
     else:
-        base_url = os.getenv("TICKET_LINK_BASE_URL") or os.getenv(
-            "APP_PUBLIC_URL", "http://localhost:8000"
-        )
-        deep_link = build_deep_link(opaque, base_url=base_url)
+        deep_link = build_deep_link(opaque, base_url=resolve_public_api_base())
 
     pdf_bytes = render_ticket_pdf(dto, deep_link)
 
