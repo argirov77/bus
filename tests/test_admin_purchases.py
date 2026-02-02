@@ -85,7 +85,6 @@ class DummyConn:
 def client(monkeypatch):
     def fake_get_connection():
         return DummyConn()
-    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://example.test")
     monkeypatch.setattr('psycopg2.connect', lambda *a, **kw: DummyConn())
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     import importlib
