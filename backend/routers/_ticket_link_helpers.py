@@ -106,14 +106,41 @@ def combine_departure_datetime(tour_date: Any, departure_time: Any) -> dt_cls:
     return combined.astimezone(timezone.utc)
 
 
+def _normalize_base_url(value: str) -> str:
+    return value.rstrip("/")
+
+
+def resolve_public_app_url() -> str:
+    """Resolve the public frontend URL for redirects."""
+
+    configured = os.getenv("PUBLIC_APP_URL") or os.getenv("APP_PUBLIC_URL")
+    if not configured:
+        configured = "http://localhost:3001"
+    return _normalize_base_url(configured)
+
+
+def resolve_public_api_base() -> str:
+    """Resolve the public API base URL for ticket link entry points."""
+
+    configured = os.getenv("PUBLIC_API_BASE")
+    if configured:
+        return _normalize_base_url(configured)
+
+    app_url = os.getenv("PUBLIC_APP_URL")
+    if app_url:
+        return f"{_normalize_base_url(app_url)}/api"
+
+    fallback = os.getenv("TICKET_LINK_BASE_URL") or os.getenv("APP_PUBLIC_URL")
+    if not fallback:
+        fallback = "http://localhost:8000"
+    return _normalize_base_url(fallback)
+
+
 def build_deep_link(opaque: str, *, base_url: str | None = None) -> str:
     """Construct a deep link URL for a ticket session."""
 
-    configured = base_url or os.getenv("TICKET_LINK_BASE_URL")
-    if not configured:
-        configured = os.getenv("APP_PUBLIC_URL", "http://localhost:8000")
-    configured = configured.rstrip("/")
-    return f"{configured}/q/{opaque}"
+    configured = base_url or resolve_public_api_base()
+    return f"{_normalize_base_url(configured)}/q/{opaque}"
 
 
 def issue_ticket_links(
@@ -350,6 +377,8 @@ __all__ = [
     "TicketLinkResult",
     "combine_departure_datetime",
     "build_deep_link",
+    "resolve_public_app_url",
+    "resolve_public_api_base",
     "issue_ticket_links",
     "enrich_ticket_link_results",
 ]
