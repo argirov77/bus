@@ -5,8 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 
-from .config import get_frontend_origins
-
 # Ensure application runs in Bulgarian time (UTC+3) so all logs and time-based
 # functions reflect the expected timezone.
 os.environ.setdefault("TZ", "Europe/Sofia")
@@ -41,12 +39,30 @@ app = FastAPI()
 def health() -> dict[str, str]:
     """Simple health check returning API status."""
     return {"status": "ok"}
-# Configure CORS to allow requests from the configured front-end origins.
-origins = get_frontend_origins()
+# Configure CORS to allow requests from development front-end origins.
+origins = [
+    "http://localhost:4000",
+    "http://127.0.0.1:4000",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "https://client-mt.netlify.app",
+    "http://38.79.154.248:3000",
+    "http://172.18.0.4:3000",
+]
+local_network_origin_regex = (
+    r"^http://(localhost|127\.0\.0\.1"
+    r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|192\.168\.\d{1,3}\.\d{1,3}"
+    r"|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})"
+    r":(3000|3001)$"
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins,  # or allow_origin_regex=r"http://localhost:\d+$"
+    allow_origin_regex=local_network_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

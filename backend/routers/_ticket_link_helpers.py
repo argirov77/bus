@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import date as date_cls, datetime as dt_cls, time as time_cls, timezone
 from typing import Any, Dict, List, Mapping, Sequence, TypedDict, cast
 from typing import NotRequired, Required
 
 from fastapi import HTTPException
 
-from ..config import get_client_frontend_origin
 from ..services import ticket_links
 from ..services.link_sessions import get_or_create_view_session
 from ..services.ticket_dto import get_ticket_dto
@@ -106,11 +106,14 @@ def combine_departure_datetime(tour_date: Any, departure_time: Any) -> dt_cls:
     return combined.astimezone(timezone.utc)
 
 
-def build_deep_link(opaque: str) -> str:
+def build_deep_link(opaque: str, *, base_url: str | None = None) -> str:
     """Construct a deep link URL for a ticket session."""
 
-    configured = get_client_frontend_origin()
-    return f"{configured}/api/public/q?token={opaque}"
+    configured = base_url or os.getenv("TICKET_LINK_BASE_URL")
+    if not configured:
+        configured = os.getenv("APP_PUBLIC_URL", "http://localhost:8000")
+    configured = configured.rstrip("/")
+    return f"{configured}/q/{opaque}"
 
 
 def issue_ticket_links(

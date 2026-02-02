@@ -39,8 +39,6 @@ class DummyConn:
 
 @pytest.fixture()
 def client(monkeypatch):
-    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://example.test")
-    monkeypatch.setenv("ADMIN_FRONTEND_ORIGIN", "https://admin.example.test")
     monkeypatch.setattr("psycopg2.connect", lambda *a, **kw: DummyConn())
     monkeypatch.setattr("backend.database.get_connection", lambda: DummyConn())
     import backend.routers.auth as auth_router
