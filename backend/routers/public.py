@@ -94,18 +94,7 @@ def _round_currency(value: float | None) -> float:
 
 
 def _redirect_base_url(purchase_id: int) -> str:
-    base_url = resolve_ticket_link_base_url()
-    if not base_url:
-        raise HTTPException(
-            status_code=500,
-            detail="Ticket link base URL is required to redirect to purchase",
-        )
-    if not os.getenv("CLIENT_FRONTEND_ORIGIN"):
-        logger.warning(
-            "CLIENT_FRONTEND_ORIGIN is not set; falling back to %s for public redirects",
-            base_url,
-        )
-    return f"{base_url.rstrip('/')}/purchase/{purchase_id}"
+    return f"http://localhost:3001/purchase/{purchase_id}"
 
 
 def _cookie_name(ticket_id: int) -> str:
