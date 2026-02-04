@@ -5,11 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 
-from dotenv import load_dotenv
-
-# Load .env configuration for local/non-docker runs.
-load_dotenv()
-
 # Ensure application runs in Bulgarian time (UTC+3) so all logs and time-based
 # functions reflect the expected timezone.
 os.environ.setdefault("TZ", "Europe/Sofia")
