@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import date as date_cls, datetime as dt_cls, time as time_cls, timezone
 from typing import Any, Dict, List, Mapping, Sequence, TypedDict, cast
 from typing import NotRequired, Required
@@ -13,7 +14,6 @@ from ..services import ticket_links
 from ..services.link_sessions import get_or_create_view_session
 from ..services.ticket_dto import get_ticket_dto
 from ..database import get_connection
-from ..utils.client_app import get_client_app_base
 
 logger = logging.getLogger(__name__)
 
@@ -109,8 +109,23 @@ def combine_departure_datetime(tour_date: Any, departure_time: Any) -> dt_cls:
 def build_deep_link(opaque: str, *, base_url: str | None = None) -> str:
     """Construct a deep link URL for a ticket session."""
 
-    configured = (base_url or get_client_app_base()).rstrip("/")
+    configured = base_url or resolve_ticket_link_base_url()
+    if not configured:
+        raise ValueError("Ticket link base URL is required to build ticket links")
+    configured = configured.rstrip("/")
     return f"{configured}/api/q/{opaque}"
+
+
+def resolve_ticket_link_base_url() -> str | None:
+    """Resolve the base URL for ticket deep links."""
+
+    configured = os.getenv("CLIENT_FRONTEND_ORIGIN")
+    if configured:
+        return configured
+    configured = os.getenv("TICKET_LINK_BASE_URL")
+    if configured:
+        return configured
+    return os.getenv("APP_PUBLIC_URL")
 
 
 def issue_ticket_links(
@@ -126,10 +141,9 @@ def issue_ticket_links(
 
     lang_value = (lang or DEFAULT_TICKET_LANG).lower()
     results: List[TicketLinkResult] = []
-    try:
-        base_url = get_client_app_base()
-    except ValueError as exc:
-        raise HTTPException(500, str(exc)) from exc
+    base_url = resolve_ticket_link_base_url()
+    if not base_url:
+        raise HTTPException(500, "Ticket link base URL is required to build ticket links")
 
     for spec in specs:
         try:
