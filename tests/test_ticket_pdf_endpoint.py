@@ -168,8 +168,8 @@ def client(monkeypatch):
 
     def fake_build_deep_link(opaque: str, base_url: Optional[str] = None) -> str:
         state["built_link_args"] = (opaque, base_url)
-        base = base_url or "https://client-mt.netlify.app"
-        return f"{base.rstrip('/')}/api/q/{opaque}"
+        base = base_url or "https://example.test"
+        return f"{base.rstrip('/')}/q/{opaque}"
 
     def fake_verify(token: str) -> Dict[str, Any]:
         state["verify_called_with"] = token
@@ -190,8 +190,8 @@ def client(monkeypatch):
     monkeypatch.setattr("backend.routers.ticket.get_connection", fake_get_connection)
     monkeypatch.setattr("backend.routers.ticket.get_ticket_dto", fake_get_ticket_dto)
     monkeypatch.setattr("backend.routers.ticket.render_ticket_pdf", fake_render_ticket_pdf)
-    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://client-mt.netlify.app")
-    monkeypatch.setenv("TICKET_LINK_BASE_URL", "https://client-mt.netlify.app")
+    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://example.test")
+    monkeypatch.setenv("TICKET_LINK_BASE_URL", "https://example.test")
     monkeypatch.setattr("backend.routers.ticket.get_or_create_view_session", fake_get_or_create_view_session)
     monkeypatch.setattr("backend.routers.ticket.build_deep_link", fake_build_deep_link)
     monkeypatch.setattr("backend.auth.ticket_links.verify", fake_verify)
@@ -234,8 +234,8 @@ def test_ticket_pdf_returns_pdf_for_valid_link_token(client):
     assert state["dto_call"]["ticket_id"] == 55
     assert state["dto_call"]["lang"] == "en"
     deep_link = state["render_call"]["deep_link"]
-    assert deep_link == "https://client-mt.netlify.app/api/q/opaque-1"
-    assert state["built_link_args"] == ("opaque-1", "https://client-mt.netlify.app")
+    assert deep_link == "https://example.test/q/opaque-1"
+    assert state["built_link_args"] == ("opaque-1", "https://example.test")
     assert state["verify_called_with"] == "good-token"
     assert state["connection_closed"] is True
 
