@@ -1,7 +1,7 @@
 import importlib
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -64,6 +64,7 @@ def public_client(monkeypatch):
         return _DummyConnection()
 
     monkeypatch.setattr("psycopg2.connect", fake_connect)
+    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://client-mt.netlify.app")
 
     from backend.routers import public as public_module
 
@@ -182,7 +183,25 @@ def test_public_ticket_pdf_accepts_purchase_credentials(public_client):
     assert state["verify_calls"] == [(ticket_id, purchase_id, email)]
     assert state["dto_calls"][-1] == (ticket_id, "bg")
     assert state["view_session_calls"][-1][:4] == (ticket_id, purchase_id, "bg", None)
-    assert state["render_calls"][-1][1] == "http://localhost:8000/q/opaque123"
+    assert state["render_calls"][-1][1] == "https://client-mt.netlify.app/api/q/opaque123"
+
+
+def test_qr_exchange_redirects_to_client_purchase(public_client):
+    client, state = public_client
+
+    class _DummySession:
+        def __init__(self):
+            self.jti = "opaque-session"
+            self.exp = datetime.now(timezone.utc) + timedelta(minutes=5)
+            self.ticket_id = 11
+            self.purchase_id = 77
+
+    state["sessions"]["opaque-qr"] = _DummySession()
+
+    response = client.get("/q/opaque-qr", allow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "https://client-mt.netlify.app/purchase/77"
 
 
 def test_public_ticket_pdf_rejects_mismatched_purchase(public_client):

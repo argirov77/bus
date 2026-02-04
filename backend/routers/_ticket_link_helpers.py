@@ -113,7 +113,7 @@ def build_deep_link(opaque: str, *, base_url: str | None = None) -> str:
     if not configured:
         raise ValueError("Ticket link base URL is required to build ticket links")
     configured = configured.rstrip("/")
-    return f"{configured}/q/{opaque}"
+    return f"{configured}/api/q/{opaque}"
 
 
 def resolve_ticket_link_base_url() -> str | None:
@@ -125,7 +125,7 @@ def resolve_ticket_link_base_url() -> str | None:
     configured = os.getenv("TICKET_LINK_BASE_URL")
     if configured:
         return configured
-    return os.getenv("APP_PUBLIC_URL")
+    return None
 
 
 def issue_ticket_links(
