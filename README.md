@@ -71,7 +71,7 @@ cp .env.example .env
 | `JWT_SECRET` | Секретный ключ подписи JWT-токенов администратора | `changeme` |
 | `TICKET_LINK_SECRET` | Секрет для подписания публичных ссылок на билеты | `changeme` |
 | `TICKET_LINK_TTL_DAYS` | Максимальный срок действия ссылки (в днях, но не позднее суток после отправления) | `7` |
-| `CLIENT_APP_BASE` | Базовый URL клиентского фронтенда для ссылок в билетах, QR и редиректов | `https://client-mt.netlify.app` |
+| `CLIENT_FRONTEND_ORIGIN` | Публичный origin клиентского фронтенда для ссылок в билетах и QR | `https://client-mt.netlify.app` |
 | `APP_PUBLIC_URL` | Публичный URL приложения, используемый в письмах | `http://localhost:${FRONTEND_PORT}` |
 
 Эндпоинт `/auth/login` выдаёт токен из `ADMIN_TOKEN`. Его нужно передавать в заголовке `Authorization`
