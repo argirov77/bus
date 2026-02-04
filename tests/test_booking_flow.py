@@ -67,9 +67,9 @@ class DummyConn:
 @pytest.fixture
 def client(monkeypatch):
     store = {}
-    monkeypatch.setenv("APP_PUBLIC_URL", "https://example.test")
-    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://example.test")
-    monkeypatch.setenv("TICKET_LINK_BASE_URL", "https://example.test")
+    monkeypatch.setenv("APP_PUBLIC_URL", "https://client-mt.netlify.app")
+    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://client-mt.netlify.app")
+    monkeypatch.setenv("TICKET_LINK_BASE_URL", "https://client-mt.netlify.app")
 
     def fake_get_connection():
         conn = DummyConn()
@@ -188,7 +188,7 @@ def test_booking_flow(client):
     assert any('reserved' in q[0].lower() for q in store['cursor'].queries)
     assert any('insert into sales' in q[0].lower() for q in store['cursor'].queries)
     assert 'amount_due' in resp.json()
-    assert resp.json()['tickets'][0]['deep_link'] == 'https://example.test/q/opaque-1'
+    assert resp.json()['tickets'][0]['deep_link'] == 'https://client-mt.netlify.app/api/q/opaque-1'
 
     store['cursor'].queries.clear()
 
@@ -230,7 +230,7 @@ def test_booking_flow(client):
     assert any('paid' in q[0].lower() for q in store['cursor'].queries)
     assert any('insert into sales' in q[0].lower() for q in store['cursor'].queries)
     assert 'amount_due' in resp.json()
-    assert resp.json()['tickets'][0]['deep_link'] == 'https://example.test/q/opaque-2'
+    assert resp.json()['tickets'][0]['deep_link'] == 'https://client-mt.netlify.app/api/q/opaque-2'
 
     store['cursor'].queries.clear()
 
