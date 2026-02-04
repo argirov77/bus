@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import secrets
 import zipfile
 from datetime import datetime, timezone
@@ -25,8 +26,8 @@ from ._ticket_link_helpers import (
     DEFAULT_TICKET_SCOPES,
     build_deep_link,
     combine_departure_datetime,
+    resolve_ticket_link_base_url,
 )
-from ..utils.client_app import get_client_app_base
 
 session_router = APIRouter(tags=["public"])
 router = APIRouter(prefix="/public", tags=["public"])
@@ -93,10 +94,13 @@ def _round_currency(value: float | None) -> float:
 
 
 def _redirect_base_url(purchase_id: int) -> str:
-    try:
-        base_url = get_client_app_base()
-    except ValueError as exc:
-        raise HTTPException(500, str(exc)) from exc
+    base_url = os.getenv("CLIENT_FRONTEND_ORIGIN")
+    if not base_url:
+        raise HTTPException(
+            500,
+            "CLIENT_FRONTEND_ORIGIN is required to build purchase redirect links",
+        )
+    base_url = base_url.rstrip("/")
     return f"{base_url}/purchase/{purchase_id}"
 
 
@@ -1066,10 +1070,16 @@ def get_public_ticket_pdf(
     except Exception:  # pragma: no cover - defensive fallback
         logger.exception("Failed to prepare public ticket deep link for %s", ticket_id)
     else:
-        try:
-            base_url = get_client_app_base()
-        except ValueError as exc:
-            raise HTTPException(500, str(exc)) from exc
+        base_url = resolve_ticket_link_base_url()
+        if not base_url:
+            raise HTTPException(
+                500, "Ticket link base URL is required to build ticket links"
+            )
+        if not os.getenv("CLIENT_FRONTEND_ORIGIN"):
+            logger.warning(
+                "CLIENT_FRONTEND_ORIGIN is not set; falling back to %s for ticket links",
+                base_url,
+            )
         deep_link = build_deep_link(opaque, base_url=base_url)
 
     try:
@@ -1104,10 +1114,14 @@ def get_public_purchase_pdf(purchase_id: int, request: Request) -> Response:
 
     purchase = _load_purchase_view(resolved_purchase_id, _DEFAULT_LANG)
     tickets = purchase.get("tickets", []) if isinstance(purchase, Mapping) else []
-    try:
-        base_url = get_client_app_base()
-    except ValueError as exc:
-        raise HTTPException(500, str(exc)) from exc
+    base_url = resolve_ticket_link_base_url()
+    if not base_url:
+        raise HTTPException(500, "Ticket link base URL is required to build ticket links")
+    if not os.getenv("CLIENT_FRONTEND_ORIGIN"):
+        logger.warning(
+            "CLIENT_FRONTEND_ORIGIN is not set; falling back to %s for ticket links",
+            base_url,
+        )
     deep_link = build_deep_link(session.jti, base_url=base_url)
 
     buffer = io.BytesIO()

@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from datetime import datetime
+import os
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -15,6 +16,7 @@ from ._ticket_link_helpers import (
     build_deep_link,
     combine_departure_datetime,
     issue_ticket_links,
+    resolve_ticket_link_base_url,
     enrich_ticket_link_results,
 )
 from ..services.ticket_dto import get_ticket_dto
@@ -23,7 +25,6 @@ from ..services.link_sessions import get_or_create_view_session
 from ..services import ticket_links
 from ..services.access_guard import guard_public_request
 from ..ticket_utils import recalc_available
-from ..utils.client_app import get_client_app_base
 
 logger = logging.getLogger(__name__)
 
@@ -102,10 +103,14 @@ def get_ticket_pdf(
         logger.exception("Failed to resolve ticket link session for %s", ticket_id)
         raise HTTPException(500, "Failed to prepare ticket link") from exc
 
-    try:
-        base_url = get_client_app_base()
-    except ValueError as exc:
-        raise HTTPException(500, str(exc)) from exc
+    base_url = resolve_ticket_link_base_url()
+    if not base_url:
+        raise HTTPException(500, "Ticket link base URL is required to build ticket links")
+    if not os.getenv("CLIENT_FRONTEND_ORIGIN"):
+        logger.warning(
+            "CLIENT_FRONTEND_ORIGIN is not set; falling back to %s for ticket links",
+            base_url,
+        )
     deep_link = build_deep_link(opaque, base_url=base_url)
 
     try:
