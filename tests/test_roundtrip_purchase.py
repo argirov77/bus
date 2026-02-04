@@ -83,6 +83,7 @@ def client(monkeypatch):
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     import backend.database
     monkeypatch.setattr('backend.database.get_connection', fake_get_connection)
+    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://example.test")
     monkeypatch.setenv("TICKET_LINK_BASE_URL", "https://example.test")
     def fake_issue(ticket_id, purchase_id, scopes, lang, departure_dt, conn=None):
         token_counter["value"] += 1
