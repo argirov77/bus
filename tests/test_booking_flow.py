@@ -68,7 +68,6 @@ class DummyConn:
 def client(monkeypatch):
     store = {}
     monkeypatch.setenv("APP_PUBLIC_URL", "https://example.test")
-    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://example.test")
     monkeypatch.setenv("TICKET_LINK_BASE_URL", "https://example.test")
 
     def fake_get_connection():

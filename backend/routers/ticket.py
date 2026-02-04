@@ -102,20 +102,12 @@ def get_ticket_pdf(
         logger.exception("Failed to resolve ticket link session for %s", ticket_id)
         raise HTTPException(500, "Failed to prepare ticket link") from exc
 
-    base_url = os.getenv("CLIENT_FRONTEND_ORIGIN")
-    if not base_url:
-        raise HTTPException(500, "CLIENT_FRONTEND_ORIGIN is required to build ticket links")
+    base_url = os.getenv("TICKET_LINK_BASE_URL") or os.getenv(
+        "APP_PUBLIC_URL", "http://localhost:8000"
+    )
     deep_link = build_deep_link(opaque, base_url=base_url)
 
-    try:
-        pdf_bytes = render_ticket_pdf(dto, deep_link)
-    except Exception as exc:  # pragma: no cover - runtime diagnostics
-        logger.exception(
-            "Failed to render ticket PDF for ticket %s (purchase %s)",
-            ticket_id,
-            purchase.get("id"),
-        )
-        raise HTTPException(500, "Failed to render ticket PDF") from exc
+    pdf_bytes = render_ticket_pdf(dto, deep_link)
     headers = {
         "Content-Disposition": f'inline; filename="ticket-{ticket_id}.pdf"',
     }
