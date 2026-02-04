@@ -94,7 +94,14 @@ def _round_currency(value: float | None) -> float:
 
 
 def _redirect_base_url(purchase_id: int) -> str:
-    return f"http://localhost:3001/purchase/{purchase_id}"
+    base_url = os.getenv("CLIENT_FRONTEND_ORIGIN")
+    if not base_url:
+        raise HTTPException(
+            500,
+            "CLIENT_FRONTEND_ORIGIN is required to build purchase redirect links",
+        )
+    base_url = base_url.rstrip("/")
+    return f"{base_url}/purchase/{purchase_id}"
 
 
 def _cookie_name(ticket_id: int) -> str:
