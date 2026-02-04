@@ -1062,22 +1062,12 @@ def get_public_ticket_pdf(
     except Exception:  # pragma: no cover - defensive fallback
         logger.exception("Failed to prepare public ticket deep link for %s", ticket_id)
     else:
-        base_url = os.getenv("CLIENT_FRONTEND_ORIGIN")
-        if not base_url:
-            raise HTTPException(
-                500, "CLIENT_FRONTEND_ORIGIN is required to build ticket links"
-            )
+        base_url = os.getenv("TICKET_LINK_BASE_URL") or os.getenv(
+            "APP_PUBLIC_URL", "http://localhost:8000"
+        )
         deep_link = build_deep_link(opaque, base_url=base_url)
 
-    try:
-        pdf_bytes = render_ticket_pdf(dto, deep_link)
-    except Exception as exc:  # pragma: no cover - runtime diagnostics
-        logger.exception(
-            "Failed to render public ticket PDF for ticket %s (purchase %s)",
-            ticket_id,
-            resolved_purchase_id,
-        )
-        raise HTTPException(500, "Failed to render ticket PDF") from exc
+    pdf_bytes = render_ticket_pdf(dto, deep_link)
 
     headers = {
         "Content-Disposition": f'inline; filename="ticket-{ticket_id}.pdf"',
@@ -1101,10 +1091,7 @@ def get_public_purchase_pdf(purchase_id: int, request: Request) -> Response:
 
     purchase = _load_purchase_view(resolved_purchase_id, _DEFAULT_LANG)
     tickets = purchase.get("tickets", []) if isinstance(purchase, Mapping) else []
-    base_url = os.getenv("CLIENT_FRONTEND_ORIGIN")
-    if not base_url:
-        raise HTTPException(500, "CLIENT_FRONTEND_ORIGIN is required to build ticket links")
-    deep_link = build_deep_link(session.jti, base_url=base_url)
+    deep_link = build_deep_link(session.jti)
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -1118,15 +1105,7 @@ def get_public_purchase_pdf(purchase_id: int, request: Request) -> Response:
                 ticket_id_value = ticket_info.get("id")
             if ticket_id_value is None:
                 continue
-            try:
-                pdf_bytes = render_ticket_pdf(ticket_info, deep_link)
-            except Exception as exc:  # pragma: no cover - runtime diagnostics
-                logger.exception(
-                    "Failed to render purchase ticket PDF for ticket %s (purchase %s)",
-                    ticket_id_value,
-                    resolved_purchase_id,
-                )
-                raise HTTPException(500, "Failed to render ticket PDF") from exc
+            pdf_bytes = render_ticket_pdf(ticket_info, deep_link)
             archive.writestr(f"ticket-{ticket_id_value}.pdf", pdf_bytes)
 
     buffer.seek(0)
