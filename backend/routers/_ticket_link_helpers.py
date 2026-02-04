@@ -109,9 +109,9 @@ def combine_departure_datetime(tour_date: Any, departure_time: Any) -> dt_cls:
 def build_deep_link(opaque: str, *, base_url: str | None = None) -> str:
     """Construct a deep link URL for a ticket session."""
 
-    configured = base_url or os.getenv("CLIENT_FRONTEND_ORIGIN")
+    configured = base_url or os.getenv("TICKET_LINK_BASE_URL")
     if not configured:
-        raise ValueError("CLIENT_FRONTEND_ORIGIN is required to build ticket links")
+        configured = os.getenv("APP_PUBLIC_URL", "http://localhost:8000")
     configured = configured.rstrip("/")
     return f"{configured}/q/{opaque}"
 
@@ -129,9 +129,6 @@ def issue_ticket_links(
 
     lang_value = (lang or DEFAULT_TICKET_LANG).lower()
     results: List[TicketLinkResult] = []
-    base_url = os.getenv("CLIENT_FRONTEND_ORIGIN")
-    if not base_url:
-        raise HTTPException(500, "CLIENT_FRONTEND_ORIGIN is required to build ticket links")
 
     for spec in specs:
         try:
@@ -155,7 +152,7 @@ def issue_ticket_links(
             )
             raise HTTPException(500, "Failed to issue ticket link") from exc
 
-        deep_link = build_deep_link(opaque, base_url=base_url)
+        deep_link = build_deep_link(opaque)
         logger.info(
             "Issued ticket link for ticket %s (purchase %s): %s",
             spec["ticket_id"],
