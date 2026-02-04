@@ -125,7 +125,7 @@ def resolve_ticket_link_base_url() -> str | None:
     configured = os.getenv("TICKET_LINK_BASE_URL")
     if configured:
         return configured
-    return None
+    return os.getenv("APP_PUBLIC_URL")
 
 
 def issue_ticket_links(
