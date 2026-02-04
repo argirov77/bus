@@ -190,6 +190,7 @@ def client(monkeypatch):
     monkeypatch.setattr("backend.routers.ticket.get_connection", fake_get_connection)
     monkeypatch.setattr("backend.routers.ticket.get_ticket_dto", fake_get_ticket_dto)
     monkeypatch.setattr("backend.routers.ticket.render_ticket_pdf", fake_render_ticket_pdf)
+    monkeypatch.setenv("CLIENT_FRONTEND_ORIGIN", "https://example.test")
     monkeypatch.setenv("TICKET_LINK_BASE_URL", "https://example.test")
     monkeypatch.setattr("backend.routers.ticket.get_or_create_view_session", fake_get_or_create_view_session)
     monkeypatch.setattr("backend.routers.ticket.build_deep_link", fake_build_deep_link)
