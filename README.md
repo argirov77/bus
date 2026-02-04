@@ -71,6 +71,7 @@ cp .env.example .env
 | `JWT_SECRET` | Секретный ключ подписи JWT-токенов администратора | `changeme` |
 | `TICKET_LINK_SECRET` | Секрет для подписания публичных ссылок на билеты | `changeme` |
 | `TICKET_LINK_TTL_DAYS` | Максимальный срок действия ссылки (в днях, но не позднее суток после отправления) | `7` |
+| `CLIENT_FRONTEND_ORIGIN` | Публичный origin клиентского фронтенда для ссылок в билетах и QR | `https://client-mt.netlify.app` |
 | `APP_PUBLIC_URL` | Публичный URL приложения, используемый в письмах | `http://localhost:${FRONTEND_PORT}` |
 
 Эндпоинт `/auth/login` выдаёт токен из `ADMIN_TOKEN`. Его нужно передавать в заголовке `Authorization`
@@ -262,4 +263,3 @@ pytest
 - `docker compose exec backend alembic upgrade head` — пример миграции БД (если вы добавите Alembic).
 - `docker compose exec db psql -U postgres test1` — подключение к базе из контейнера.
 - `npm run build --prefix frontend` — сборка фронтенда для продакшена.
-
