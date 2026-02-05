@@ -19,8 +19,6 @@ services:
       dockerfile: backend/Dockerfile
     env_file:
       - .env
-    environment:
-      CLIENT_APP_BASE: ${CLIENT_APP_BASE}
     depends_on:
       - db
     ports:
