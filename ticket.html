@@ -46,11 +46,10 @@ body{
   background:linear-gradient(90deg,var(--primary2),var(--primary));
   color:#fff;
   padding:14px 18px;
-  display:flex;
-  justify-content:space-between;
+  display:grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items:center;
   gap:14px;
-  flex-wrap:wrap;
 }
 .brand{display:flex;gap:10px;align-items:center;min-width:0}
 .brand img{filter:brightness(0) invert(1)}
@@ -79,6 +78,7 @@ body{
 .statusPill[data-pay="PAID"] .statusDot{ background: var(--ok); }
 .statusPill[data-pay="UNPAID"] .statusDot{ background: var(--bad); }
 
+.doc{justify-self:end;font-family:var(--mono);font-size:12px;opacity:.9;white-space:nowrap}
 
 /* MAIN */
 .main{
@@ -221,7 +221,9 @@ body{
 
 @media(max-width:900px){
   .main{grid-template-columns:1fr}
-  .stripe{flex-direction:column;align-items:flex-start}
+  .stripe{grid-template-columns:1fr;justify-items:start}
+  .statusPill{justify-self:start}
+  .doc{justify-self:start}
   .route{flex-direction:column;align-items:flex-start}
   .routeRight{text-align:left;min-width:unset}
   .city.alignRight{text-align:left;align-items:flex-start}
@@ -246,6 +248,8 @@ body{
           <span class="statusDot"></span>
           <span id="statusText">НЕ ОПЛАЧЕН</span>
         </div>
+
+        <div class="doc" id="docText">TKT 36 · ORD 25</div>
       </div>
 
       <div class="main">
@@ -362,6 +366,9 @@ body{
 
     company: { phone: "+359 88 123 4567", email: "support@maximov.tours", web: "https://www.maximov.tours" }
   };
+
+  // Doc
+  document.getElementById("docText").textContent = `TKT ${TICKET.ticketNo} · ORD ${TICKET.orderNo}`;
 
   // Status
   const statusPill = document.getElementById("statusPill");
