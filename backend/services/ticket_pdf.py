@@ -70,13 +70,6 @@ _DEFAULT_I18N: Dict[str, Any] = {
     "currency_code": "UAH",
     "qr_hint": "Сканируйте QR-код, чтобы оплатить, отменить или перенести поездку.",
     "qr_unavailable": "QR-код недоступен",
-    "paid_label": "ОПЛАЧЕН",
-    "unpaid_label": "НЕ ОПЛАЧЕН",
-    "ticket_short_label": "TKT",
-    "order_short_label": "ORD",
-    "company_phone": "+359 88 123 4567",
-    "company_email": "support@maximov.tours",
-    "company_web": "https://www.maximov.tours",
 }
 
 _STATUS_TO_I18N_KEY = {
