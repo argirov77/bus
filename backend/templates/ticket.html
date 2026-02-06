@@ -365,7 +365,7 @@ body{
           <div class="qrBox">
             <div class="qrBoxInner">
               {% if qr_data_uri %}
-                <img alt="QR" src="{{ qr_data_uri }}">
+                <img alt="QR" src="{{ qr_data_uri | safe }}">
                 <div class="qrOffline" style="display:none;"></div>
               {% else %}
                 <div class="qrOffline">{{ i18n.qr_unavailable }}</div>
