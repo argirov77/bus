@@ -41,7 +41,7 @@ body{
   orphans:3; widows:3;
 }
 
-.wrap{display:flex;justify-content:center;padding:8px}
+.wrap{display:flex;justify-content:center;padding:20px}
 .sheet{width:980px;background:var(--bg);border-radius:26px;padding:16px}
 .ticket{background:var(--paper);border-radius:26px;box-shadow:var(--shadow);overflow:hidden}
 
@@ -88,7 +88,7 @@ body{
 .main{
   padding:18px;
   display:grid;
-  grid-template-columns: 2.3fr 1fr;
+  grid-template-columns: 7fr 3fr;
   gap:18px;
 }
 
@@ -112,7 +112,7 @@ body{
   align-items:start;
 }
 
-.city{display:flex;flex-direction:column;gap:8px}
+.city{display:flex;flex-direction:column;gap:8px;min-width:0}
 .city.alignRight{text-align:right;align-items:flex-end}
 
 .citySub{
@@ -240,8 +240,8 @@ body{
 
       <div class="stripe">
         <div class="brand">
-          <div class="brandMark"><img src="file:///workspace/bus/logo/logo.svg" width="26" alt="{{ i18n.brand_name }}"></div>
-          <div class="brandWord"><img src="file:///workspace/bus/logo/speling.svg" alt="{{ i18n.brand_name }}"></div>
+          <div class="brandMark"><img src="logo/logo.svg" width="26" alt="{{ i18n.brand_name }}"></div>
+          <div class="brandWord"><img src="logo/speling.svg" alt="{{ i18n.brand_name }}"></div>
         </div>
 
         <div class="statusPill" data-pay="{% if status_chip and status_chip.css_class == 'ok' %}PAID{% else %}UNPAID{% endif %}">
@@ -373,6 +373,7 @@ body{
             <div class="qrBoxInner">
               {% if qr_data_uri %}
                 <img alt="QR" src="{{ qr_data_uri }}">
+                <div class="qrOffline" style="display:none;"></div>
               {% else %}
                 <div class="qrOffline">{{ i18n.qr_unavailable }}</div>
               {% endif %}
