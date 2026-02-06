@@ -367,6 +367,5 @@ def render_ticket_pdf(dto: Mapping[str, Any], deep_link: Optional[str]) -> bytes
         qr_data_uri=qr_data_uri,
     )
 
-    base_url = str(_TEMPLATES_DIR.parent.parent)
-    pdf_bytes = HTML(string=html, base_url=base_url).write_pdf()
+    pdf_bytes = HTML(string=html, base_url=str(_TEMPLATES_DIR)).write_pdf()
     return pdf_bytes
