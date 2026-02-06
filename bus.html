@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mercedes-Benz Travego — Seat Map (реалистичная горизонтальная схема)</title>
+  <style>
+    :root{
+      --bg:#f6f7f9; --ink:#0f172a; --muted:#64748b; --line:#d9dde3;
+      --free:#d9ffb2; --sel:#a7e6a2; --busy:#b5b5b5;
+      --wc:#f4f4f4; --door:#e8e8e8;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:#f0f3f7;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial;color:var(--ink)}
+    .wrap{max-width:1000px;margin:24px auto;padding:16px}
+    h1{text-align:center;margin-bottom:16px}
+
+    .bus{position:relative;background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;align-items:center;}
+    .upper,.lower{display:flex;gap:6px;align-items:center;justify-content:center;position:relative;margin:6px 0;}
+
+    .seat{width:42px;height:42px;border-radius:8px;background:var(--free);display:flex;align-items:center;justify-content:center;font-weight:600;cursor:pointer;box-shadow:inset 0 2px 2px rgba(0,0,0,.05)}
+    .seat.busy{background:var(--busy);cursor:not-allowed;color:#fff;}
+    .seat.selected{background:var(--sel)}
+
+    .wc,.door{width:42px;height:42px;border-radius:8px;background:var(--wc);display:flex;align-items:center;justify-content:center;font-size:10px;color:#777;border:1px solid var(--line)}
+    .door{background:var(--door)}
+    .wc-label{position:absolute;right:40%;top:40%;font-size:12px;color:var(--muted)}
+
+    .steering{width:42px;height:42px;border-radius:50%;background:#ddd;display:flex;align-items:center;justify-content:center;}
+    .wheel{width:10px;height:10px;border-radius:50%;background:#555}
+
+    .legend{margin-top:12px;text-align:center;font-size:13px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Mercedes-Benz Travego — Seat Map</h1>
+    <div class="bus">
+      <div class="upper">
+        <div class="door">🚪</div>
+        <div class="seat busy">3</div>
+        <div class="seat busy">4</div>
+        <div class="seat">7</div>
+        <div class="seat">8</div>
+        <div class="seat">11</div>
+        <div class="seat">12</div>
+        <div class="seat">15</div>
+        <div class="seat">16</div>
+        <div class="seat">19</div>
+        <div class="seat">20</div>
+        <div class="wc">🚻</div>
+        <div class="seat">23</div>
+        <div class="seat">24</div>
+        <div class="seat">27</div>
+        <div class="seat">28</div>
+        <div class="seat">31</div>
+        <div class="seat">32</div>
+        <div class="seat">35</div>
+        <div class="seat">36</div>
+        <div class="seat">39</div>
+        <div class="seat">40</div>
+        <div class="seat">43</div>
+        <div class="seat">44</div>
+        <div class="seat">49</div>
+      </div>
+
+      <div class="lower">
+        <div class="steering">🛞</div>
+        <div class="seat">1</div>
+        <div class="seat">2</div>
+        <div class="seat">5</div>
+        <div class="seat">6</div>
+        <div class="seat">9</div>
+        <div class="seat">10</div>
+        <div class="seat">13</div>
+        <div class="seat">14</div>
+        <div class="seat">17</div>
+        <div class="seat">18</div>
+        <div class="seat">21</div>
+        <div class="seat">22</div>
+        <div class="seat">25</div>
+        <div class="seat">26</div>
+        <div class="seat">29</div>
+        <div class="seat">30</div>
+        <div class="seat">33</div>
+        <div class="seat">34</div>
+        <div class="seat">37</div>
+        <div class="seat">38</div>
+        <div class="seat">41</div>
+        <div class="seat">42</div>
+        <div class="seat">45</div>
+        <div class="seat">46</div>
+        <div class="seat">47</div>
+        <div class="seat">48</div>
+      </div>
+
+      <div class="legend">🟩 свободно ⬜ занято 🟢 выбрано</div>
+    </div>
+  </div>
+</body>
+</html>

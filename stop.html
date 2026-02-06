@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MT Mobile Search</title>
+  <style>
+    :root{
+      /* MT-like palette (clean, orange accent, cool neutrals) */
+      --bg:#f3f7ff;
+      --card:#ffffff;
+      --text:#0f172a;
+      --muted:#64748b;
+      --line:#e6eefb;
+      --shadow: 0 14px 34px rgba(2, 8, 23, .10);
+      --shadow-soft: 0 10px 22px rgba(2, 8, 23, .08);
+      --radius:18px;
+      --radius2:16px;
+
+      --accent:#ff7a00;     /* MT orange */
+      --accent2:#ff9333;
+      --blue:#2563eb;
+      --focus:rgba(37,99,235,.22);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+      background: radial-gradient(1000px 500px at 50% -200px, rgba(37,99,235,.18), transparent 60%),
+                  radial-gradient(900px 500px at 110% 0, rgba(255,122,0,.14), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+    }
+
+    /* Mobile-only wrapper */
+    .wrap{
+      width:100%;
+      max-width: 430px;
+      margin: 0 auto;
+      padding: 14px 14px 24px;
+    }
+
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding: 6px 2px 10px;
+    }
+    .brand{
+      font-weight:800;
+      letter-spacing:-.02em;
+      font-size:16px;
+    }
+    .pill{
+      border:1px solid rgba(37,99,235,.18);
+      background: rgba(37,99,235,.06);
+      color:#1e40af;
+      border-radius:999px;
+      padding:7px 10px;
+      font-size:12px;
+      font-weight:700;
+      white-space:nowrap;
+    }
+
+    /* Card blocks like your reference */
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .stack{display:grid; gap:12px;}
+
+    /* Field rows */
+    .row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:14px;
+    }
+    .row + .row{ border-top: 1px solid var(--line); }
+
+    .label{
+      font-size:12px;
+      color:var(--muted);
+      font-weight:700;
+      letter-spacing:.06em;
+      text-transform:uppercase;
+      margin-bottom:4px;
+    }
+    .value{
+      font-size:20px;
+      font-weight:900;
+      letter-spacing:-.02em;
+      line-height:1.1;
+    }
+    .value small{
+      font-size:16px;
+      font-weight:900;
+      color: rgba(15,23,42,.55);
+      margin-left:6px;
+    }
+
+    .left{min-width:0}
+    .right{
+      flex:0 0 auto;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+
+    /* Swap button (floating inside From/To card) */
+    .swapBtn{
+      width:44px;height:44px;
+      border-radius: 14px;
+      border:1px solid var(--line);
+      background:#fff;
+      box-shadow: var(--shadow-soft);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .swapBtn:active{ transform: scale(.98); }
+    .swapBtn svg{ width:18px;height:18px; color: var(--blue); }
+
+    /* Clickable row affordance */
+    .clickRow{
+      cursor:pointer;
+      position:relative;
+      user-select:none;
+      transition: background .12s ease;
+    }
+    .clickRow:active{ background: rgba(37,99,235,.05); }
+    .chev{
+      width:18px;height:18px;
+      color: rgba(15,23,42,.45);
+    }
+
+    /* Two-up card (Departure / Return) */
+    .twoUp{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:0;
+    }
+    .twoUp .cell{
+      padding:14px;
+      min-width:0;
+    }
+    .twoUp .cell + .cell{
+      border-left:1px solid var(--line);
+    }
+    .value.compact{ font-size:18px; }
+
+    /* Passengers card */
+    .value.inline{
+      display:flex;
+      align-items:baseline;
+      gap:8px;
+    }
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      padding:4px 10px;
+      border-radius:999px;
+      background: rgba(255,122,0,.12);
+      color:#9a3f00;
+      border:1px solid rgba(255,122,0,.18);
+      font-size:12px;
+      font-weight:800;
+    }
+
+    /* Primary action */
+    .cta{
+      margin-top:14px;
+      background: linear-gradient(180deg, var(--accent2), var(--accent));
+      border:0;
+      width:100%;
+      border-radius: 20px;
+      padding: 16px 16px;
+      color:#fff;
+      font-weight:900;
+      font-size:18px;
+      letter-spacing:-.01em;
+      box-shadow: 0 16px 34px rgba(255,122,0,.28);
+      cursor:pointer;
+      transition: transform .12s ease, filter .12s ease;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+    }
+    .cta:active{ transform: translateY(1px); }
+    .cta:disabled{
+      opacity:.55;
+      filter: grayscale(1);
+      cursor:not-allowed;
+      box-shadow:none;
+    }
+    .cta svg{ width:20px;height:20px; }
+
+    /* Modal (for passengers/date simple) */
+    .overlay{
+      position:fixed;
+      inset:0;
+      background: rgba(15,23,42,.40);
+      display:none;
+      align-items:flex-end;
+      justify-content:center;
+      padding: 14px;
+      z-index:50;
+    }
+    .overlay.show{ display:flex; }
+    .sheet{
+      width:min(430px, 100%);
+      background:#fff;
+      border-radius: 20px;
+      border:1px solid var(--line);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      transform: translateY(0);
+    }
+    .sheetHead{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding: 14px 14px 10px;
+    }
+    .sheetHead b{ font-size:16px; }
+    .closeBtn{
+      border:1px solid var(--line);
+      background:#fff;
+      border-radius:12px;
+      padding:8px 10px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .sheetBody{ padding: 10px 14px 14px; }
+    .counter{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding: 8px 0 14px;
+    }
+    .iconBtn{
+      width:46px;height:46px;
+      border-radius: 14px;
+      border:1px solid var(--line);
+      background:#fff;
+      font-size:20px;
+      font-weight:900;
+      cursor:pointer;
+    }
+    .count{
+      font-size:32px;
+      font-weight:1000;
+      letter-spacing:-.02em;
+      width:80px;
+      text-align:center;
+    }
+    .apply{
+      width:100%;
+      border:0;
+      border-radius: 16px;
+      padding: 14px 14px;
+      background: linear-gradient(180deg, var(--blue), #1d4ed8);
+      color:#fff;
+      font-weight:900;
+      font-size:16px;
+      cursor:pointer;
+    }
+
+    /* Inputs inside modals (simple) */
+    .field2{
+      display:grid;
+      gap:8px;
+    }
+    .field2 label{
+      font-size:12px;
+      color: var(--muted);
+      font-weight:800;
+    }
+    .field2 input{
+      width:100%;
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding: 12px 12px;
+      font-size:16px;
+      outline:none;
+    }
+    .field2 input:focus{
+      border-color: rgba(37,99,235,.45);
+      box-shadow: 0 0 0 4px var(--focus);
+    }
+
+    /* Force mobile look even on desktop preview */
+    @media (min-width: 768px){
+      body{ display:flex; justify-content:center; }
+      .wrap{ margin-top: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">Максимов Турс</div>
+      <div class="pill">Покупка билета</div>
+    </div>
+
+    <div class="stack">
+      <!-- From / To -->
+      <div class="card" role="button" aria-label="Откуда / Куда">
+        <div class="row clickRow" id="fromRow">
+          <div class="left">
+            <div class="label">Откуда</div>
+            <div class="value" id="fromVal">Одесса</div>
+          </div>
+          <div class="right">
+            <svg class="chev" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="row clickRow" id="toRow">
+          <div class="left">
+            <div class="label">Куда</div>
+            <div class="value" id="toVal">Варна</div>
+          </div>
+          <div class="right">
+            <button class="swapBtn" type="button" id="swapBtn" aria-label="Поменять местами">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M7 7h13l-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M17 17H4l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Departure / Return -->
+      <div class="card twoUp" role="group" aria-label="Даты">
+        <div class="cell clickRow" id="depRow">
+          <div class="label">Дата</div>
+          <div class="value compact" id="depVal">13/01/2026</div>
+        </div>
+        <div class="cell clickRow" id="retRow">
+          <div class="label">Обратно</div>
+          <div class="value compact" id="retVal">В одну сторону</div>
+        </div>
+      </div>
+
+      <!-- Passengers -->
+      <div class="card" role="button" aria-label="Пассажиры">
+        <div class="row clickRow" id="paxRow">
+          <div class="left">
+            <div class="label">Пассажиры</div>
+            <div class="value inline">
+              <span id="paxVal">1</span>
+              <span>пассажир</span>
+              <span class="badge" id="paxBadge">взрослый</span>
+            </div>
+          </div>
+          <div class="right">
+            <svg class="chev" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <button class="cta" id="searchBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" stroke-width="2"/>
+          <path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        Поиск рейсов
+      </button>
+    </div>
+  </div>
+
+  <!-- Passengers modal -->
+  <div class="overlay" id="paxModal" aria-hidden="true">
+    <div class="sheet" role="dialog" aria-label="Пассажиры">
+      <div class="sheetHead">
+        <b>Пассажиры</b>
+        <button class="closeBtn" id="paxClose" type="button">Закрыть</button>
+      </div>
+      <div class="sheetBody">
+        <div class="counter">
+          <button class="iconBtn" id="paxMinus" type="button">−</button>
+          <div class="count" id="paxCount">1</div>
+          <button class="iconBtn" id="paxPlus" type="button">+</button>
+        </div>
+        <button class="apply" id="paxApply" type="button">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- From/To modal (simple inputs) -->
+  <div class="overlay" id="routeModal" aria-hidden="true">
+    <div class="sheet" role="dialog" aria-label="Маршрут">
+      <div class="sheetHead">
+        <b>Маршрут</b>
+        <button class="closeBtn" id="routeClose" type="button">Закрыть</button>
+      </div>
+      <div class="sheetBody">
+        <div class="field2">
+          <div>
+            <label for="fromInp">Откуда</label>
+            <input id="fromInp" placeholder="Напр. Одесса" />
+          </div>
+          <div>
+            <label for="toInp">Куда</label>
+            <input id="toInp" placeholder="Напр. Варна" />
+          </div>
+        </div>
+        <div style="height:12px"></div>
+        <button class="apply" id="routeApply" type="button">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Date modal (simple date input) -->
+  <div class="overlay" id="dateModal" aria-hidden="true">
+    <div class="sheet" role="dialog" aria-label="Дата">
+      <div class="sheetHead">
+        <b>Дата</b>
+        <button class="closeBtn" id="dateClose" type="button">Закрыть</button>
+      </div>
+      <div class="sheetBody">
+        <div class="field2">
+          <div>
+            <label for="dateInp">Дата отправления</label>
+            <input id="dateInp" type="date" />
+          </div>
+        </div>
+        <div style="height:12px"></div>
+        <button class="apply" id="dateApply" type="button">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const body = document.body;
+
+    // Values
+    const fromVal = document.getElementById('fromVal');
+    const toVal = document.getElementById('toVal');
+    const depVal = document.getElementById('depVal');
+    const retVal = document.getElementById('retVal');
+    const paxVal = document.getElementById('paxVal');
+    const paxBadge = document.getElementById('paxBadge');
+
+    // Modals
+    const paxModal = document.getElementById('paxModal');
+    const routeModal = document.getElementById('routeModal');
+    const dateModal = document.getElementById('dateModal');
+
+    function openModal(el){
+      el.classList.add('show');
+      el.setAttribute('aria-hidden', 'false');
+      body.style.overflow = 'hidden';
+    }
+    function closeModal(el){
+      el.classList.remove('show');
+      el.setAttribute('aria-hidden', 'true');
+      body.style.overflow = '';
+    }
+    [paxModal, routeModal, dateModal].forEach(m => {
+      m.addEventListener('click', (e) => { if (e.target === m) closeModal(m); });
+    });
+
+    // Route modal bindings
+    const fromInp = document.getElementById('fromInp');
+    const toInp = document.getElementById('toInp');
+    document.getElementById('fromRow').addEventListener('click', () => {
+      fromInp.value = fromVal.textContent.trim();
+      toInp.value = toVal.textContent.trim();
+      openModal(routeModal);
+    });
+    document.getElementById('toRow').addEventListener('click', () => {
+      fromInp.value = fromVal.textContent.trim();
+      toInp.value = toVal.textContent.trim();
+      openModal(routeModal);
+    });
+    document.getElementById('routeClose').addEventListener('click', () => closeModal(routeModal));
+    document.getElementById('routeApply').addEventListener('click', () => {
+      const f = fromInp.value.trim();
+      const t = toInp.value.trim();
+      if (f) fromVal.textContent = f;
+      if (t) toVal.textContent = t;
+      closeModal(routeModal);
+    });
+
+    // Swap
+    document.getElementById('swapBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const a = fromVal.textContent;
+      fromVal.textContent = toVal.textContent;
+      toVal.textContent = a;
+    });
+
+    // Date modal
+    const dateInp = document.getElementById('dateInp');
+    document.getElementById('depRow').addEventListener('click', () => openModal(dateModal));
+    document.getElementById('dateClose').addEventListener('click', () => closeModal(dateModal));
+    document.getElementById('dateApply').addEventListener('click', () => {
+      if (dateInp.value) {
+        const [y,m,d] = dateInp.value.split('-');
+        depVal.textContent = `${d}/${m}/${y}`;
+      }
+      closeModal(dateModal);
+    });
+
+    // Passengers modal
+    let pax = 1;
+    document.getElementById('paxRow').addEventListener('click', () => openModal(paxModal));
+    document.getElementById('paxClose').addEventListener('click', () => closeModal(paxModal));
+    const paxCount = document.getElementById('paxCount');
+    document.getElementById('paxMinus').addEventListener('click', () => {
+      pax = Math.max(1, pax - 1);
+      paxCount.textContent = String(pax);
+    });
+    document.getElementById('paxPlus').addEventListener('click', () => {
+      pax = Math.min(9, pax + 1);
+      paxCount.textContent = String(pax);
+    });
+    document.getElementById('paxApply').addEventListener('click', () => {
+      paxVal.textContent = String(pax);
+      paxBadge.textContent = pax === 1 ? 'взрослый' : 'взрослых';
+      closeModal(paxModal);
+    });
+
+    // Search action demo
+    document.getElementById('searchBtn').addEventListener('click', () => {
+      alert(`Поиск: ${fromVal.textContent} → ${toVal.textContent}, дата ${depVal.textContent}, пассажиры ${paxVal.textContent}`);
+    });
+  </script>
+</body>
+</html>

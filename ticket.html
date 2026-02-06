@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MAKSIMOV TOURS — Ticket</title>
+
+<style>
+:root{
+  --bg:#F2F5FB;
+  --paper:#fff;
+  --ink:#0B1220;
+  --muted:#5F708A;      /* чуть темнее для читабельности */
+  --line:#E6ECF5;
+
+  --primary:#1E4D7A;
+  --primary2:#0E2E4F;
+
+  --ok:#16A34A;
+  --bad:#EF4444;
+
+  --shadow:0 18px 45px rgba(15,23,42,.12);
+
+  /* типографика */
+  --font: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  --mono: ui-monospace,Menlo,Consolas,monospace;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:#fff;
+  font-family:var(--font);
+  color:var(--ink);
+  font-size:14px; /* базовый чуть крупнее */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.wrap{display:flex;justify-content:center;padding:20px}
+.sheet{width:980px;background:var(--bg);border-radius:26px;padding:16px}
+.ticket{background:var(--paper);border-radius:26px;box-shadow:var(--shadow);overflow:hidden}
+
+/* TOP STRIPE */
+.stripe{
+  background:linear-gradient(90deg,var(--primary2),var(--primary));
+  color:#fff;
+  padding:14px 18px;
+  display:grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items:center;
+  gap:14px;
+}
+.brand{display:flex;gap:10px;align-items:center;min-width:0}
+.brand img{filter:brightness(0) invert(1)}
+.brandMark{
+  width:36px;height:36px;border-radius:12px;
+  background:rgba(255,255,255,.15);
+  display:flex;align-items:center;justify-content:center;flex:0 0 auto
+}
+.brandWord img{height:14px}
+
+.statusPill{
+  justify-self:center;
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  padding:8px 12px;
+  border-radius:999px;
+  font-weight:900;
+  letter-spacing:.08em;
+  font-size:12px;
+  border:1px solid rgba(255,255,255,.18);
+  white-space:nowrap;
+  background: rgba(255,255,255,.12);
+}
+.statusDot{width:9px;height:9px;border-radius:50%;}
+.statusPill[data-pay="PAID"] .statusDot{ background: var(--ok); }
+.statusPill[data-pay="UNPAID"] .statusDot{ background: var(--bad); }
+
+.doc{justify-self:end;font-family:var(--mono);font-size:12px;opacity:.9;white-space:nowrap}
+
+/* MAIN */
+.main{
+  padding:18px;
+  display:grid;
+  grid-template-columns: 1fr 300px;
+  gap:18px;
+}
+
+/* LEFT CARD */
+.board{border:1px solid var(--line);border-radius:22px;overflow:hidden;background:#fff}
+
+/* ROUTE HERO (one block) */
+.route{
+  padding:16px 18px 14px;
+  border-bottom:1px solid var(--line);
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:18px;
+}
+.routeLeft{min-width:0;width:100%}
+.routeGrid{
+  display:grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap:14px;
+  align-items:start;
+}
+
+.city{display:flex;flex-direction:column;gap:8px}
+.city.alignRight{text-align:right;align-items:flex-end}
+
+/* ✅ верхние лейблы: ОТПРАВЛЕНИЕ / ПРИБЫТИЕ */
+.citySub{
+  font-size:12px;
+  color:var(--muted);
+  font-weight:900;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+
+/* ✅ города крупнее и четче */
+.cityName{
+  font-size:32px;
+  font-weight:950;
+  line-height:1.05;
+  letter-spacing:.01em;
+}
+
+.arrow{
+  font-size:22px;
+  font-weight:900;
+  color:var(--muted);
+  margin-top:26px;
+}
+
+/* ✅ вместо маленьких “Прибытие/Отправление” — сразу время + локация */
+.stopTime{
+  margin-top:6px;
+  font-size:18px;
+  font-weight:950;
+  font-family:var(--mono);
+  letter-spacing:.01em;
+}
+.stopLoc{
+  margin-top:3px;
+  font-size:13px;
+  color:var(--muted);
+  font-weight:800;
+  line-height:1.25;
+  max-width: 340px;
+}
+
+/* date bigger */
+.routeRight{text-align:right;min-width:190px}
+.routeRight .date{
+  font-weight:950;
+  font-size:19px;
+  letter-spacing:.01em;
+}
+.routeRight .time{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:900;
+  font-family:var(--mono);
+}
+
+/* PASSENGER clearer */
+.passenger{padding:14px 18px;border-bottom:1px solid var(--line)}
+.passenger .label{font-size:11px;letter-spacing:.14em;font-weight:900;color:var(--muted)}
+.passengerBox{margin-top:10px;display:grid;gap:10px}
+.pRow{display:grid;grid-template-columns:90px 1fr;gap:12px;align-items:baseline}
+.pKey{font-size:11px;letter-spacing:.14em;color:var(--muted);font-weight:950}
+.pVal{font-size:15px;font-weight:900;color:var(--ink);line-height:1.2}
+.pVal.mono{font-family:var(--mono);font-weight:900;font-size:13px;color:#0F2440}
+
+/* INCLUDED */
+.included{
+  padding:12px 18px;
+  border-bottom:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+}
+.included .label{font-size:11px;letter-spacing:.14em;font-weight:900;color:var(--muted)}
+.pills{display:flex;gap:10px;flex-wrap:wrap}
+.pill{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:9px 11px;border-radius:999px;
+  background: rgba(242,245,251,.92);
+  border:1px solid var(--line);
+  font-size:13px;font-weight:950;color:var(--ink);white-space:nowrap;
+}
+.pill .k{font-size:11px;letter-spacing:.12em;color:var(--muted);font-weight:950}
+.pill .v{font-family:var(--mono);font-weight:950}
+
+/* RIGHT QR */
+.qr{border:1px solid var(--line);border-radius:22px;overflow:hidden;background:#fff}
+.qrHead{padding:14px;border-bottom:1px solid var(--line);font-size:12px;font-weight:900;letter-spacing:.14em;color:var(--muted)}
+.qrBox{padding:14px;display:flex;justify-content:center}
+.qrBoxInner{
+  width:240px;height:240px;border:1px solid var(--line);border-radius:18px;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;position:relative;
+}
+.qrBoxInner img{width:100%;height:100%;object-fit:contain}
+.qrOffline{
+  position:absolute;bottom:10px;left:12px;right:12px;text-align:center;
+  color:var(--muted);font-size:12px;font-weight:900;opacity:.9;
+}
+.qrFoot{padding:14px;border-top:1px solid var(--line)}
+.btn{width:100%;border-radius:14px;padding:11px 12px;background:var(--primary);color:#fff;border:none;font-weight:950;cursor:pointer}
+
+/* FOOTER */
+.footer{
+  background:#0B1220;color:#fff;padding:14px 18px;
+  display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font-size:13px;
+}
+.footer a{color:#fff;text-decoration:none;opacity:.95}
+.footer a:hover{opacity:1;text-decoration:underline}
+.footer b{opacity:.95}
+
+@media(max-width:900px){
+  .main{grid-template-columns:1fr}
+  .stripe{grid-template-columns:1fr;justify-items:start}
+  .statusPill{justify-self:start}
+  .doc{justify-self:start}
+  .route{flex-direction:column;align-items:flex-start}
+  .routeRight{text-align:left;min-width:unset}
+  .city.alignRight{text-align:left;align-items:flex-start}
+  .arrow{display:none}
+  .routeGrid{grid-template-columns:1fr;gap:14px}
+}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+  <div class="sheet">
+    <div class="ticket">
+
+      <div class="stripe">
+        <div class="brand">
+          <div class="brandMark"><img src="logo/logo.svg" width="26" alt=""></div>
+          <div class="brandWord"><img src="logo/speling.svg" alt=""></div>
+        </div>
+
+        <div class="statusPill" id="statusPill" data-pay="UNPAID">
+          <span class="statusDot"></span>
+          <span id="statusText">НЕ ОПЛАЧЕН</span>
+        </div>
+
+        <div class="doc" id="docText">TKT 36 · ORD 25</div>
+      </div>
+
+      <div class="main">
+        <!-- LEFT -->
+        <div class="board">
+
+          <!-- HERO -->
+          <div class="route">
+            <div class="routeLeft">
+              <div class="routeGrid">
+                <!-- Departure column -->
+                <div class="city">
+                  <div class="citySub" id="fromLabel">ОТПРАВЛЕНИЕ</div>
+                  <div class="cityName" id="fromCity">Варна</div>
+                  <div class="stopTime" id="depTime">06:20</div>
+                  <div class="stopLoc" id="depLoc">Central Bus Station, sector 7</div>
+                </div>
+
+                <div class="arrow">→</div>
+
+                <!-- Arrival column -->
+                <div class="city alignRight">
+                  <div class="citySub" id="toLabel">ПРИБЫТИЕ</div>
+                  <div class="cityName" id="toCity">Одесса</div>
+                  <div class="stopTime" id="arrTime">09:10</div>
+                  <div class="stopLoc" id="arrLoc">Platform 2</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="routeRight">
+              <div class="date" id="dateText">12 Feb 2026</div>
+              <div class="time" id="timeText">06:20 → 09:10</div>
+            </div>
+          </div>
+
+          <!-- PASSENGER -->
+          <div class="passenger">
+            <div class="label">ПАССАЖИР</div>
+            <div class="passengerBox">
+              <div class="pRow">
+                <div class="pKey">ИМЯ</div>
+                <div class="pVal" id="passengerName">Dmitriy Stoykov</div>
+              </div>
+              <div class="pRow">
+                <div class="pKey">EMAIL</div>
+                <div class="pVal mono" id="passengerEmail">ghgvhh@ghhh.fgg</div>
+              </div>
+              <div class="pRow">
+                <div class="pKey">ТЕЛ.</div>
+                <div class="pVal mono" id="passengerPhone">+380 888 856 5655</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- INCLUDED -->
+          <div class="included">
+            <div class="label">ВКЛЮЧЕНО</div>
+            <div class="pills">
+              <div class="pill"><span class="k">МЕСТО</span> <span class="v" id="seat">22</span></div>
+              <div class="pill"><span class="k">БАГАЖ</span> <span class="v" id="baggage">1 + ручная кладь</span></div>
+              <div class="pill"><span class="k">ЦЕНА</span> <span class="v" id="price">24.00 UAH</span></div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- RIGHT QR -->
+        <div class="qr">
+          <div class="qrHead">SCAN</div>
+          <div class="qrBox">
+            <div class="qrBoxInner" id="qrBoxInner">
+              <img id="qrImg" alt="QR">
+              <div class="qrOffline" id="qrOffline" style="display:none;">QR unavailable (offline)</div>
+            </div>
+          </div>
+          <div class="qrFoot">
+            <button class="btn" id="manageBtn">Manage trip</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- FOOTER: COMPANY CONTACTS ONLY -->
+      <div class="footer">
+        <div><b>Maximov Tours</b></div>
+        <div><a id="companyPhoneLink" href="#">+359 88 123 4567</a></div>
+        <div><a id="companyEmailLink" href="#">support@maximov.tours</a></div>
+        <div><a id="companyWebLink" href="#" target="_blank" rel="noopener">www.maximov.tours</a></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script>
+  const TICKET = {
+    payStatus: "UNPAID", // PAID | UNPAID
+    ticketNo: "36",
+    orderNo: "25",
+
+    departure: { city: "Варна", time: "06:20", loc: "Central Bus Station, sector 7" },
+    arrival:   { city: "Одесса", time: "09:10", loc: "Platform 2" },
+
+    date: "12 Feb 2026",
+    timeRange: "06:20 → 09:10",
+
+    passenger: { name: "Dmitriy Stoykov", email: "ghgvhh@ghhh.fgg", phone: "+380 888 856 5655" },
+
+    included: { seat: "22", baggage: "1 + ручная кладь", price: "24.00 UAH" },
+
+    manageUrl: "https://maximov.tours/manage?order=25&ticket=36",
+    qrData: "",
+
+    company: { phone: "+359 88 123 4567", email: "support@maximov.tours", web: "https://www.maximov.tours" }
+  };
+
+  // Doc
+  document.getElementById("docText").textContent = `TKT ${TICKET.ticketNo} · ORD ${TICKET.orderNo}`;
+
+  // Status
+  const statusPill = document.getElementById("statusPill");
+  statusPill.dataset.pay = TICKET.payStatus;
+  document.getElementById("statusText").textContent =
+    (TICKET.payStatus === "PAID") ? "ОПЛАЧЕН" : "НЕ ОПЛАЧЕН";
+
+  // Hero block
+  document.getElementById("fromCity").textContent = TICKET.departure.city;
+  document.getElementById("toCity").textContent = TICKET.arrival.city;
+
+  document.getElementById("depTime").textContent = TICKET.departure.time;
+  document.getElementById("depLoc").textContent = TICKET.departure.loc;
+
+  document.getElementById("arrTime").textContent = TICKET.arrival.time;
+  document.getElementById("arrLoc").textContent = TICKET.arrival.loc;
+
+  document.getElementById("dateText").textContent = TICKET.date;
+  document.getElementById("timeText").textContent = TICKET.timeRange;
+
+  // Passenger
+  document.getElementById("passengerName").textContent = TICKET.passenger.name;
+  document.getElementById("passengerEmail").textContent = TICKET.passenger.email;
+  document.getElementById("passengerPhone").textContent = TICKET.passenger.phone;
+
+  // Included
+  document.getElementById("seat").textContent = TICKET.included.seat;
+  document.getElementById("baggage").textContent = TICKET.included.baggage;
+  document.getElementById("price").textContent = TICKET.included.price;
+
+  // Company footer
+  const phoneLink = document.getElementById("companyPhoneLink");
+  phoneLink.textContent = TICKET.company.phone;
+  phoneLink.href = `tel:${TICKET.company.phone.replace(/\s+/g,'')}`;
+
+  const emailLink = document.getElementById("companyEmailLink");
+  emailLink.textContent = TICKET.company.email;
+  emailLink.href = `mailto:${TICKET.company.email}`;
+
+  const webLink = document.getElementById("companyWebLink");
+  webLink.textContent = new URL(TICKET.company.web).host;
+  webLink.href = TICKET.company.web;
+
+  // Manage
+  document.getElementById("manageBtn").onclick = () => window.open(TICKET.manageUrl, "_blank", "noopener");
+
+  // QR
+  const qrImg = document.getElementById("qrImg");
+  const qrOffline = document.getElementById("qrOffline");
+  if (window.QRCode && TICKET.qrData) {
+    QRCode.toDataURL(TICKET.qrData, { margin: 1, width: 240 }, (err, url) => {
+      if (!err) qrImg.src = url;
+    });
+  } else {
+    qrImg.style.display = "none";
+    qrOffline.style.display = "block";
+  }
+</script>
+</body>
+</html>
