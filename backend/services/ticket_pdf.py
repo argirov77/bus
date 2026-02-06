@@ -167,7 +167,7 @@ def _generate_qr_data_uri(data: Optional[str]) -> Optional[str]:
     qr = qrcode.QRCode(version=None, box_size=10, border=2)
     qr.add_data(data)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
+    img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
     buffer = BytesIO()
     img.save(buffer, format="PNG")
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
@@ -367,5 +367,6 @@ def render_ticket_pdf(dto: Mapping[str, Any], deep_link: Optional[str]) -> bytes
         qr_data_uri=qr_data_uri,
     )
 
-    pdf_bytes = HTML(string=html, base_url=str(_TEMPLATES_DIR)).write_pdf()
+    base_url = str(_TEMPLATES_DIR.parent.parent)
+    pdf_bytes = HTML(string=html, base_url=base_url).write_pdf()
     return pdf_bytes
