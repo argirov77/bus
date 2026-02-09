@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from datetime import datetime
+from pathlib import Path
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -18,7 +19,7 @@ from ._ticket_link_helpers import (
     enrich_ticket_link_results,
 )
 from ..services.ticket_dto import get_ticket_dto
-from ..services.ticket_pdf import render_ticket_pdf
+from ..services.ticket_pdf import render_ticket_html, render_ticket_pdf
 from ..services.link_sessions import get_or_create_view_session
 from ..services import ticket_links
 from ..services.access_guard import guard_public_request
@@ -46,6 +47,82 @@ class TicketCreate(BaseModel):
 class TicketOut(BaseModel):
     ticket_id: int
     deep_link: str
+
+
+@router.get("/dev/test-pdf", include_in_schema=False)
+def get_dev_ticket_pdf(debug: bool = True) -> Response:
+    long_email = "verylongemailaddresswithmanycharactersandsegments_" * 2
+    long_email = f"{long_email}test@example.com"
+    long_address = (
+        "ОченьДлинныйАдресБезПробеловКоторыйНужноПереноситьНаСледующуюСтроку" * 2
+    )
+    long_number = "TICKET-" + ("1234567890" * 6)
+    long_order = "ORDER-" + ("9876543210" * 6)
+    deep_link = (
+        "https://client.example.com/api/q/"
+        + "opaque-token-" * 8
+        + "?param="
+        + "x" * 120
+    )
+
+    dto = {
+        "i18n": {"lang": "ru"},
+        "route": {
+            "stops": [
+                {
+                    "id": 1,
+                    "name": "София Центральная Автостанция",
+                    "description": long_address,
+                    "location": "https://maps.example.com/" + "very-long-map-link-" * 6,
+                },
+                {
+                    "id": 2,
+                    "name": "Киев Автовокзал",
+                    "description": long_address,
+                    "location": "https://maps.example.com/" + "arrival-map-link-" * 6,
+                },
+            ]
+        },
+        "segment": {
+            "departure": {"id": 1, "name": "София", "time": "06:30"},
+            "arrival": {"id": 2, "name": "Киев", "time": "18:45"},
+            "duration_minutes": 855,
+        },
+        "tour": {"date": "2025-05-21"},
+        "ticket": {
+            "id": long_number,
+            "seat_number": "12A",
+            "extra_baggage": 2,
+        },
+        "purchase": {
+            "id": long_order,
+            "amount_due": "123456.78",
+            "payment_method": "Visa / Mastercard",
+            "status": "paid",
+            "customer": {
+                "email": long_email,
+                "phone": "+380 50 123 45 67",
+            },
+        },
+        "pricing": {"price": "123456.78", "currency_code": "UAH"},
+        "passenger": {"name": "Иванов Иван Иванович"},
+        "payment_status": {"status": "paid"},
+    }
+
+    html = render_ticket_html(dto, deep_link)
+    pdf_bytes = render_ticket_pdf(dto, deep_link)
+
+    if debug:
+        stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        html_path = Path("/tmp") / f"ticket_weasy_debug_{stamp}.html"
+        pdf_path = Path("/tmp") / f"ticket_weasy_debug_{stamp}.pdf"
+        html_path.write_text(html, encoding="utf-8")
+        pdf_path.write_bytes(pdf_bytes)
+
+    headers = {
+        "Content-Disposition": 'inline; filename="ticket-debug.pdf"',
+    }
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
 @router.get("/{ticket_id}/pdf", openapi_extra={"security": []})
