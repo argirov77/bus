@@ -55,8 +55,8 @@ body{
 
 /* ===== TOP STRIPE ===== */
 .stripe{
-  background:linear-gradient(90deg,var(--primary2),var(--primary));
-  color:#fff;
+  background:#dceeff;
+  color:#0B1220;
   padding:14px 18px;
 }
 
@@ -84,8 +84,21 @@ body{
   vertical-align:middle;
 }
 
-.brandMark img{width:22px;height:auto;filter:brightness(0) invert(1);display:block;margin:0 auto}
-.brandWord img{height:14px;filter:brightness(0) invert(1);display:block}
+.brandMark img{
+  width:24px;
+  height:auto;
+  filter:invert(1) brightness(1.35) contrast(1.2) drop-shadow(0 0 1px rgba(255,255,255,.45));
+  display:block;
+  margin:0 auto;
+}
+.brandWord img{
+  height:16px;
+  filter:invert(1) brightness(1.35) contrast(1.2) drop-shadow(0 0 1px rgba(255,255,255,.45));
+  display:inline-block;
+  padding:2px 4px;
+  border-radius:6px;
+  background:rgba(255,255,255,.18);
+}
 
 .statusPill{
   display:inline-block;
@@ -94,8 +107,9 @@ body{
   font-size:12px;
   font-weight:700;
   letter-spacing:.08em;
-  border:1px solid rgba(255,255,255,.25);
-  background:rgba(255,255,255,.14);
+  border:1px solid rgba(11,18,32,.18);
+  background:rgba(255,255,255,.65);
+  color:#0B1220;
   white-space:nowrap;
 }
 
@@ -114,6 +128,7 @@ body{
   font-size:14px;
   font-weight:700;
   white-space:nowrap;
+  color:#0B1220;
 }
 
 /* ===== MAIN GRID (strict math) ===== */
