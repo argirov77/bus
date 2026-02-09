@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="{{ i18n.lang|default('ru') }}">
+<head>
+  <meta charset="utf-8" />
+  <title>{{ page_title }}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: Arial, "DejaVu Sans", sans-serif;
+      font-size: 14px;
+      color: #0f172a;
+      background: #f8fafc;
+    }
+    h1, h2, h3, p { margin: 0; }
+    a { color: #1d4ed8; text-decoration: none; }
+    .wrap {
+      width: 100%;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+    .layout {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: separate;
+      border-spacing: 12px;
+    }
+    .layout td { vertical-align: top; }
+    .card {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 12px;
+      background: #ffffff;
+    }
+    .muted { color: #64748b; }
+    .brand-line { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .ticket-title { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    .route-title { font-size: 22px; font-weight: 700; margin-top: 8px; }
+    .section-title { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+    .kv-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: separate;
+      border-spacing: 6px;
+    }
+    .kv-label { width: 42%; font-size: 12px; color: #64748b; }
+    .kv-value { width: 58%; font-weight: 600; }
+    .status-chip {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #e2e8f0;
+      color: #0f172a;
+      margin-bottom: 8px;
+    }
+    .status-chip.ok { background: #dcfce7; color: #166534; }
+    .block + .block { margin-top: 10px; }
+    .break {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      white-space: normal;
+    }
+    .qr-box {
+      width: 132px;
+      height: 132px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+    .qr-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .hint { font-size: 12px; color: #64748b; }
+    .footer {
+      width: 100%;
+      margin-top: 8px;
+      font-size: 12px;
+      color: #64748b;
+      text-align: center;
+    }
+    .logo-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: separate;
+      border-spacing: 8px;
+      margin-bottom: 6px;
+    }
+    .logo-table td {
+      vertical-align: middle;
+    }
+    .logo-img {
+      display: block;
+      height: 28px;
+      width: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <table class="layout">
+      <tr>
+        <td style="width: 65%;">
+          <div class="card">
+            <table class="logo-table">
+              <tr>
+                <td style="width: 50%;">
+                  <img class="logo-img" src="logo/logo.svg" alt="Maximov Tours" />
+                </td>
+                <td style="width: 50%;">
+                  <img class="logo-img" src="logo/speling.svg" alt="Speling" />
+                </td>
+              </tr>
+            </table>
+            <div class="brand-line">Maximov Tours · {{ i18n.ticket_label }}</div>
+            <div class="route-title break">{{ route.label or i18n.value_not_available }}</div>
+            <div class="muted">{{ i18n.trip_date_label }}: {{ ticket.trip_date or i18n.value_not_available }}</div>
+          </div>
+        </td>
+        <td style="width: 35%;">
+          <div class="card">
+            <div class="status-chip {{ status_chip.css_class }}">{{ status_chip.text }}</div>
+            <table class="kv-table">
+              <tr>
+                <td class="kv-label">{{ i18n.ticket_number_label }}</td>
+                <td class="kv-value break">{{ ticket.number or i18n.value_not_available }}</td>
+              </tr>
+              <tr>
+                <td class="kv-label">{{ i18n.order_label }}</td>
+                <td class="kv-value break">{{ ticket.order_number or i18n.value_not_available }}</td>
+              </tr>
+              {% if ticket.seat_number %}
+              <tr>
+                <td class="kv-label">{{ i18n.seat_label }}</td>
+                <td class="kv-value">{{ ticket.seat_number }}</td>
+              </tr>
+              {% endif %}
+              {% if ticket.baggage_text %}
+              <tr>
+                <td class="kv-label">{{ i18n.baggage_label }}</td>
+                <td class="kv-value">{{ ticket.baggage_text }}</td>
+              </tr>
+              {% endif %}
+              {% if ticket.price_text %}
+              <tr>
+                <td class="kv-label">{{ i18n.price_label }}</td>
+                <td class="kv-value">{{ ticket.price_text }}</td>
+              </tr>
+              {% endif %}
+            </table>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <table class="layout">
+      <tr>
+        <td style="width: 60%;">
+          <div class="card">
+            <div class="section-title">{{ i18n.trip_section }}</div>
+            <div class="block">
+              <div class="ticket-title">{{ departure.title }}</div>
+              <table class="kv-table">
+                <tr>
+                  <td class="kv-label">{{ i18n.datetime_label }}</td>
+                  <td class="kv-value">{{ departure.date or i18n.value_not_available }} {{ departure.time or '' }}</td>
+                </tr>
+                <tr>
+                  <td class="kv-label">{{ i18n.address_label }}</td>
+                  <td class="kv-value break">{{ departure.address or i18n.value_not_available }}</td>
+                </tr>
+                {% if departure.map_url %}
+                <tr>
+                  <td class="kv-label">{{ i18n.open_map }}</td>
+                  <td class="kv-value break"><a href="{{ departure.map_url }}">{{ departure.map_url }}</a></td>
+                </tr>
+                {% endif %}
+              </table>
+            </div>
+            <div class="block">
+              <div class="ticket-title">{{ arrival.title }}</div>
+              <table class="kv-table">
+                <tr>
+                  <td class="kv-label">{{ i18n.datetime_label }}</td>
+                  <td class="kv-value">{{ arrival.date or i18n.value_not_available }} {{ arrival.time or '' }}</td>
+                </tr>
+                <tr>
+                  <td class="kv-label">{{ i18n.address_label }}</td>
+                  <td class="kv-value break">{{ arrival.address or i18n.value_not_available }}</td>
+                </tr>
+                {% if arrival.map_url %}
+                <tr>
+                  <td class="kv-label">{{ i18n.open_map }}</td>
+                  <td class="kv-value break"><a href="{{ arrival.map_url }}">{{ arrival.map_url }}</a></td>
+                </tr>
+                {% endif %}
+              </table>
+            </div>
+            {% if timeline.duration_text %}
+            <div class="block">
+              <div class="section-title">{{ i18n.duration_label }}</div>
+              <div>{{ timeline.duration_text }}</div>
+            </div>
+            {% endif %}
+          </div>
+        </td>
+        <td style="width: 40%;">
+          <div class="card block">
+            <div class="section-title">{{ i18n.passenger_section }}</div>
+            <table class="kv-table">
+              <tr>
+                <td class="kv-label">{{ i18n.full_name_label }}</td>
+                <td class="kv-value">{{ passenger.name or i18n.value_not_available }}</td>
+              </tr>
+              {% if passenger.phone %}
+              <tr>
+                <td class="kv-label">{{ i18n.phone_label }}</td>
+                <td class="kv-value break">{{ passenger.phone }}</td>
+              </tr>
+              {% endif %}
+              {% if passenger.email %}
+              <tr>
+                <td class="kv-label">Email</td>
+                <td class="kv-value break">{{ passenger.email }}</td>
+              </tr>
+              {% endif %}
+            </table>
+          </div>
+          <div class="card block">
+            <div class="section-title">{{ i18n.payment_section }}</div>
+            <table class="kv-table">
+              <tr>
+                <td class="kv-label">{{ i18n.status_label }}</td>
+                <td class="kv-value">{{ payment.status_text }}</td>
+              </tr>
+              <tr>
+                <td class="kv-label">{{ i18n.method_label }}</td>
+                <td class="kv-value break">{{ payment.method_text }}</td>
+              </tr>
+              <tr>
+                <td class="kv-label">{{ i18n.amount_label }}</td>
+                <td class="kv-value">{{ payment.amount_text }}</td>
+              </tr>
+            </table>
+          </div>
+          <div class="card">
+            <div class="section-title">Онлайн</div>
+            <table class="kv-table">
+              <tr>
+                <td style="width: 48%;">
+                  <div class="qr-box">
+                    {% if qr_data_uri %}
+                      <img src="{{ qr_data_uri }}" alt="QR" width="132" height="132" />
+                    {% else %}
+                      <div class="hint">{{ i18n.qr_unavailable }}</div>
+                    {% endif %}
+                  </div>
+                </td>
+                <td style="width: 52%;">
+                  <div class="hint">{{ i18n.qr_hint }}</div>
+                  <div class="break" style="margin-top: 6px;">{{ deep_link or i18n.value_not_available }}</div>
+                </td>
+              </tr>
+            </table>
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <div class="footer">
+      {{ i18n.footer_note }} · {{ i18n.footer_brand }}
+    </div>
+  </div>
+</body>
+</html>
