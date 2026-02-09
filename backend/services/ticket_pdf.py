@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import base64
-import json
-import os
 from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
@@ -374,7 +372,7 @@ def _build_template_context(
 def render_ticket_html(
     dto: Mapping[str, Any],
     deep_link: Optional[str],
-    template_name: str = "ticket_pdf.html",
+    template_name: str = "ticket_weasy.html",
 ) -> str:
     """Render a ticket HTML document from a DTO and a deep link."""
 
@@ -386,16 +384,7 @@ def render_ticket_html(
 def render_ticket_pdf(dto: Mapping[str, Any], deep_link: Optional[str]) -> bytes:
     """Render a ticket PDF from a DTO and a deep link."""
 
-    context = _build_template_context(dto, deep_link)
-    template = _ENV.get_template("ticket_pdf.html")
-    html = template.render(**context)
+    html = render_ticket_html(dto, deep_link)
     base_url = str(_TEMPLATES_DIR)
     pdf_bytes = HTML(string=html, base_url=base_url).write_pdf()
-    if os.getenv("TICKET_PDF_DEBUG") == "1":
-        Path("/tmp/ticket_rendered.html").write_text(html, encoding="utf-8")
-        Path("/tmp/ticket_context.json").write_text(
-            json.dumps(context, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        Path("/tmp/ticket.pdf").write_bytes(pdf_bytes)
     return pdf_bytes

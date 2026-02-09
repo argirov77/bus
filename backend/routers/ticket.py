@@ -51,20 +51,18 @@ class TicketOut(BaseModel):
 
 @router.get("/dev/test-pdf", include_in_schema=False)
 def get_dev_ticket_pdf(debug: bool = True) -> Response:
-    long_email = "verylongemailaddresswithmanycharactersandsegments_" * 3
+    long_email = "verylongemailaddresswithmanycharactersandsegments_" * 2
     long_email = f"{long_email}test@example.com"
     long_address = (
-        "ОченьДлинныйАдресБезПробеловКоторыйНужноПереноситьНаСледующуюСтроку" * 3
+        "ОченьДлинныйАдресБезПробеловКоторыйНужноПереноситьНаСледующуюСтроку" * 2
     )
-    long_city_from = "СофияОченьДлинноеНазваниеГородаБезПробелов" * 2
-    long_city_to = "КиевОченьДлинноеНазваниеГородаБезПробелов" * 2
-    long_number = "TICKET-" + ("1234567890" * 8)
-    long_order = "ORDER-" + ("9876543210" * 8)
+    long_number = "TICKET-" + ("1234567890" * 6)
+    long_order = "ORDER-" + ("9876543210" * 6)
     deep_link = (
         "https://client.example.com/api/q/"
-        + "opaque-token-" * 10
+        + "opaque-token-" * 8
         + "?param="
-        + "x" * 220
+        + "x" * 120
     )
 
     dto = {
@@ -73,21 +71,21 @@ def get_dev_ticket_pdf(debug: bool = True) -> Response:
             "stops": [
                 {
                     "id": 1,
-                    "name": long_city_from,
+                    "name": "София Центральная Автостанция",
                     "description": long_address,
-                    "location": "https://maps.example.com/" + "very-long-map-link-" * 8,
+                    "location": "https://maps.example.com/" + "very-long-map-link-" * 6,
                 },
                 {
                     "id": 2,
-                    "name": long_city_to,
+                    "name": "Киев Автовокзал",
                     "description": long_address,
-                    "location": "https://maps.example.com/" + "arrival-map-link-" * 8,
+                    "location": "https://maps.example.com/" + "arrival-map-link-" * 6,
                 },
             ]
         },
         "segment": {
-            "departure": {"id": 1, "name": long_city_from, "time": "06:30"},
-            "arrival": {"id": 2, "name": long_city_to, "time": "18:45"},
+            "departure": {"id": 1, "name": "София", "time": "06:30"},
+            "arrival": {"id": 2, "name": "Киев", "time": "18:45"},
             "duration_minutes": 855,
         },
         "tour": {"date": "2025-05-21"},
