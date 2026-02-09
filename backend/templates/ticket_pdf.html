@@ -84,8 +84,21 @@ body{
   vertical-align:middle;
 }
 
-.brandMark img{width:22px;height:auto;filter:brightness(0) invert(1);display:block;margin:0 auto}
-.brandWord img{height:14px;filter:brightness(0) invert(1);display:block}
+.brandMark img{
+  width:24px;
+  height:auto;
+  filter:invert(1) brightness(1.35) contrast(1.2) drop-shadow(0 0 1px rgba(255,255,255,.45));
+  display:block;
+  margin:0 auto;
+}
+.brandWord img{
+  height:16px;
+  filter:invert(1) brightness(1.35) contrast(1.2) drop-shadow(0 0 1px rgba(255,255,255,.45));
+  display:inline-block;
+  padding:2px 4px;
+  border-radius:6px;
+  background:rgba(255,255,255,.18);
+}
 
 .statusPill{
   display:inline-block;
