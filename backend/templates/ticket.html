@@ -1,1 +1,506 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MAKSIMOV TOURS — Ticket</title>
 
+<style>
+:root{
+  --bg:#F2F5FB;
+  --paper:#ffffff;
+  --ink:#0B1220;
+  --muted:#5F708A;
+  --line:#E6ECF5;
+
+  --primary:#1E4D7A;
+  --primary2:#0E2E4F;
+
+  --ok:#16A34A;
+  --bad:#EF4444;
+
+  --shadow:0 18px 45px rgba(15,23,42,.12);
+
+  --font: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  background:#fff;
+  font-family:var(--font);
+  color:var(--ink);
+  font-size:14px;
+  -webkit-font-smoothing:antialiased;
+}
+
+.wrap{
+  display:flex;
+  justify-content:center;
+  padding:20px;
+}
+
+.sheet{
+  width:980px;
+  background:var(--bg);
+  border-radius:26px;
+  padding:16px;                 /* 980 - 32 = 948px inner */
+}
+
+.ticket{
+  background:var(--paper);
+  border-radius:26px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+
+/* ===== TOP STRIPE ===== */
+.stripe{
+  background:linear-gradient(90deg,var(--primary2),var(--primary));
+  color:#fff;
+  padding:14px 18px;
+  display:grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items:center;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+.brandMark{
+  width:36px;height:36px;
+  border-radius:12px;
+  background:rgba(255,255,255,.15);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 auto;
+}
+.brandMark img{width:22px;height:auto;filter:brightness(0) invert(1);display:block}
+.brandWord img{height:14px;filter:brightness(0) invert(1);display:block}
+
+.statusPill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 14px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.08em;
+  border:1px solid rgba(255,255,255,.25);
+  background:rgba(255,255,255,.14);
+  white-space:nowrap;
+}
+.statusDot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--bad);
+}
+.statusPill[data-pay="PAID"] .statusDot{background:var(--ok)}
+
+.headerMeta{
+  justify-self:end;
+  text-align:right;
+  font-size:14px;
+  font-weight:700;
+  white-space:nowrap;
+}
+
+/* ===== MAIN GRID (strict math) ===== */
+/* inner width = 948px
+   left 630 + gap 18 + right 300 = 948 ✅ */
+.main{
+  padding:18px;
+  display:grid;
+  grid-template-columns: 630px 300px;
+  gap:18px;
+  align-items:start;
+}
+
+/* ===== LEFT BOARD ===== */
+.board{
+  width:630px;
+  border:1px solid var(--line);
+  border-radius:22px;
+  background:#fff;
+  overflow:hidden;
+}
+
+/* ROUTE */
+.route{
+  padding:16px 18px;
+  border-bottom:1px solid var(--line);
+  display:flex;
+  justify-content:space-between;
+  gap:16px;
+}
+
+/* left route content */
+.routeGrid{
+  width:100%;
+  display:grid;
+  grid-template-columns: 1fr 34px 1fr;
+  gap:16px;
+  min-width:0;
+}
+
+.city{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.city.alignRight{text-align:right;align-items:flex-end}
+
+.citySub{
+  font-size:11px;
+  letter-spacing:.14em;
+  font-weight:700;
+  color:var(--muted);
+}
+
+.cityName{
+  font-size:30px;
+  font-weight:800;
+  letter-spacing:-.01em;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:100%;
+}
+
+.arrow{
+  width:34px;
+  text-align:center;
+  font-size:22px;
+  font-weight:700;
+  color:var(--muted);
+  margin-top:22px;
+}
+
+.stopTime{
+  font-family:var(--mono);
+  font-size:16px;
+  font-weight:700;
+  white-space:nowrap;
+}
+
+.stopLoc{
+  font-size:13px;
+  color:var(--muted);
+  font-weight:600;
+  max-width:260px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* route right date inside hero */
+.routeRight{
+  width:130px;
+  text-align:right;
+  flex:0 0 auto;
+}
+.routeRight .date{
+  font-size:16px;
+  font-weight:800;
+  white-space:nowrap;
+}
+
+/* PASSENGER */
+.passenger{
+  padding:14px 18px;
+  border-bottom:1px solid var(--line);
+}
+.sectionLabel{
+  font-size:11px;
+  letter-spacing:.14em;
+  font-weight:700;
+  color:var(--muted);
+  margin-bottom:10px;
+}
+.pRow{
+  display:grid;
+  grid-template-columns:80px 1fr;
+  gap:12px;
+  margin-bottom:8px;
+}
+.pKey{
+  font-size:11px;
+  letter-spacing:.14em;
+  font-weight:700;
+  color:var(--muted);
+}
+.pVal{
+  font-size:14px;
+  font-weight:700;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.pVal.mono{
+  font-family:var(--mono);
+  font-weight:600;
+}
+
+/* INCLUDED */
+.included{
+  padding:14px 18px 16px;
+}
+.pills{
+  display:grid;
+  grid-template-columns: 120px 1fr 140px;
+  gap:10px;
+}
+.pill{
+  border:1px solid var(--line);
+  background:#F6F8FC;
+  border-radius:14px;
+  padding:10px 12px;
+  min-width:0;
+}
+.pill .k{
+  font-size:10px;
+  letter-spacing:.14em;
+  font-weight:700;
+  color:var(--muted);
+}
+.pill .v{
+  margin-top:4px;
+  font-family:var(--mono);
+  font-size:13px;
+  font-weight:700;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* ===== QR ===== */
+.qr{
+  width:300px;
+  border:1px solid var(--line);
+  border-radius:22px;
+  background:#fff;
+  overflow:hidden;
+}
+
+.qrHead{
+  padding:14px;
+  border-bottom:1px solid var(--line);
+  font-size:11px;
+  letter-spacing:.14em;
+  font-weight:700;
+  color:var(--muted);
+}
+
+.qrBox{
+  padding:14px;
+  display:flex;
+  justify-content:center;
+}
+.qrBoxInner{
+  width:240px;
+  height:240px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:relative;
+  overflow:hidden;
+  background:#fff;
+}
+.qrBoxInner img{width:100%;height:100%;object-fit:contain;display:block}
+.qrOffline{
+  position:absolute;
+  bottom:10px;left:12px;right:12px;
+  text-align:center;
+  font-size:12px;
+  color:var(--muted);
+  font-weight:700;
+}
+.qrFoot{
+  padding:14px;
+  border-top:1px solid var(--line);
+}
+.btn{
+  width:100%;
+  padding:12px;
+  border-radius:14px;
+  background:var(--primary);
+  color:#fff;
+  border:none;
+  font-size:14px;
+  font-weight:800;
+  cursor:pointer;
+}
+
+/* FOOTER */
+.footer{
+  background:#0B1220;
+  color:#fff;
+  padding:14px 18px;
+  display:flex;
+  justify-content:space-between;
+  font-size:13px;
+}
+.footer a{color:#fff;text-decoration:none}
+.footer b{font-weight:800}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+  <div class="sheet">
+    <div class="ticket">
+
+      <div class="stripe">
+        <div class="brand">
+          <div class="brandMark"><img src="./logo/logo.svg" alt=""></div>
+          <div class="brandWord"><img src="./logo/speling.svg" alt=""></div>
+        </div>
+
+        <div class="statusPill" id="statusPill" data-pay="UNPAID">
+          <span class="statusDot"></span>
+          <span id="statusText">НЕ ОПЛАЧЕН</span>
+        </div>
+
+        <div class="headerMeta" id="headerDate">09 Feb 2026</div>
+      </div>
+
+      <div class="main">
+
+        <div class="board">
+          <div class="route">
+            <div class="routeGrid">
+              <div class="city">
+                <div class="citySub">ОТПРАВЛЕНИЕ</div>
+                <div class="cityName" id="fromCity">Болград</div>
+                <div class="stopTime" id="depTime">12:03</div>
+                <div class="stopLoc" id="depLoc">Поворот</div>
+              </div>
+
+              <div class="arrow">→</div>
+
+              <div class="city alignRight">
+                <div class="citySub">ПРИБЫТИЕ</div>
+                <div class="cityName" id="toCity">Констанца</div>
+                <div class="stopTime" id="arrTime">13:10</div>
+                <div class="stopLoc" id="arrLoc">OMV Заправка</div>
+              </div>
+            </div>
+
+
+          </div>
+
+          <div class="passenger">
+            <div class="sectionLabel">ПАССАЖИР</div>
+            <div class="pRow"><div class="pKey">ИМЯ</div><div class="pVal" id="passengerName">Дмитрий Стойков</div></div>
+            <div class="pRow"><div class="pKey">EMAIL</div><div class="pVal mono" id="passengerEmail">admin@example.com</div></div>
+            <div class="pRow"><div class="pKey">ТЕЛ.</div><div class="pVal mono" id="passengerPhone">+380 553 252 3523</div></div>
+          </div>
+
+          <div class="included">
+            <div class="sectionLabel">ВКЛЮЧЕНО</div>
+            <div class="pills">
+              <div class="pill"><div class="k">МЕСТО</div><div class="v" id="seat">13</div></div>
+              <div class="pill"><div class="k">БАГАЖ</div><div class="v" id="baggage">1 + ручная кладь</div></div>
+              <div class="pill"><div class="k">ЦЕНА</div><div class="v" id="price">15.00 UAH</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="qr">
+          <div class="qrHead">SCAN</div>
+          <div class="qrBox">
+            <div class="qrBoxInner" id="qrBoxInner">
+              <img id="qrImg" alt="QR" style="display:none">
+              <div class="qrOffline" id="qrOffline">QR unavailable (offline)</div>
+            </div>
+          </div>
+          <div class="qrFoot">
+            <button class="btn" id="manageBtn">Управлять поездкой</button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="footer">
+        <b>MAKSIMOV TOURS</b>
+        <span>+359 88 123 4567</span>
+        <span>support@maximov.tours</span>
+        <span>www.maximov.tours</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script>
+  const TICKET = {
+    payStatus: "UNPAID", // PAID | UNPAID
+    date: "09 Feb 2026",
+
+    departure: { city: "Болград", time: "12:03", loc: "Поворот" },
+    arrival:   { city: "Констанца", time: "13:10", loc: "OMV Заправка" },
+
+    passenger: { name: "Дмитрий Стойков", email: "admin@example.com", phone: "+380 553 252 3523" },
+
+    included: { seat: "13", baggage: "1 + ручная кладь", price: "15.00 UAH" },
+
+    manageUrl: "https://maximov.tours/manage?order=8&ticket=21",
+    qrData: "" // если будет строка — сгенерим QR
+  };
+
+  // Status
+  document.getElementById("statusPill").dataset.pay = TICKET.payStatus;
+  document.getElementById("statusText").textContent = (TICKET.payStatus === "PAID") ? "ОПЛАЧЕН" : "НЕ ОПЛАЧЕН";
+
+  // Date in header + hero
+  document.getElementById("headerDate").textContent = TICKET.date;
+  document.getElementById("dateText").textContent = TICKET.date;
+
+  // Hero
+  document.getElementById("fromCity").textContent = TICKET.departure.city;
+  document.getElementById("toCity").textContent = TICKET.arrival.city;
+  document.getElementById("depTime").textContent = TICKET.departure.time;
+  document.getElementById("arrTime").textContent = TICKET.arrival.time;
+  document.getElementById("depLoc").textContent = TICKET.departure.loc;
+  document.getElementById("arrLoc").textContent = TICKET.arrival.loc;
+
+  // Passenger
+  document.getElementById("passengerName").textContent = TICKET.passenger.name;
+  document.getElementById("passengerEmail").textContent = TICKET.passenger.email;
+  document.getElementById("passengerPhone").textContent = TICKET.passenger.phone;
+
+  // Included
+  document.getElementById("seat").textContent = TICKET.included.seat;
+  document.getElementById("baggage").textContent = TICKET.included.baggage;
+  document.getElementById("price").textContent = TICKET.included.price;
+
+  // Manage
+  document.getElementById("manageBtn").onclick = () => window.open(TICKET.manageUrl, "_blank", "noopener");
+
+  // QR
+  const qrImg = document.getElementById("qrImg");
+  const qrOffline = document.getElementById("qrOffline");
+
+  if (window.QRCode && TICKET.qrData) {
+    QRCode.toDataURL(TICKET.qrData, { margin: 1, width: 240 }, (err, url) => {
+      if (!err) {
+        qrImg.src = url;
+        qrImg.style.display = "block";
+        qrOffline.style.display = "none";
+      }
+    });
+  }
+</script>
+</body>
+</html>
