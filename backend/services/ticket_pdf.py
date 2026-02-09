@@ -37,7 +37,6 @@ _DEFAULT_I18N: Dict[str, Any] = {
     "hand_luggage": "ручная кладь",
     "passenger_label": "Пассажир",
     "passenger_section": "Пассажир",
-    "included_label": "ВКЛЮЧЕНО",
     "full_name_label": "ФИО",
     "phone_label": "Телефон",
     "route_label": "Маршрут",
@@ -373,7 +372,7 @@ def _build_template_context(
 def render_ticket_html(
     dto: Mapping[str, Any],
     deep_link: Optional[str],
-    template_name: str = "ticket_pdf.html",
+    template_name: str = "ticket_weasy.html",
 ) -> str:
     """Render a ticket HTML document from a DTO and a deep link."""
 
