@@ -60,7 +60,7 @@ body{
 .stripe{
   background:linear-gradient(90deg,var(--primary2),var(--primary));
   color:#fff;
-  padding:14px 18px;
+  padding:12px 18px;
   display:grid;
   grid-template-columns: 1fr auto 1fr;
   align-items:center;
@@ -69,20 +69,25 @@ body{
 .brand{
   display:flex;
   align-items:center;
-  gap:10px;
+  gap:12px;
   min-width:0;
+  line-height:1;
+  margin:0;
+  padding:0;
 }
 .brandMark{
-  width:36px;height:36px;
+  width:40px;height:40px;
   border-radius:12px;
   background:rgba(255,255,255,.15);
   display:flex;
   align-items:center;
   justify-content:center;
   flex:0 0 auto;
+  line-height:0;
 }
-.brandMark img{width:22px;height:auto;filter:brightness(0) invert(1);display:block}
-.brandWord img{height:14px;filter:brightness(0) invert(1);display:block}
+.brandMark img{height:30px;width:auto;filter:brightness(0) invert(1);display:block}
+.brandWord{line-height:1;margin:0;padding:0}
+.brandWord img{height:18px;width:auto;filter:brightness(0) invert(1);display:block;line-height:0}
 
 .statusPill{
   display:inline-flex;

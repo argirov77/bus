@@ -65,7 +65,7 @@ body{
 .stripe{
   background:linear-gradient(90deg,var(--primary2),var(--primary));
   color:#fff;
-  padding:14px 18px;
+  padding:12px 18px;
 }
 
 .stripeTable{
@@ -79,21 +79,30 @@ body{
   vertical-align:middle;
 }
 
-.brandTable{
-  border-spacing:10px 0;
-  border-collapse:separate;
+.brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-width:0;
+  line-height:1;
+  margin:0;
+  padding:0;
 }
 
 .brandMark{
-  width:36px;height:36px;
+  width:40px;height:40px;
   border-radius:12px;
   background:rgba(255,255,255,.15);
-  text-align:center;
-  vertical-align:middle;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 auto;
+  line-height:0;
 }
 
-.brandMark img{width:22px;height:auto;filter:brightness(0) invert(1);display:block;margin:0 auto}
-.brandWord img{height:14px;filter:brightness(0) invert(1);display:block}
+.brandMark img{height:30px;width:auto;filter:brightness(0) invert(1);display:block}
+.brandWord{line-height:1;margin:0;padding:0}
+.brandWord img{height:18px;width:auto;filter:brightness(0) invert(1);display:block;line-height:0}
 
 .statusPill{
   display:inline-block;
@@ -394,12 +403,10 @@ body{
           </colgroup>
           <tr>
             <td>
-              <table class="brandTable">
-                <tr>
-                  <td class="brandMark"><img src="./logo/logo.svg" alt=""></td>
-                  <td class="brandWord"><img src="./logo/speling.svg" alt=""></td>
-                </tr>
-              </table>
+              <div class="brand">
+                <div class="brandMark"><img src="./logo/logo.svg" alt=""></div>
+                <div class="brandWord"><img src="./logo/speling.svg" alt=""></div>
+              </div>
             </td>
             <td style="text-align:center;">
               <span class="statusPill" id="statusPill" data-pay="UNPAID">
