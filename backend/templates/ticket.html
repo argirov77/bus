@@ -121,6 +121,9 @@ body{
   gap:18px;
   align-items:start;
 }
+.main > *{
+  min-width:0;
+}
 
 /* ===== LEFT BOARD ===== */
 .board{
@@ -138,6 +141,7 @@ body{
   display:flex;
   justify-content:space-between;
   gap:16px;
+  min-width:0;
 }
 
 /* left route content */
@@ -205,6 +209,7 @@ body{
   width:130px;
   text-align:right;
   flex:0 0 auto;
+  min-width:0;
 }
 .routeRight .date{
   font-size:16px;
@@ -226,9 +231,10 @@ body{
 }
 .pRow{
   display:grid;
-  grid-template-columns:80px 1fr;
+  grid-template-columns:42% 58%;
   gap:12px;
   margin-bottom:8px;
+  min-width:0;
 }
 .pKey{
   font-size:11px;
@@ -257,6 +263,7 @@ body{
   display:grid;
   grid-template-columns: 120px 1fr 140px;
   gap:10px;
+  min-width:0;
 }
 .pill{
   border:1px solid var(--line);
@@ -279,6 +286,18 @@ body{
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
+}
+.break{
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  max-width:100%;
+}
+
+.break.block{
+  display:block;
 }
 
 /* ===== QR ===== */
@@ -303,6 +322,7 @@ body{
   padding:14px;
   display:flex;
   justify-content:center;
+  min-width:0;
 }
 .qrBoxInner{
   width:240px;
@@ -341,6 +361,7 @@ body{
   text-decoration:none;
   display:inline-block;
   text-align:center;
+  max-width:100%;
 }
 
 /* FOOTER */
@@ -351,9 +372,21 @@ body{
   display:flex;
   justify-content:space-between;
   font-size:13px;
+  flex-wrap:wrap;
+  gap:8px 12px;
+}
+.footer > *{
+  min-width:0;
 }
 .footer a{color:#fff;text-decoration:none}
 .footer b{font-weight:800}
+
+@media print{
+  body{background:#fff}
+  .wrap{padding:0}
+  .sheet{width:100%;background:#fff;padding:0}
+  .ticket{box-shadow:none}
+}
 </style>
 </head>
 
@@ -373,7 +406,7 @@ body{
           <span>{{ status_chip.text }}</span>
         </div>
 
-        <div class="headerMeta">{{ ticket.trip_date or i18n.value_not_available }}</div>
+        <div class="headerMeta">{{ (ticket.trip_date or i18n.value_not_available) | e }}</div>
       </div>
 
       <div class="main">
@@ -383,39 +416,39 @@ body{
             <div class="routeGrid">
               <div class="city">
                 <div class="citySub">{{ i18n.departure_label|upper }}</div>
-                <div class="cityName">{{ route.from_city or i18n.value_not_available }}</div>
-                <div class="stopTime">{{ departure.time or i18n.value_not_available }}</div>
-                <div class="stopLoc">{{ departure.address or i18n.value_not_available }}</div>
+                <div class="cityName break">{{ (route.from_city or i18n.value_not_available) | e }}</div>
+                <div class="stopTime">{{ (departure.time or i18n.value_not_available) | e }}</div>
+                <div class="stopLoc break">{{ (departure.address or i18n.value_not_available) | e | replace("\n", "<br>") | safe }}</div>
               </div>
 
               <div class="arrow">→</div>
 
               <div class="city alignRight">
                 <div class="citySub">{{ i18n.arrival_label|upper }}</div>
-                <div class="cityName">{{ route.to_city or i18n.value_not_available }}</div>
-                <div class="stopTime">{{ arrival.time or i18n.value_not_available }}</div>
-                <div class="stopLoc">{{ arrival.address or i18n.value_not_available }}</div>
+                <div class="cityName break">{{ (route.to_city or i18n.value_not_available) | e }}</div>
+                <div class="stopTime">{{ (arrival.time or i18n.value_not_available) | e }}</div>
+                <div class="stopLoc break">{{ (arrival.address or i18n.value_not_available) | e | replace("\n", "<br>") | safe }}</div>
               </div>
             </div>
 
             <div class="routeRight">
-              <div class="date">{{ ticket.trip_date or i18n.value_not_available }}</div>
+              <div class="date">{{ (ticket.trip_date or i18n.value_not_available) | e }}</div>
             </div>
           </div>
 
           <div class="passenger">
             <div class="sectionLabel">{{ i18n.passenger_section|upper }}</div>
-            <div class="pRow"><div class="pKey">{{ i18n.full_name_label|upper }}</div><div class="pVal">{{ passenger.name or i18n.value_not_available }}</div></div>
-            <div class="pRow"><div class="pKey">EMAIL</div><div class="pVal mono">{{ passenger.email or i18n.value_not_available }}</div></div>
-            <div class="pRow"><div class="pKey">{{ i18n.phone_label|upper }}</div><div class="pVal mono">{{ passenger.phone or i18n.value_not_available }}</div></div>
+            <div class="pRow"><div class="pKey">{{ i18n.full_name_label|upper }}</div><div class="pVal break">{{ (passenger.name or i18n.value_not_available) | e }}</div></div>
+            <div class="pRow"><div class="pKey">EMAIL</div><div class="pVal mono break">{{ (passenger.email or i18n.value_not_available) | e }}</div></div>
+            <div class="pRow"><div class="pKey">{{ i18n.phone_label|upper }}</div><div class="pVal mono break">{{ (passenger.phone or i18n.value_not_available) | e }}</div></div>
           </div>
 
           <div class="included">
             <div class="sectionLabel">{{ i18n.trip_section|upper }}</div>
             <div class="pills">
-              <div class="pill"><div class="k">{{ i18n.seat_label|upper }}</div><div class="v">{{ ticket.seat_number or i18n.value_not_available }}</div></div>
-              <div class="pill"><div class="k">{{ i18n.baggage_label|upper }}</div><div class="v">{{ ticket.baggage_text or i18n.value_not_available }}</div></div>
-              <div class="pill"><div class="k">{{ i18n.price_label|upper }}</div><div class="v">{{ ticket.price_text or i18n.value_not_available }}</div></div>
+              <div class="pill"><div class="k">{{ i18n.seat_label|upper }}</div><div class="v break">{{ (ticket.seat_number or i18n.value_not_available) | e }}</div></div>
+              <div class="pill"><div class="k">{{ i18n.baggage_label|upper }}</div><div class="v break">{{ (ticket.baggage_text or i18n.value_not_available) | e }}</div></div>
+              <div class="pill"><div class="k">{{ i18n.price_label|upper }}</div><div class="v break">{{ (ticket.price_text or i18n.value_not_available) | e }}</div></div>
             </div>
           </div>
         </div>
@@ -443,10 +476,10 @@ body{
       </div>
 
       <div class="footer">
-        <b>{{ i18n.brand_name }}</b>
-        <span>{{ i18n.company_phone }}</span>
-        <span>{{ i18n.company_email }}</span>
-        <span>{{ i18n.company_web }}</span>
+        <b class="break block">{{ i18n.brand_name | e }}</b>
+        <span class="break block">{{ i18n.company_phone | e }}</span>
+        <span class="break block">{{ i18n.company_email | e }}</span>
+        <span class="break block">{{ i18n.company_web | e }}</span>
       </div>
 
     </div>
