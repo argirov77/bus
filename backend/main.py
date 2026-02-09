@@ -35,6 +35,7 @@ from .routers import (
 )
 from .routers.ticket_admin import router as admin_tickets_router
 from .routers.purchase_admin import router as admin_purchases_router
+from .routers.dev_ticket import router as dev_ticket_router
 
 
 app = FastAPI()
@@ -95,6 +96,8 @@ app.include_router(public.router)
 app.include_router(admin_tickets_router)
 app.include_router(admin_purchases_router)
 app.include_router(auth.router)
+if os.getenv("ENABLE_DEV_TICKET_ENDPOINTS") == "1":
+    app.include_router(dev_ticket_router)
 
 
 def _cancel_expired_loop():

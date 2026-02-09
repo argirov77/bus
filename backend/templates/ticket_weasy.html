@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="{{ i18n.lang or 'ru' }}">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>{{ page_title }}</title>
+<style>
+  :root {
+    --ink: #0b1220;
+    --muted: #5f708a;
+    --line: #e6ecf5;
+    --bg: #ffffff;
+    --accent: #1e4d7a;
+    --accent-soft: #eef4fb;
+    --success: #16a34a;
+    --danger: #ef4444;
+    --font: "Inter", "Segoe UI", Arial, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    padding: 24px;
+    background: #ffffff;
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 12px;
+  }
+
+  td {
+    vertical-align: top;
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .page {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+  }
+
+  .brand {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+  }
+
+  .ticket-label {
+    font-size: 16px;
+    font-weight: 700;
+    margin-top: 4px;
+  }
+
+  .route {
+    font-size: 22px;
+    font-weight: 800;
+    margin-top: 8px;
+  }
+
+  .subtle {
+    color: var(--muted);
+  }
+
+  .status-chip {
+    display: inline-block;
+    padding: 6px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    background: #fff3f2;
+    color: var(--danger);
+  }
+
+  .status-chip.ok {
+    background: #ecfdf3;
+    color: var(--success);
+  }
+
+  .meta-table td {
+    padding: 0;
+  }
+
+  .meta-label {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .meta-value {
+    font-weight: 600;
+  }
+
+  .section-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .block {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px;
+    background: #ffffff;
+  }
+
+  .block + .block {
+    margin-top: 12px;
+  }
+
+  .block-title {
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .row {
+    margin-bottom: 6px;
+  }
+
+  .row:last-child {
+    margin-bottom: 0;
+  }
+
+  .label {
+    font-size: 11px;
+    color: var(--muted);
+    display: block;
+  }
+
+  .value {
+    font-weight: 600;
+    display: block;
+  }
+
+  .cta {
+    display: inline-block;
+    padding: 8px 10px;
+    background: var(--accent);
+    color: #ffffff;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .qr-box {
+    width: 132px;
+    height: 132px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 6px;
+  }
+
+  .qr-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .footer {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .break {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+</style>
+</head>
+<body>
+  <table class="page">
+    <tr>
+      <td>
+        <table>
+          <tr>
+            <td>
+              <div class="brand">{{ i18n.brand_name }}</div>
+              <div class="ticket-label">{{ i18n.ticket_label }}</div>
+              <div class="route break">{{ route.label or i18n.value_not_available }}</div>
+              <div class="subtle">{{ i18n.trip_date_label }}: {{ ticket.trip_date or i18n.value_not_available }}</div>
+            </td>
+            <td>
+              <div class="status-chip {{ status_chip.css_class }}">{{ status_chip.text }}</div>
+              <table class="meta-table">
+                <tr>
+                  <td class="meta-label">{{ i18n.ticket_number_label }}</td>
+                  <td class="meta-value break">{{ ticket.number or i18n.value_not_available }}</td>
+                </tr>
+                <tr>
+                  <td class="meta-label">{{ i18n.order_label }}</td>
+                  <td class="meta-value break">{{ ticket.order_number or i18n.value_not_available }}</td>
+                </tr>
+                <tr>
+                  <td class="meta-label">{{ i18n.seat_label }}</td>
+                  <td class="meta-value">{{ ticket.seat_number or i18n.value_not_available }}</td>
+                </tr>
+                <tr>
+                  <td class="meta-label">{{ i18n.baggage_label }}</td>
+                  <td class="meta-value">{{ ticket.baggage_text or i18n.value_not_available }}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <table>
+          <colgroup>
+            <col style="width:60%"/>
+            <col style="width:40%"/>
+          </colgroup>
+          <tr>
+            <td>
+              <div class="section-title">{{ i18n.trip_section }}</div>
+              <div class="block">
+                <div class="block-title">{{ departure.title }}</div>
+                <div class="row">
+                  <span class="label">{{ i18n.datetime_label }}</span>
+                  <span class="value">{{ departure.date or i18n.value_not_available }} {{ departure.time or '' }}</span>
+                </div>
+                <div class="row">
+                  <span class="label">{{ i18n.address_label }}</span>
+                  <span class="value break">{{ departure.address or i18n.value_not_available }}</span>
+                </div>
+                {% if departure.map_url %}
+                <div class="row">
+                  <span class="label">{{ i18n.open_map }}</span>
+                  <span class="value break"><a href="{{ departure.map_url }}">{{ departure.map_url }}</a></span>
+                </div>
+                {% endif %}
+              </div>
+              <div class="block">
+                <div class="block-title">{{ arrival.title }}</div>
+                <div class="row">
+                  <span class="label">{{ i18n.datetime_label }}</span>
+                  <span class="value">{{ arrival.date or i18n.value_not_available }} {{ arrival.time or '' }}</span>
+                </div>
+                <div class="row">
+                  <span class="label">{{ i18n.address_label }}</span>
+                  <span class="value break">{{ arrival.address or i18n.value_not_available }}</span>
+                </div>
+                {% if arrival.map_url %}
+                <div class="row">
+                  <span class="label">{{ i18n.open_map }}</span>
+                  <span class="value break"><a href="{{ arrival.map_url }}">{{ arrival.map_url }}</a></span>
+                </div>
+                {% endif %}
+              </div>
+              {% if timeline.duration_text %}
+              <div class="block">
+                <div class="block-title">{{ i18n.duration_label }}</div>
+                <div class="value">{{ timeline.duration_text }}</div>
+              </div>
+              {% endif %}
+            </td>
+            <td>
+              <div class="section-title">{{ i18n.passenger_section }}</div>
+              <div class="block">
+                <div class="row">
+                  <span class="label">{{ i18n.full_name_label }}</span>
+                  <span class="value">{{ passenger.name or i18n.value_not_available }}</span>
+                </div>
+                <div class="row">
+                  <span class="label">{{ i18n.phone_label }}</span>
+                  <span class="value">{{ passenger.phone or i18n.value_not_available }}</span>
+                </div>
+                <div class="row">
+                  <span class="label">Email</span>
+                  <span class="value break">{{ passenger.email or i18n.value_not_available }}</span>
+                </div>
+              </div>
+              <div class="section-title">{{ i18n.payment_section }}</div>
+              <div class="block">
+                <div class="row">
+                  <span class="label">{{ i18n.status_label }}</span>
+                  <span class="value">{{ payment.status_text }}</span>
+                </div>
+                <div class="row">
+                  <span class="label">{{ i18n.method_label }}</span>
+                  <span class="value">{{ payment.method_text }}</span>
+                </div>
+                <div class="row">
+                  <span class="label">{{ i18n.amount_label }}</span>
+                  <span class="value">{{ payment.amount_text }}</span>
+                </div>
+              </div>
+              <div class="section-title">QR</div>
+              <div class="block">
+                <table>
+                  <colgroup>
+                    <col style="width:140px"/>
+                    <col style="width:auto"/>
+                  </colgroup>
+                  <tr>
+                    <td>
+                      <div class="qr-box">
+                        {% if qr_data_uri %}
+                        <img src="{{ qr_data_uri }}" alt="QR"/>
+                        {% else %}
+                        <div class="subtle">{{ i18n.qr_unavailable }}</div>
+                        {% endif %}
+                      </div>
+                    </td>
+                    <td>
+                      <div class="row">
+                        <span class="label">{{ i18n.manage_online_hint }}</span>
+                        <span class="value break">
+                          {% if deep_link %}
+                          <a href="{{ deep_link }}">{{ deep_link }}</a>
+                          {% else %}
+                          {{ i18n.value_not_available }}
+                          {% endif %}
+                        </span>
+                      </div>
+                      {% if deep_link %}
+                      <div class="row">
+                        <a class="cta" href="{{ deep_link }}">{{ i18n.manage_online_button }}</a>
+                      </div>
+                      {% endif %}
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td class="footer">
+        Maximov Tours · на линии {{ i18n.company_phone }} · с 1991 года · Время может отличаться
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

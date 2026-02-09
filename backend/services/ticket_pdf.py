@@ -372,9 +372,16 @@ def render_ticket_html(dto: Mapping[str, Any], deep_link: Optional[str]) -> str:
     return template.render(**context)
 
 
+def render_ticket_html_pdf(dto: Mapping[str, Any], deep_link: Optional[str]) -> str:
+    """Render a WeasyPrint-friendly ticket HTML from a DTO and a deep link."""
+    context = _build_ticket_context(dto, deep_link)
+    template = _ENV.get_template("ticket_weasy.html")
+    return template.render(**context)
+
+
 def render_ticket_pdf(dto: Mapping[str, Any], deep_link: Optional[str]) -> bytes:
     """Render a ticket PDF from a DTO and a deep link."""
-    html = render_ticket_html(dto, deep_link)
+    html = render_ticket_html_pdf(dto, deep_link)
 
     base_url = str(_TEMPLATES_DIR)
     pdf_bytes = HTML(string=html, base_url=base_url).write_pdf()
