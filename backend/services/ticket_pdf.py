@@ -291,7 +291,9 @@ def _select_currency(dto: Mapping[str, Any], i18n: Mapping[str, Any]) -> str:
     return currency
 
 
-def _build_ticket_context(dto: Mapping[str, Any], deep_link: Optional[str]) -> Dict[str, Any]:
+def render_ticket_pdf(dto: Mapping[str, Any], deep_link: Optional[str]) -> bytes:
+    """Render a ticket PDF from a DTO and a deep link."""
+
     if not isinstance(dto, Mapping):
         raise TypeError("dto must be a mapping")
 
@@ -330,15 +332,16 @@ def _build_ticket_context(dto: Mapping[str, Any], deep_link: Optional[str]) -> D
 
     qr_data_uri = _generate_qr_data_uri(deep_link)
 
-    return {
-        "page_title": page_title,
-        "i18n": i18n,
-        "route": {
+    template = _ENV.get_template("ticket.html")
+    html = template.render(
+        page_title=page_title,
+        i18n=i18n,
+        route={
             "from_city": route_ctx["from_city"],
             "to_city": route_ctx["to_city"],
             "label": route_ctx["label"],
         },
-        "ticket": {
+        ticket={
             "number": ticket_number,
             "order_number": order_number,
             "trip_date": route_ctx["trip_date"],
@@ -346,35 +349,23 @@ def _build_ticket_context(dto: Mapping[str, Any], deep_link: Optional[str]) -> D
             "baggage_text": baggage_text,
             "price_text": price_text,
         },
-        "status_chip": {
+        status_chip={
             "text": status_text,
             "css_class": status_css,
         },
-        "passenger": passenger,
-        "payment": {
+        passenger=passenger,
+        payment={
             "status_text": status_text,
             "status_color": _status_color(status_value),
             "method_text": purchase.get("payment_method") or i18n["value_not_available"],
             "amount_text": price_text or i18n["value_not_available"],
         },
-        "timeline": {"duration_text": route_ctx["timeline"]["duration_text"]},
-        "departure": route_ctx["departure"],
-        "arrival": route_ctx["arrival"],
-        "deep_link": deep_link,
-        "qr_data_uri": qr_data_uri,
-    }
-
-
-def render_ticket_html(dto: Mapping[str, Any], deep_link: Optional[str]) -> str:
-    """Render a ticket HTML from a DTO and a deep link."""
-    context = _build_ticket_context(dto, deep_link)
-    template = _ENV.get_template("ticket.html")
-    return template.render(**context)
-
-
-def render_ticket_pdf(dto: Mapping[str, Any], deep_link: Optional[str]) -> bytes:
-    """Render a ticket PDF from a DTO and a deep link."""
-    html = render_ticket_html(dto, deep_link)
+        timeline={"duration_text": route_ctx["timeline"]["duration_text"]},
+        departure=route_ctx["departure"],
+        arrival=route_ctx["arrival"],
+        deep_link=deep_link,
+        qr_data_uri=qr_data_uri,
+    )
 
     base_url = str(_TEMPLATES_DIR)
     pdf_bytes = HTML(string=html, base_url=base_url).write_pdf()
