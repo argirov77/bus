@@ -179,6 +179,9 @@ body{
   font-weight:800;
   letter-spacing:-.01em;
   margin-bottom:6px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 .arrow{
@@ -203,6 +206,9 @@ body{
   color:var(--muted);
   font-weight:600;
   max-width:260px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 /* PASSENGER */
@@ -303,8 +309,8 @@ body{
 }
 
 .qrBoxInner{
-  width:132px;
-  height:132px;
+  width:240px;
+  height:240px;
   border:1px solid var(--line);
   border-radius:18px;
   margin:0 auto;
@@ -566,7 +572,7 @@ body{
   const qrOffline = document.getElementById("qrOffline");
 
   if (window.QRCode && TICKET.qrData) {
-    QRCode.toDataURL(TICKET.qrData, { margin: 1, width: 132 }, (err, url) => {
+    QRCode.toDataURL(TICKET.qrData, { margin: 1, width: 240 }, (err, url) => {
       if (!err) {
         qrImg.src = url;
         qrImg.style.display = "block";
