@@ -1,8 +1,11 @@
 import os
 import time
+from typing import Iterator, Optional
+
 import psycopg2
 from psycopg2 import sql
 from sqlalchemy import create_engine
+from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy.orm import sessionmaker
 
 # Determine database host from environment. When running under docker-compose
@@ -10,34 +13,137 @@ from sqlalchemy.orm import sessionmaker
 # For local development we fall back to "localhost" so the application can run
 # against a local PostgreSQL instance without extra configuration.
 DEFAULT_DB_HOST = os.getenv("DB_HOST", "localhost")
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    f"postgresql://postgres:postgres@{DEFAULT_DB_HOST}:5432/test1",
-)
-
-# Derive admin connection string to the default "postgres" database
-DEFAULT_ADMIN_URL = DATABASE_URL.rsplit("/", 1)[0] + "/postgres"
 
 
-def _ensure_database_exists() -> None:
-    """Create the configured database if it doesn't exist."""
+def _default_database_url() -> str:
+    return os.getenv(
+        "DATABASE_URL",
+        f"postgresql://postgres:postgres@{DEFAULT_DB_HOST}:5432/test1",
+    )
+
+
+DATABASE_URL = _default_database_url()
+
+
+def _admin_url(db_url: str) -> str:
+    url = make_url(db_url)
+    return str(url.set(database="postgres"))
+
+
+DEFAULT_ADMIN_URL = _admin_url(DATABASE_URL)
+
+
+def _candidate_urls(base_url: str) -> Iterator[str]:
+    """Generate potential database URLs trying sensible host fallbacks.
+
+    We start with the configured URL and progressively fall back to
+    DB_HOST and localhost to support running outside docker-compose where the
+    ``db`` hostname is unavailable.
+    """
+
+    seen: set[str] = set()
+    url: URL = make_url(base_url)
+
+    # Always try the exact URL first.
+    original = str(url)
+    if original not in seen:
+        seen.add(original)
+        yield original
+
+    hosts: list[Optional[str]] = []
+
+    def add_host(candidate: Optional[str]) -> None:
+        if candidate and candidate not in hosts:
+            hosts.append(candidate)
+
+    add_host(url.host)
+    add_host(DEFAULT_DB_HOST)
+    # Additional fallbacks make it easier to connect when the API runs inside a
+    # container while PostgreSQL stays on the host machine or uses the default
+    # docker-compose service name.
+    for fallback in ("db", "postgres", "host.docker.internal", "127.0.0.1", "localhost"):
+        add_host(fallback)
+
+    ports: list[int] = []
+    if url.port is not None:
+        ports.append(url.port)
+    # Honour optional overrides commonly used in docker-compose setups.
+    for env_var in ("POSTGRES_HOST_PORT", "POSTGRES_PORT"):
+        value = os.getenv(env_var)
+        if value:
+            try:
+                port = int(value)
+            except ValueError:
+                continue
+            if port not in ports:
+                ports.append(port)
+    # Fallback to the default docker-compose host mapping.
+    if 5433 not in ports:
+        ports.append(5433)
+    if 5432 not in ports:
+        ports.append(5432)
+
+    for host in hosts:
+        if host is None:
+            continue
+        for port in ports:
+            candidate = str(url.set(host=host, port=port))
+            if candidate not in seen:
+                seen.add(candidate)
+                yield candidate
+
+
+def _create_database(db_url: str) -> None:
+    admin_url = _admin_url(db_url)
+    admin = psycopg2.connect(admin_url)
+    admin.autocommit = True
+    cur = admin.cursor()
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        conn.close()
-    except psycopg2.OperationalError as exc:
-        if "does not exist" not in str(exc):
-            raise
-
-        db_name = DATABASE_URL.rsplit("/", 1)[-1]
-        admin = psycopg2.connect(DEFAULT_ADMIN_URL)
-        admin.autocommit = True
-        cur = admin.cursor()
-        cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(db_name)))
+        cur.execute(
+            sql.SQL("CREATE DATABASE {}").format(
+                sql.Identifier(make_url(db_url).database)
+            )
+        )
+    finally:
         cur.close()
         admin.close()
 
-        # give the server a moment to register the new database
-        time.sleep(1)
+    # give the server a moment to register the new database
+    time.sleep(1)
+
+
+def _ensure_database_exists() -> None:
+    """Create the configured database if it doesn't exist.
+
+    The function also gracefully falls back to localhost when the docker
+    hostname (e.g. ``db``) is unavailable so the API can run in isolation
+    during tests.
+    """
+
+    global DATABASE_URL, DEFAULT_ADMIN_URL
+
+    last_exc: Optional[Exception] = None
+    for candidate in _candidate_urls(DATABASE_URL):
+        try:
+            conn = psycopg2.connect(candidate)
+            conn.close()
+        except psycopg2.OperationalError as exc:
+            message = str(exc)
+            last_exc = exc
+            if "does not exist" in message:
+                _create_database(candidate)
+                DATABASE_URL = candidate
+                DEFAULT_ADMIN_URL = _admin_url(candidate)
+                return
+            # try next candidate host
+            continue
+        else:
+            DATABASE_URL = candidate
+            DEFAULT_ADMIN_URL = _admin_url(candidate)
+            return
+
+    if last_exc is not None:
+        raise last_exc
 
 
 _ensure_database_exists()

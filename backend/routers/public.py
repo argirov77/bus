@@ -297,7 +297,7 @@ def _load_purchase_view(purchase_id: int, lang: str = _DEFAULT_LANG) -> Mapping[
             cur.execute(
                 """
                 SELECT id, status, amount_due, customer_name, customer_email,
-                       customer_phone, update_at
+                       customer_phone, updated_at, created_at
                   FROM purchase
                  WHERE id = %s
                 """,
@@ -318,7 +318,8 @@ def _load_purchase_view(purchase_id: int, lang: str = _DEFAULT_LANG) -> Mapping[
             cur.close()
 
         tickets = [get_ticket_dto(tid, lang, conn) for tid in ticket_ids]
-        timestamp = row[6]
+        updated_at = row[6]
+        created_at = row[7] if len(row) > 7 else updated_at
         return {
             "id": purchase_id,
             "status": row[1],
@@ -328,8 +329,8 @@ def _load_purchase_view(purchase_id: int, lang: str = _DEFAULT_LANG) -> Mapping[
                 "email": row[4],
                 "phone": row[5],
             },
-            "created_at": timestamp.isoformat() if timestamp else None,
-            "updated_at": timestamp.isoformat() if timestamp else None,
+            "created_at": created_at.isoformat() if created_at else None,
+            "updated_at": updated_at.isoformat() if updated_at else None,
             "tickets": tickets,
         }
     finally:
@@ -1248,7 +1249,7 @@ def public_reschedule(
         new_amount_due = _round_currency(amount_due + difference)
         status_update = _status_for_balance(status, new_amount_due, has_tickets=True)
         cur.execute(
-            "UPDATE purchase SET amount_due=%s, status=%s, update_at=NOW() WHERE id=%s",
+            "UPDATE purchase SET amount_due=%s, status=%s, updated_at=NOW() WHERE id=%s",
             (new_amount_due, status_update, resolved_purchase_id),
         )
 
@@ -1405,7 +1406,7 @@ def public_baggage(
         new_amount_due = _round_currency(amount_due + delta)
         status_update = _status_for_balance(status, new_amount_due, has_tickets=True)
         cur.execute(
-            "UPDATE purchase SET amount_due=%s, status=%s, update_at=NOW() WHERE id=%s",
+            "UPDATE purchase SET amount_due=%s, status=%s, updated_at=NOW() WHERE id=%s",
             (new_amount_due, status_update, resolved_purchase_id),
         )
 
@@ -1490,7 +1491,7 @@ def public_cancel(
             status, new_amount_due, has_tickets=has_tickets
         )
         cur.execute(
-            "UPDATE purchase SET amount_due=%s, status=%s, update_at=NOW() WHERE id=%s",
+            "UPDATE purchase SET amount_due=%s, status=%s, updated_at=NOW() WHERE id=%s",
             (new_amount_due, status_update, resolved_purchase_id),
         )
 

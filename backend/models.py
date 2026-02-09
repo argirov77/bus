@@ -206,8 +206,14 @@ class PurchaseBase(BaseModel):
     amount_due: Optional[float] = None
     deadline: Optional[datetime] = None
     status: Optional[str] = None
-    update_at: Optional[datetime] = None
     payment_method: Optional[str] = None
+    external_order_id: Optional[str] = None
+    currency: Optional[str] = None
+    total_due: Optional[float] = None
+    total_paid: Optional[float] = None
+    total_refunded: Optional[float] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 class PurchaseCreate(PurchaseBase):
     pass

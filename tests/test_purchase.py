@@ -12,9 +12,15 @@ class DummyCursor:
         self.queries = []
         self.query = ""
         self.rowcount = 1
+        self.amount_due = 0
     def execute(self, query, params=None):
         self.query = query
         self.queries.append((query, params))
+        q = query.lower()
+        if 'insert into purchase' in q and 'purchase_line_item' not in q and params:
+            self.amount_due = params[3]
+        if 'update purchase set amount_due' in q and params:
+            self.amount_due = params[0]
     def fetchone(self):
         q = self.query.lower()
         if "select id, seat_id from ticket" in q:
@@ -22,7 +28,9 @@ class DummyCursor:
         if "select status from purchase" in q:
             return [self.status_resp]
         if "select amount_due, customer_email from purchase" in q:
-            return [10, "a@b.com"]
+            return [self.amount_due or 10, "a@b.com"]
+        if "select total_due from purchase" in q:
+            return [self.amount_due or 10]
         if "select route_id, pricelist_id, date from tour" in q:
             return [1, 1, date(2024, 1, 1)]
         if "select route_id, date from tour" in q:

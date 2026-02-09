@@ -1,6 +1,7 @@
 from typing import List, Sequence, cast
 
 import datetime
+from decimal import Decimal, ROUND_HALF_UP
 
 import logging
 from threading import Lock
@@ -27,6 +28,13 @@ logger = logging.getLogger(__name__)
 
 _action_hint_lock = Lock()
 _pending_sql_hints: List[str] = []
+
+_CURRENCY_QUANT = Decimal("0.01")
+
+
+def _quantize_currency(value: Decimal | float | int) -> Decimal:
+    decimal_value = value if isinstance(value, Decimal) else Decimal(str(value))
+    return decimal_value.quantize(_CURRENCY_QUANT, rounding=ROUND_HALF_UP)
 
 
 def _record_sql_hint(fragment: str) -> None:
@@ -293,15 +301,18 @@ def _create_purchase(
     price_row = cur.fetchone()
     if not price_row:
         raise HTTPException(404, "Price not found")
-    base_price = float(price_row[0])
+    base_price = _quantize_currency(price_row[0])
     baggage_count = sum(1 for b in baggage_list if b)
-    total_price = base_price * (
-        data.adult_count + data.discount_count * 0.95 + 0.1 * baggage_count
-    )
-    total_price = round(total_price, 2)
+    baggage_unit_price = _quantize_currency(base_price * Decimal("0.10"))
+    discount_unit = _quantize_currency(base_price * Decimal("0.05"))
+
+    passenger_total = base_price * Decimal(len(data.seat_nums))
+    baggage_total = baggage_unit_price * Decimal(baggage_count)
+    discount_total = discount_unit * Decimal(data.discount_count)
+    total_price_decimal = _quantize_currency(passenger_total + baggage_total - discount_total)
 
     purchase_id = data.purchase_id
-    new_amount = total_price
+    new_amount_decimal = total_price_decimal
     if purchase_id is not None:
         cur.execute(
             "SELECT amount_due, status FROM purchase WHERE id=%s",
@@ -311,27 +322,27 @@ def _create_purchase(
         if not row:
             raise HTTPException(404, "Purchase not found")
         current_amount, current_status = row
-        current_amount = float(current_amount)
-        new_amount = round(current_amount + total_price, 2)
+        current_amount_decimal = _quantize_currency(current_amount or 0)
+        new_amount_decimal = _quantize_currency(current_amount_decimal + total_price_decimal)
         if current_status != status:
             if current_status == "reserved" and status == "paid":
                 cur.execute(
-                    "UPDATE purchase SET amount_due=%s, status=%s, update_at=NOW() WHERE id=%s",
-                    (new_amount, status, purchase_id),
+                    "UPDATE purchase SET amount_due=%s, status=%s, updated_at=NOW() WHERE id=%s",
+                    (float(new_amount_decimal), status, purchase_id),
                 )
             else:
                 raise HTTPException(400, "Mismatched purchase status")
         else:
             cur.execute(
-                "UPDATE purchase SET amount_due=%s, update_at=NOW() WHERE id=%s",
-                (new_amount, purchase_id),
+                "UPDATE purchase SET amount_due=%s, updated_at=NOW() WHERE id=%s",
+                (float(new_amount_decimal), purchase_id),
             )
     else:
         # 1) create purchase record using first passenger as customer name
         cur.execute(
             """
             INSERT INTO purchase
-              (customer_name, customer_email, customer_phone, amount_due, deadline, status, update_at, payment_method)
+              (customer_name, customer_email, customer_phone, amount_due, deadline, status, updated_at, payment_method)
             VALUES (%s,%s,%s,%s,NOW() + interval '1 day',%s,NOW(),%s)
             RETURNING id
             """,
@@ -339,7 +350,7 @@ def _create_purchase(
                 data.passenger_names[0] if data.passenger_names else "",
                 data.passenger_email,
                 data.passenger_phone,
-                total_price,
+                float(total_price_decimal),
                 status,
                 payment_method,
             ),
@@ -403,6 +414,40 @@ def _create_purchase(
             )
         )
 
+        cur.execute(
+            """
+            INSERT INTO purchase_line_item
+              (purchase_id, type, ticket_id, description, qty, unit_price, total)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (
+                purchase_id,
+                "ticket",
+                ticket_id,
+                f"Ticket seat {seat_num}",
+                1,
+                base_price,
+                base_price,
+            ),
+        )
+
+        if bag:
+            cur.execute(
+                """
+                INSERT INTO purchase_line_item
+                  (purchase_id, type, description, qty, unit_price, total)
+                VALUES (%s,%s,%s,%s,%s,%s)
+                """,
+                (
+                    purchase_id,
+                    "extra_baggage",
+                    f"Extra baggage for seat {seat_num}",
+                    1,
+                    baggage_unit_price,
+                    baggage_unit_price,
+                ),
+            )
+
         # update seat availability
         new_avail = "".join(ch for ch in avail_str if ch not in segments)
         if not new_avail:
@@ -435,15 +480,44 @@ def _create_purchase(
             ),
         )
 
+    if data.discount_count:
+        total_discount_value = _quantize_currency(
+            discount_unit * Decimal(data.discount_count)
+        )
+        if total_discount_value:
+            cur.execute(
+                """
+                INSERT INTO purchase_line_item
+                  (purchase_id, type, description, qty, unit_price, total)
+                VALUES (%s,%s,%s,%s,%s,%s)
+                """,
+                (
+                    purchase_id,
+                    "discount",
+                    "Discount",
+                    data.discount_count,
+                    -discount_unit,
+                    -total_discount_value,
+                ),
+            )
+
+    cur.execute("SELECT total_due FROM purchase WHERE id=%s", (purchase_id,))
+    amount_row = cur.fetchone()
+    total_amount_due = (
+        float(amount_row[0])
+        if amount_row and amount_row[0] is not None
+        else float(new_amount_decimal)
+    )
+
     _log_action(
         cur,
         purchase_id,
         status,
-        total_price if status == "paid" else 0,
+        float(total_price_decimal) if status == "paid" else 0,
         by=actor,
         method=payment_method,
     )
-    return purchase_id, new_amount, ticket_specs
+    return purchase_id, total_amount_due, ticket_specs
 
 
 @router.post("/", response_model=PurchaseOut)
@@ -503,7 +577,7 @@ def pay_purchase(
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
 
-        cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
+        cur.execute("UPDATE purchase SET status='paid', updated_at=NOW() WHERE id=%s", (purchase_id,))
         _log_action(cur, purchase_id, "paid", amount_due, by=actor, method="offline")
         tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         conn.commit()
@@ -546,7 +620,7 @@ def cancel_purchase(
         for t_id in tickets:
             free_ticket(cur, t_id)
 
-        cur.execute("UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s", (purchase_id,))
+        cur.execute("UPDATE purchase SET status='cancelled', updated_at=NOW() WHERE id=%s", (purchase_id,))
         _log_action(cur, purchase_id, "cancelled", 0, by=actor)
         conn.commit()
         if jti:
@@ -663,7 +737,7 @@ def pay_booking(
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, data.purchase_id)
 
-        cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (data.purchase_id,))
+        cur.execute("UPDATE purchase SET status='paid', updated_at=NOW() WHERE id=%s", (data.purchase_id,))
         _log_action(cur, data.purchase_id, "paid", amount_due, by=actor, method="online")
         tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         conn.commit()
@@ -701,7 +775,7 @@ def cancel_booking(
         for t_id in tickets:
             free_ticket(cur, t_id)
 
-        cur.execute("UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s", (purchase_id,))
+        cur.execute("UPDATE purchase SET status='cancelled', updated_at=NOW() WHERE id=%s", (purchase_id,))
         _log_action(cur, purchase_id, "cancelled", 0, by=actor)
         conn.commit()
         if jti:
@@ -740,7 +814,7 @@ def refund_purchase(
             revoked_jtis = [str(row[0]) for row in cur.fetchall() if row and row[0]]
             cur.execute("DELETE FROM ticket WHERE id=%s", (ticket_id,))
 
-        cur.execute("UPDATE purchase SET status='refunded', update_at=NOW() WHERE id=%s", (purchase_id,))
+        cur.execute("UPDATE purchase SET status='refunded', updated_at=NOW() WHERE id=%s", (purchase_id,))
         _log_action(cur, purchase_id, "refunded", 0, by=actor)
         conn.commit()
         for token_jti in revoked_jtis:
