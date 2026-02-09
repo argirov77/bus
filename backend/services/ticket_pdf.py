@@ -291,8 +291,8 @@ def _select_currency(dto: Mapping[str, Any], i18n: Mapping[str, Any]) -> str:
     return currency
 
 
-def render_ticket_pdf(dto: Mapping[str, Any], deep_link: Optional[str]) -> bytes:
-    """Render a ticket PDF from a DTO and a deep link."""
+def render_ticket_html(dto: Mapping[str, Any], deep_link: Optional[str]) -> str:
+    """Render ticket HTML from a DTO and a deep link."""
 
     if not isinstance(dto, Mapping):
         raise TypeError("dto must be a mapping")
@@ -366,7 +366,13 @@ def render_ticket_pdf(dto: Mapping[str, Any], deep_link: Optional[str]) -> bytes
         deep_link=deep_link,
         qr_data_uri=qr_data_uri,
     )
+    return html
 
+
+def render_ticket_pdf(dto: Mapping[str, Any], deep_link: Optional[str]) -> bytes:
+    """Render a ticket PDF from a DTO and a deep link."""
+
+    html = render_ticket_html(dto, deep_link)
     base_url = str(_TEMPLATES_DIR)
     pdf_bytes = HTML(string=html, base_url=base_url).write_pdf()
     return pdf_bytes
