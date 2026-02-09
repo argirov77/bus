@@ -23,6 +23,165 @@ form{ display:flex; gap:10px; align-items:center; }
 .styled-table tbody tr:nth-child(even){ background:#fbfcfd; }
 .styled-table tbody tr:hover{ background:#f9fafb; }
 
+.matrix-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:16px;
+  margin-bottom:12px;
+}
+
+.matrix-subtitle{
+  margin:6px 0 0;
+  color:var(--muted);
+  font-size:13px;
+}
+
+.matrix-actions{
+  display:flex;
+  gap:8px;
+}
+
+.matrix-status{
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  margin-bottom:12px;
+  background:var(--surface);
+  font-size:14px;
+}
+
+.matrix-status--success{
+  border-color:#bfe6cf;
+  background:#eef9f3;
+  color:#2d6c52;
+}
+
+.matrix-status--error{
+  border-color:#f1b7b7;
+  background:#fff1f1;
+  color:#9d2c2c;
+}
+
+.price-matrix-wrapper{
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  overflow:auto;
+  background:var(--surface);
+  max-height:600px;
+}
+
+.price-matrix{
+  border-collapse:separate;
+  border-spacing:0;
+  width:max-content;
+  min-width:100%;
+}
+
+.price-matrix th,
+.price-matrix td{
+  border:1px solid var(--border);
+  padding:8px;
+  text-align:center;
+  background:var(--surface);
+  min-width:110px;
+  vertical-align:top;
+}
+
+.price-matrix__corner{
+  position:sticky;
+  top:0;
+  left:0;
+  z-index:4;
+  background:#e2e8f4;
+  text-align:left;
+}
+
+.price-matrix__col-header{
+  position:sticky;
+  top:0;
+  z-index:3;
+  background:#eef2f8;
+  font-weight:600;
+}
+
+.price-matrix__row-header{
+  position:sticky;
+  left:0;
+  z-index:2;
+  background:#eef2f8;
+  text-align:left;
+  font-weight:600;
+}
+
+.price-matrix__cell{
+  position:relative;
+}
+
+.price-matrix__cell--disabled{
+  background:#f5f6f8;
+  color:var(--muted);
+}
+
+.price-matrix__cell--dirty{
+  box-shadow:inset 0 0 0 2px rgba(45, 108, 82, 0.25);
+}
+
+.price-matrix__cell--deleted{
+  background:#fff5f5;
+}
+
+.price-matrix__cell--error{
+  background:#fff1f1;
+}
+
+.price-matrix__input{
+  width:100%;
+  box-sizing:border-box;
+  text-align:center;
+  border-radius:6px;
+  border:1px solid var(--border);
+  padding:6px;
+}
+
+.price-matrix__cell--disabled .price-matrix__input{
+  background:#f0f2f5;
+  cursor:not-allowed;
+}
+
+.price-matrix__cell-status{
+  display:block;
+  margin-top:4px;
+  font-size:11px;
+  color:#b24b4b;
+}
+
+.price-matrix__cell-error{
+  display:block;
+  margin-top:4px;
+  font-size:11px;
+  color:#b24b4b;
+}
+
+.price-matrix__cell-currency{
+  display:block;
+  margin-top:4px;
+  font-size:11px;
+  color:var(--muted);
+}
+
+.modal-field{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  font-size:14px;
+}
+
+.modal-actions{
+  display:flex;
+  gap:10px;
+}
+
 .modal-overlay{
   position:fixed;
   inset:0;
