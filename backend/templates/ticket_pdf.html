@@ -17,7 +17,7 @@
     a { color: #1d4ed8; text-decoration: none; }
     .wrap {
       width: 100%;
-      max-width: 920px;
+      max-width: 860px;
       margin: 0 auto;
     }
     .layout {
@@ -98,12 +98,6 @@
       display: block;
       height: 28px;
       width: auto;
-    }
-    .qr-table {
-      border-spacing: 0;
-    }
-    .qr-table td:first-child {
-      width: 140px;
     }
   </style>
 </head>
@@ -256,9 +250,9 @@
           </div>
           <div class="card">
             <div class="section-title">Онлайн</div>
-            <table class="kv-table qr-table">
+            <table class="kv-table">
               <tr>
-                <td style="width: 140px;">
+                <td style="width: 48%;">
                   <div class="qr-box">
                     {% if qr_data_uri %}
                       <img src="{{ qr_data_uri }}" alt="QR" width="132" height="132" />
@@ -267,7 +261,7 @@
                     {% endif %}
                   </div>
                 </td>
-                <td style="width: auto;">
+                <td style="width: 52%;">
                   <div class="hint">{{ i18n.qr_hint }}</div>
                   <div class="break" style="margin-top: 6px;">{{ deep_link or i18n.value_not_available }}</div>
                 </td>
