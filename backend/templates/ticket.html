@@ -105,8 +105,11 @@ body{
 .brandWord img{height:18px;width:auto;filter:brightness(0) invert(1);display:block;line-height:0}
 
 .statusPill{
-  display:inline-block;
-  padding:8px 14px;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:10px 16px;
+  min-width:128px;
   border-radius:999px;
   font-size:12px;
   font-weight:700;
@@ -114,14 +117,12 @@ body{
   border:1px solid rgba(255,255,255,.25);
   background:rgba(255,255,255,.14);
   white-space:nowrap;
+  line-height:1;
 }
 
 .statusDot{
   width:8px;height:8px;border-radius:50%;
   background:var(--bad);
-  display:inline-block;
-  vertical-align:middle;
-  margin-right:8px;
 }
 
 .statusPill[data-pay="PAID"] .statusDot{background:var(--ok)}
