@@ -194,23 +194,27 @@ def selected_pricelist(data: LangRequest):
     conn = get_connection()
     cur = conn.cursor()
     try:
-        # The ``pricelist`` table gained an ``is_demo`` column via a later
-        # migration.  When running against an older database that lacks this
-        # column the query below would raise ``UndefinedColumn`` and the
-        # endpoint would return a 500 error.  To remain backwards compatible we
-        # retry the lookup without the ``WHERE`` clause if the column is
-        # missing, effectively selecting the first available pricelist instead
-        # of failing hard.
-        try:
-            cur.execute("SELECT id FROM pricelist WHERE is_demo ORDER BY id LIMIT 1")
-        except UndefinedColumn:
-            conn.rollback()
-            cur = conn.cursor()
-            cur.execute("SELECT id FROM pricelist ORDER BY id LIMIT 1")
+        cur.execute("SELECT pricelist_id FROM route_pricelist_bundle WHERE id=1")
         row = cur.fetchone()
-        if not row:
-            raise HTTPException(404, "Demo pricelist not found")
-        pricelist_id = row[0]
+        pricelist_id = row[0] if row else None
+        if pricelist_id is None:
+            # The ``pricelist`` table gained an ``is_demo`` column via a later
+            # migration.  When running against an older database that lacks this
+            # column the query below would raise ``UndefinedColumn`` and the
+            # endpoint would return a 500 error.  To remain backwards compatible we
+            # retry the lookup without the ``WHERE`` clause if the column is
+            # missing, effectively selecting the first available pricelist instead
+            # of failing hard.
+            try:
+                cur.execute("SELECT id FROM pricelist WHERE is_demo ORDER BY id LIMIT 1")
+            except UndefinedColumn:
+                conn.rollback()
+                cur = conn.cursor()
+                cur.execute("SELECT id FROM pricelist ORDER BY id LIMIT 1")
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(404, "Demo pricelist not found")
+            pricelist_id = row[0]
         currency = fetch_pricelist_currency(conn, pricelist_id)
         # Build the query dynamically with the requested translation column.
         query_tpl = """
