@@ -57,14 +57,22 @@ body{
 }
 
 .brand{display:flex;gap:10px;align-items:center;min-width:0}
+<<<<<<< HEAD
 .brand img{filter:brightness(0) invert(1); display:block}
+=======
+.brand img{filter:brightness(0) invert(1);display:block}
+>>>>>>> 0679277ba0e0f79f808be34f7bf636525f27ce4b
 .brandMark{
   width:36px;height:36px;border-radius:12px;
   background:rgba(255,255,255,.15);
   display:flex;align-items:center;justify-content:center;flex:0 0 auto
 }
+<<<<<<< HEAD
 .brandMark img{width:22px;height:auto}
 .brandWord img{height:14px}
+=======
+.brandWord img{height:16px;width:auto}
+>>>>>>> 0679277ba0e0f79f808be34f7bf636525f27ce4b
 
 .statusPill{
   justify-self:center;
@@ -457,7 +465,7 @@ body{
           <div class="qrBox">
             <div class="qrBoxInner">
               {% if qr_data_uri %}
-                <img alt="QR" src="{{ qr_data_uri }}">
+                <img alt="QR" src="{{ qr_data_uri | safe }}">
                 <div class="qrOffline" style="display:none;"></div>
               {% else %}
                 <div class="qrOffline">{{ i18n.qr_unavailable }}</div>
