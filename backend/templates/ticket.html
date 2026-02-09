@@ -24,8 +24,8 @@
 
   --shadow:0 18px 45px rgba(15,23,42,.12);
 
-  --font: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-  --mono: ui-monospace,Menlo,Consolas,monospace;
+  --font: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 *{box-sizing:border-box}
@@ -36,179 +36,268 @@ body{
   font-family:var(--font);
   color:var(--ink);
   font-size:14px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
   orphans:3; widows:3;
 }
 
 .wrap{display:flex;justify-content:center;padding:20px}
-.sheet{width:980px;background:var(--bg);border-radius:26px;padding:16px}
+.sheet{width:980px;background:var(--bg);border-radius:26px;padding:16px} /* inner=948px */
 .ticket{background:var(--paper);border-radius:26px;box-shadow:var(--shadow);overflow:hidden}
 
-/* TOP STRIPE */
+/* ===== TOP STRIPE (strict) ===== */
 .stripe{
   background:linear-gradient(90deg,var(--primary2),var(--primary));
   color:#fff;
   padding:14px 18px;
-  display:flex;
-  justify-content:space-between;
+  display:grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items:center;
   gap:14px;
-  flex-wrap:wrap;
 }
+
 .brand{display:flex;gap:10px;align-items:center;min-width:0}
-.brand img{filter:brightness(0) invert(1)}
+.brand img{filter:brightness(0) invert(1); display:block}
 .brandMark{
   width:36px;height:36px;border-radius:12px;
   background:rgba(255,255,255,.15);
   display:flex;align-items:center;justify-content:center;flex:0 0 auto
 }
+.brandMark img{width:22px;height:auto}
 .brandWord img{height:14px}
 
 .statusPill{
   justify-self:center;
   display:inline-flex;
   align-items:center;
-  gap:10px;
-  padding:8px 12px;
+  gap:8px;
+  padding:8px 14px;
   border-radius:999px;
-  font-weight:900;
+  font-weight:800;
   letter-spacing:.08em;
   font-size:12px;
-  border:1px solid rgba(255,255,255,.18);
+  border:1px solid rgba(255,255,255,.22);
   white-space:nowrap;
-  background: rgba(255,255,255,.12);
+  background:rgba(255,255,255,.14);
 }
-.statusDot{width:9px;height:9px;border-radius:50%;}
+.statusDot{width:8px;height:8px;border-radius:50%;}
 .statusPill[data-pay="PAID"] .statusDot{ background: var(--ok); }
 .statusPill[data-pay="UNPAID"] .statusDot{ background: var(--bad); }
 
+.headerMeta{
+  justify-self:end;
+  text-align:right;
+  white-space:nowrap;
+  font-weight:800;
+  font-size:14px;
+}
 
-/* MAIN */
+/* ===== MAIN (strict math) ===== */
+/* inner sheet width = 980 - 32 = 948
+   columns: 630 + gap 18 + 300 = 948 */
 .main{
   padding:18px;
   display:grid;
-  grid-template-columns: 7fr 3fr;
+  grid-template-columns: 630px 300px;
   gap:18px;
+  align-items:start;
 }
 
-/* LEFT CARD */
-.board{border:1px solid var(--line);border-radius:22px;overflow:hidden;background:#fff}
+/* LEFT */
+.board{
+  width:630px;
+  border:1px solid var(--line);
+  border-radius:22px;
+  overflow:hidden;
+  background:#fff;
+}
 
-/* ROUTE HERO (one block) */
+/* ROUTE HERO */
 .route{
-  padding:16px 18px 14px;
+  padding:16px 18px;
   border-bottom:1px solid var(--line);
   display:flex;
   justify-content:space-between;
   align-items:flex-start;
-  gap:18px;
-}
-.routeLeft{min-width:0;width:100%}
-.routeGrid{
-  display:grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap:14px;
-  align-items:start;
+  gap:16px;
 }
 
-.city{display:flex;flex-direction:column;gap:8px;min-width:0}
+.routeGrid{
+  width:100%;
+  display:grid;
+  grid-template-columns: 1fr 34px 1fr;
+  gap:16px;
+  align-items:start;
+  min-width:0;
+}
+
+.city{display:flex;flex-direction:column;gap:6px;min-width:0}
 .city.alignRight{text-align:right;align-items:flex-end}
 
 .citySub{
-  font-size:12px;
+  font-size:11px;
   color:var(--muted);
-  font-weight:900;
-  letter-spacing:.12em;
+  font-weight:700;
+  letter-spacing:.14em;
   text-transform:uppercase;
 }
 
 .cityName{
-  font-size:32px;
-  font-weight:950;
+  font-size:30px;
+  font-weight:800;
   line-height:1.05;
-  letter-spacing:.01em;
+  letter-spacing:-.01em;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 .arrow{
+  width:34px;
+  text-align:center;
   font-size:22px;
-  font-weight:900;
+  font-weight:700;
   color:var(--muted);
-  margin-top:26px;
+  margin-top:22px;
 }
 
 .stopTime{
-  margin-top:6px;
-  font-size:18px;
-  font-weight:950;
+  margin-top:2px;
+  font-size:16px;
+  font-weight:700;
   font-family:var(--mono);
-  letter-spacing:.01em;
+  white-space:nowrap;
 }
+
 .stopLoc{
   margin-top:3px;
   font-size:13px;
   color:var(--muted);
-  font-weight:800;
+  font-weight:600;
   line-height:1.25;
-  max-width: 340px;
+  max-width:260px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 .stopLoc a{color:inherit;text-decoration:none}
-.stopLoc .ext{font-family:var(--mono); font-weight:950; opacity:.7}
+.stopLoc .ext{font-family:var(--mono); font-weight:600; opacity:.7; margin-left:6px}
 
-.routeRight{text-align:right;min-width:190px}
+.routeRight{text-align:right; width:130px; flex:0 0 auto}
 .routeRight .date{
-  font-weight:950;
-  font-size:19px;
+  font-weight:800;
+  font-size:16px;
   letter-spacing:.01em;
-}
-.routeRight .time{
-  margin-top:4px;
-  color:var(--muted);
-  font-size:12px;
-  font-weight:900;
-  font-family:var(--mono);
+  white-space:nowrap;
 }
 
+/* PASSENGER */
 .passenger{padding:14px 18px;border-bottom:1px solid var(--line)}
-.passenger .label{font-size:11px;letter-spacing:.14em;font-weight:900;color:var(--muted)}
-.passengerBox{margin-top:10px;display:grid;gap:10px}
-.pRow{display:grid;grid-template-columns:90px 1fr;gap:12px;align-items:baseline}
-.pKey{font-size:11px;letter-spacing:.14em;color:var(--muted);font-weight:950;text-transform:uppercase}
-.pVal{font-size:15px;font-weight:900;color:var(--ink);line-height:1.2}
-.pVal.mono{font-family:var(--mono);font-weight:900;font-size:13px;color:#0F2440}
+.passenger .label{font-size:11px;letter-spacing:.14em;font-weight:700;color:var(--muted);text-transform:uppercase}
+.passengerBox{margin-top:10px;display:grid;gap:8px}
+.pRow{display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline}
+.pKey{font-size:11px;letter-spacing:.14em;color:var(--muted);font-weight:700;text-transform:uppercase}
+.pVal{
+  font-size:14px;
+  font-weight:700;
+  color:var(--ink);
+  line-height:1.2;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.pVal.mono{font-family:var(--mono);font-weight:600;font-size:13px;color:#0F2440}
 
+/* INCLUDED (pretty cards) */
 .included{
-  padding:12px 18px;
-  border-bottom:1px solid var(--line);
-  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:14px 18px 16px;
 }
-.included .label{font-size:11px;letter-spacing:.14em;font-weight:900;color:var(--muted)}
-.pills{display:flex;gap:10px;flex-wrap:wrap}
+.included .label{
+  font-size:11px;
+  letter-spacing:.14em;
+  font-weight:700;
+  color:var(--muted);
+  text-transform:uppercase;
+  margin-bottom:10px;
+}
+
+.pills{
+  display:grid;
+  grid-template-columns: 120px 1fr 140px;
+  gap:10px;
+}
+
 .pill{
-  display:inline-flex;align-items:center;gap:8px;
-  padding:9px 11px;border-radius:999px;
-  background: rgba(242,245,251,.92);
   border:1px solid var(--line);
-  font-size:13px;font-weight:950;color:var(--ink);white-space:nowrap;
+  background:#F6F8FC;
+  border-radius:14px;
+  padding:10px 12px;
+  min-width:0;
 }
-.pill .k{font-size:11px;letter-spacing:.12em;color:var(--muted);font-weight:950;text-transform:uppercase}
-.pill .v{font-family:var(--mono);font-weight:950}
+
+.pill .k{
+  display:block;
+  font-size:10px;
+  letter-spacing:.14em;
+  font-weight:700;
+  color:var(--muted);
+  text-transform:uppercase;
+}
+
+.pill .v{
+  display:block;
+  margin-top:4px;
+  font-family:var(--mono);
+  font-weight:700;
+  font-size:13px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
 
 /* RIGHT QR */
-.qr{border:1px solid var(--line);border-radius:22px;overflow:hidden;background:#fff}
-.qrHead{padding:14px;border-bottom:1px solid var(--line);font-size:12px;font-weight:900;letter-spacing:.14em;color:var(--muted)}
+.qr{
+  width:300px;
+  border:1px solid var(--line);
+  border-radius:22px;
+  overflow:hidden;
+  background:#fff;
+}
+.qrHead{
+  padding:14px;
+  border-bottom:1px solid var(--line);
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.14em;
+  color:var(--muted);
+}
 .qrBox{padding:14px;display:flex;justify-content:center}
 .qrBoxInner{
-  width:240px;height:240px;border:1px solid var(--line);border-radius:18px;
-  display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fff;position:relative;
+  width:240px;height:240px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;background:#fff;position:relative;
 }
-.qrBoxInner img{width:100%;height:100%;object-fit:contain}
+.qrBoxInner img{width:100%;height:100%;object-fit:contain;display:block}
 .qrOffline{
   position:absolute;bottom:10px;left:12px;right:12px;text-align:center;
-  color:var(--muted);font-size:12px;font-weight:900;opacity:.9;
+  color:var(--muted);font-size:12px;font-weight:700;opacity:.9;
 }
 .qrFoot{padding:14px;border-top:1px solid var(--line)}
-.btn{width:100%;border-radius:14px;padding:11px 12px;background:var(--primary);color:#fff;border:none;font-weight:950;text-decoration:none;display:block;text-align:center}
+.btn{
+  width:100%;
+  border-radius:14px;
+  padding:12px 12px;
+  background:var(--primary);
+  color:#fff;
+  border:none;
+  font-weight:800;
+  text-decoration:none;
+  display:block;
+  text-align:center;
+}
 
 /* FOOTER */
 .footer{
@@ -216,18 +305,7 @@ body{
   display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font-size:13px;
 }
 .footer a{color:#fff;text-decoration:none;opacity:.95}
-.footer a:hover{opacity:1;text-decoration:underline}
-.footer b{opacity:.95}
-
-@media(max-width:900px){
-  .main{grid-template-columns:1fr}
-  .stripe{flex-direction:column;align-items:flex-start}
-  .route{flex-direction:column;align-items:flex-start}
-  .routeRight{text-align:left;min-width:unset}
-  .city.alignRight{text-align:left;align-items:flex-start}
-  .arrow{display:none}
-  .routeGrid{grid-template-columns:1fr;gap:14px}
-}
+.footer b{opacity:.95;font-weight:800}
 </style>
 </head>
 
@@ -236,10 +314,15 @@ body{
   <div class="sheet">
     <div class="ticket">
 
+      <!-- STRIPE -->
       <div class="stripe">
         <div class="brand">
-          <div class="brandMark"><img src="logo/logo.svg" width="26" alt="{{ i18n.brand_name }}"></div>
-          <div class="brandWord"><img src="logo/speling.svg" alt="{{ i18n.brand_name }}"></div>
+          <div class="brandMark">
+            <img src="./logo/logo.svg" alt="{{ i18n.brand_name }}">
+          </div>
+          <div class="brandWord">
+            <img src="./logo/speling.svg" alt="{{ i18n.brand_name }}">
+          </div>
         </div>
 
         <div class="statusPill" data-pay="{% if status_chip and status_chip.css_class == 'ok' %}PAID{% else %}UNPAID{% endif %}">
@@ -252,6 +335,11 @@ body{
             {% endif %}
           </span>
         </div>
+
+        <!-- DATE ONLY (no time here) -->
+        <div class="headerMeta">
+          {{ ticket.trip_date or i18n.value_not_available }}
+        </div>
       </div>
 
       <div class="main">
@@ -260,18 +348,20 @@ body{
 
           <!-- HERO -->
           <div class="route">
-            <div class="routeLeft">
+            <div class="routeLeft" style="min-width:0;width:100%">
               <div class="routeGrid">
-                <!-- Departure column -->
+                <!-- Departure -->
                 <div class="city">
                   <div class="citySub">{{ i18n.departure_label or 'ОТПРАВЛЕНИЕ' }}</div>
                   <div class="cityName">{{ departure.city or route.from_city }}</div>
+
                   {% if departure.time %}
                     <div class="stopTime">{{ departure.time }}</div>
                   {% endif %}
+
                   {% if departure.map_url %}
                     <div class="stopLoc">
-                      <a href="{{ departure.map_url }}" target="_blank">
+                      <a href="{{ departure.map_url }}" target="_blank" rel="noopener">
                         {{ departure.address or i18n.view_exact_location }}
                       </a>
                       <span class="ext" aria-hidden="true">↗</span>
@@ -283,16 +373,18 @@ body{
 
                 <div class="arrow">→</div>
 
-                <!-- Arrival column -->
+                <!-- Arrival -->
                 <div class="city alignRight">
                   <div class="citySub">{{ i18n.arrival_label or 'ПРИБЫТИЕ' }}</div>
                   <div class="cityName">{{ arrival.city or route.to_city }}</div>
+
                   {% if arrival.time %}
                     <div class="stopTime">{{ arrival.time }}</div>
                   {% endif %}
+
                   {% if arrival.map_url %}
                     <div class="stopLoc">
-                      <a href="{{ arrival.map_url }}" target="_blank">
+                      <a href="{{ arrival.map_url }}" target="_blank" rel="noopener">
                         {{ arrival.address or i18n.view_exact_location }}
                       </a>
                       <span class="ext" aria-hidden="true">↗</span>
@@ -304,19 +396,9 @@ body{
               </div>
             </div>
 
+            <!-- DATE ONLY (no time block at all) -->
             <div class="routeRight">
-              {% if ticket.trip_date %}
-                <div class="date">{{ ticket.trip_date }}</div>
-              {% else %}
-                <div class="date">{{ i18n.trip_date_label }}: {{ i18n.value_not_available }}</div>
-              {% endif %}
-              <div class="time">
-                {% if departure.time and arrival.time %}
-                  {{ departure.time }} → {{ arrival.time }}
-                {% else %}
-                  {{ i18n.value_not_available }}
-                {% endif %}
-              </div>
+              <div class="date">{{ ticket.trip_date or i18n.value_not_available }}</div>
             </div>
           </div>
 
@@ -328,12 +410,14 @@ body{
                 <div class="pKey">{{ i18n.full_name_label or 'ИМЯ' }}</div>
                 <div class="pVal">{{ passenger.name }}</div>
               </div>
+
               {% if passenger.email %}
               <div class="pRow">
                 <div class="pKey">EMAIL</div>
                 <div class="pVal mono">{{ passenger.email }}</div>
               </div>
               {% endif %}
+
               {% if passenger.phone %}
               <div class="pRow">
                 <div class="pKey">{{ i18n.phone_label or 'ТЕЛ.' }}</div>
@@ -346,14 +430,22 @@ body{
           <!-- INCLUDED -->
           <div class="included">
             <div class="label">{{ i18n.included_label or 'ВКЛЮЧЕНО' }}</div>
+
             <div class="pills">
-              {% if ticket.seat_number %}
-                <div class="pill"><span class="k">{{ i18n.seat_label or 'МЕСТО' }}</span> <span class="v">{{ ticket.seat_number }}</span></div>
-              {% endif %}
-              {% if ticket.baggage_text %}
-                <div class="pill"><span class="k">{{ i18n.baggage_label or 'БАГАЖ' }}</span> <span class="v">{{ ticket.baggage_text }}</span></div>
-              {% endif %}
-              <div class="pill"><span class="k">{{ i18n.price_label or 'ЦЕНА' }}</span> <span class="v">{{ ticket.price_text or i18n.value_not_available }}</span></div>
+              <div class="pill">
+                <span class="k">{{ i18n.seat_label or 'МЕСТО' }}</span>
+                <span class="v">{{ ticket.seat_number or i18n.value_not_available }}</span>
+              </div>
+
+              <div class="pill">
+                <span class="k">{{ i18n.baggage_label or 'БАГАЖ' }}</span>
+                <span class="v">{{ ticket.baggage_text or i18n.value_not_available }}</span>
+              </div>
+
+              <div class="pill">
+                <span class="k">{{ i18n.price_label or 'ЦЕНА' }}</span>
+                <span class="v">{{ ticket.price_text or i18n.value_not_available }}</span>
+              </div>
             </div>
           </div>
 
@@ -382,15 +474,18 @@ body{
         </div>
       </div>
 
-      <!-- FOOTER: COMPANY CONTACTS ONLY -->
+      <!-- FOOTER -->
       <div class="footer">
         <div><b>{{ i18n.brand_name }}</b></div>
+
         {% if i18n.company_phone %}
           <div><a href="tel:{{ i18n.company_phone|replace(' ', '') }}">{{ i18n.company_phone }}</a></div>
         {% endif %}
+
         {% if i18n.company_email %}
           <div><a href="mailto:{{ i18n.company_email }}">{{ i18n.company_email }}</a></div>
         {% endif %}
+
         {% if i18n.company_web %}
           <div><a href="{{ i18n.company_web }}" target="_blank" rel="noopener">
             {{ i18n.company_web|replace('https://', '')|replace('http://', '') }}
