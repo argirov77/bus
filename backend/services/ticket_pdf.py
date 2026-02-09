@@ -21,6 +21,7 @@ _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 _ENV = Environment(
     loader=FileSystemLoader(str(_TEMPLATES_DIR)),
     autoescape=select_autoescape(["html", "xml"]),
+    auto_reload=True,
 )
 
 _DEFAULT_I18N: Dict[str, Any] = {
