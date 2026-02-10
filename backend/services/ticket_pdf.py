@@ -80,7 +80,7 @@ _DEFAULT_I18N: Dict[str, Any] = {
     "company_phone_alt": "+359894290356",
     "company_email": "Avroraiko@gmail.com",
     "company_instagram": "https://www.instagram.com/maximov_turs?igsh=OTR5eGtuOTBoMm5u",
-    "company_web": "https://www.maximov.tours",
+    "company_web": "https://maximovtours.com",
 }
 
 _STATUS_TO_I18N_KEY = {
