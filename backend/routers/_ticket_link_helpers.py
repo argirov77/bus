@@ -110,7 +110,7 @@ def build_deep_link(opaque: str, *, base_url: str | None = None) -> str:
     """Construct a deep link URL for a ticket session."""
 
     configured = (base_url or get_client_app_base()).rstrip("/")
-    return f"{configured}/q/{opaque}"
+    return f"{configured}/api/q/{opaque}"
 
 
 def issue_ticket_links(
