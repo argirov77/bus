@@ -76,11 +76,9 @@ _DEFAULT_I18N: Dict[str, Any] = {
     "unpaid_label": "НЕ ОПЛАЧЕН",
     "ticket_short_label": "TKT",
     "order_short_label": "ORD",
-    "company_phone": "+380930004636",
-    "company_phone_alt": "+359894290356",
-    "company_email": "Avroraiko@gmail.com",
-    "company_instagram": "https://www.instagram.com/maximov_turs?igsh=OTR5eGtuOTBoMm5u",
-    "company_web": "https://maximovtours.com",
+    "company_phone": "+359 88 123 4567",
+    "company_email": "support@maximov.tours",
+    "company_web": "https://www.maximov.tours",
 }
 
 _STATUS_TO_I18N_KEY = {
