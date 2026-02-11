@@ -59,6 +59,7 @@ def email_test_env(monkeypatch):
         "next_purchase_id": 1,
         "issue_counter": 0,
         "emails": [],
+        "sales": [],
         "dto_status": "reserved",
     }
 
@@ -100,6 +101,17 @@ def email_test_env(monkeypatch):
                     self.last_result = None
                 else:
                     self.last_result = [purchase["amount_due"], purchase["status"]]
+                self.last_fetch_mode = "one"
+            elif "select amount_due, status, customer_email from purchase" in q:
+                purchase = state["purchases"].get(params[0])
+                if not purchase:
+                    self.last_result = None
+                else:
+                    self.last_result = [
+                        purchase["amount_due"],
+                        purchase["status"],
+                        purchase["customer_email"],
+                    ]
                 self.last_fetch_mode = "one"
             elif "select amount_due, customer_email from purchase" in q:
                 purchase = state["purchases"].get(params[0])
@@ -188,6 +200,8 @@ def email_test_env(monkeypatch):
                 purchase = state["purchases"].get(purchase_id)
                 if purchase:
                     purchase["status"] = "paid"
+            elif "insert into sales" in q:
+                state["sales"].append({"purchase_id": params[0], "category": params[1], "amount": params[2]})
             else:
                 self.last_result = None
                 self.last_fetch_mode = "one"
@@ -317,6 +331,25 @@ def email_test_env(monkeypatch):
     monkeypatch.setattr(purchase_router, 'render_ticket_pdf', lambda dto, deep_link: b'%PDF-FAKE%')
     monkeypatch.setattr(purchase_router, 'send_ticket_email', fake_send)
     monkeypatch.setattr(purchase_router, 'get_ticket_dto', fake_get_ticket_dto)
+    monkeypatch.setattr(
+        purchase_router.liqpay,
+        'build_checkout_payload',
+        lambda purchase_id, amount_due: {
+            'provider': 'liqpay',
+            'data': 'encoded',
+            'signature': 'signed',
+            'payload': {
+                'version': '3',
+                'public_key': 'pk_test',
+                'action': 'pay',
+                'amount': amount_due,
+                'currency': 'UAH',
+                'description': f'Purchase #{purchase_id}',
+                'order_id': f'purchase-{purchase_id}',
+                'result_url': 'https://example.test/result',
+            },
+        },
+    )
 
     return state, purchase_router
 
@@ -441,3 +474,123 @@ def test_pay_booking_sends_payment_confirmation(email_test_env):
     assert any(marker in email["html"] for marker in confirmation_markers)
     assert "https://example.test/api/q/opaque-2" in email["html"]
     assert email["pdf"] == b"%PDF-FAKE%"
+
+
+def test_pay_booking_not_found_does_not_mutate_or_email(email_test_env):
+    state, purchase_router = email_test_env
+
+    pay_tasks = BackgroundTasks()
+    scope = {"type": "http", "headers": [], "query_string": b""}
+    request = Request(scope)
+    context = SimpleNamespace(is_admin=True)
+
+    with pytest.raises(purchase_router.HTTPException) as exc_info:
+        purchase_router.pay_booking(
+            purchase_router.PayIn(purchase_id=404),
+            request,
+            background_tasks=pay_tasks,
+            context=context,
+        )
+
+    assert exc_info.value.status_code == 404
+    assert state["purchases"] == {}
+    assert state["sales"] == []
+    assert state["emails"] == []
+    assert pay_tasks.tasks == []
+
+
+def test_pay_booking_non_positive_amount_due_rejected(email_test_env):
+    state, purchase_router = email_test_env
+
+    state["purchases"][1] = {
+        "id": 1,
+        "customer_name": "Alice",
+        "customer_email": "alice@example.com",
+        "customer_phone": "123",
+        "amount_due": 0,
+        "status": "reserved",
+    }
+
+    pay_tasks = BackgroundTasks()
+    scope = {"type": "http", "headers": [], "query_string": b""}
+    request = Request(scope)
+    request.state.is_admin = True
+
+    with pytest.raises(purchase_router.HTTPException) as exc_info:
+        purchase_router.pay_booking(
+            purchase_router.PayIn(purchase_id=1),
+            request,
+            background_tasks=pay_tasks,
+            context=SimpleNamespace(is_admin=True),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert state["purchases"][1]["status"] == "reserved"
+    assert state["sales"] == []
+    assert state["emails"] == []
+    assert pay_tasks.tasks == []
+
+
+@pytest.mark.parametrize("blocked_status", ["cancelled", "refunded"])
+def test_pay_booking_blocked_status_rejected(email_test_env, blocked_status):
+    state, purchase_router = email_test_env
+
+    state["purchases"][1] = {
+        "id": 1,
+        "customer_name": "Alice",
+        "customer_email": "alice@example.com",
+        "customer_phone": "123",
+        "amount_due": 12.5,
+        "status": blocked_status,
+    }
+
+    pay_tasks = BackgroundTasks()
+    scope = {"type": "http", "headers": [], "query_string": b""}
+    request = Request(scope)
+    request.state.is_admin = True
+
+    with pytest.raises(purchase_router.HTTPException) as exc_info:
+        purchase_router.pay_booking(
+            purchase_router.PayIn(purchase_id=1),
+            request,
+            background_tasks=pay_tasks,
+            context=SimpleNamespace(is_admin=True),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert state["purchases"][1]["status"] == blocked_status
+    assert state["sales"] == []
+    assert state["emails"] == []
+    assert pay_tasks.tasks == []
+
+
+def test_non_admin_pay_booking_returns_payload_without_status_change(email_test_env):
+    state, purchase_router = email_test_env
+
+    state["purchases"][1] = {
+        "id": 1,
+        "customer_name": "Alice",
+        "customer_email": "alice@example.com",
+        "customer_phone": "123",
+        "amount_due": 12.5,
+        "status": "reserved",
+    }
+
+    pay_tasks = BackgroundTasks()
+    scope = {"type": "http", "headers": [], "query_string": b""}
+    request = Request(scope)
+    context = SimpleNamespace(is_admin=False, scopes=["pay"], purchase_id=1, jti="token-jti")
+
+    response = purchase_router.pay_booking(
+        purchase_router.PayIn(purchase_id=1),
+        request,
+        background_tasks=pay_tasks,
+        context=context,
+    )
+
+    assert response["provider"] == "liqpay"
+    assert response["payload"]["amount"] == 12.5
+    assert state["purchases"][1]["status"] == "reserved"
+    assert state["sales"] == []
+    assert state["emails"] == []
+    assert pay_tasks.tasks == []
