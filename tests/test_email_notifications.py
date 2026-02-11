@@ -59,6 +59,7 @@ def email_test_env(monkeypatch):
         "next_purchase_id": 1,
         "issue_counter": 0,
         "emails": [],
+        "sales": [],
         "dto_status": "reserved",
     }
 
@@ -100,6 +101,17 @@ def email_test_env(monkeypatch):
                     self.last_result = None
                 else:
                     self.last_result = [purchase["amount_due"], purchase["status"]]
+                self.last_fetch_mode = "one"
+            elif "select amount_due, customer_email, status from purchase" in q:
+                purchase = state["purchases"].get(params[0])
+                if not purchase:
+                    self.last_result = None
+                else:
+                    self.last_result = [
+                        purchase["amount_due"],
+                        purchase["customer_email"],
+                        purchase["status"],
+                    ]
                 self.last_fetch_mode = "one"
             elif "select amount_due, customer_email from purchase" in q:
                 purchase = state["purchases"].get(params[0])
@@ -149,6 +161,18 @@ def email_test_env(monkeypatch):
                 }
                 state["purchases"][purchase_id] = purchase
                 self.last_result = [purchase_id]
+                self.last_fetch_mode = "one"
+            elif "insert into sales" in q:
+                state["sales"].append(
+                    {
+                        "purchase_id": params[0],
+                        "category": params[1],
+                        "amount": params[2],
+                        "actor": params[3],
+                        "method": params[4],
+                    }
+                )
+                self.last_result = None
                 self.last_fetch_mode = "one"
             elif "insert into ticket" in q:
                 ticket_id = state["next_ticket_id"]
@@ -424,7 +448,7 @@ def test_pay_booking_sends_payment_confirmation(email_test_env):
         pay_in,
         request,
         background_tasks=pay_tasks,
-        context=SimpleNamespace(),
+        context=SimpleNamespace(is_admin=True),
     )
 
     assert pay_tasks.tasks, "Expected payment email task"
@@ -441,3 +465,110 @@ def test_pay_booking_sends_payment_confirmation(email_test_env):
     assert any(marker in email["html"] for marker in confirmation_markers)
     assert "https://example.test/api/q/opaque-2" in email["html"]
     assert email["pdf"] == b"%PDF-FAKE%"
+
+
+@pytest.mark.parametrize(
+    "purchase_id, purchase_patch, expected_status",
+    [
+        (999, None, 404),
+        (1, {"amount_due": 0}, 400),
+        (1, {"status": "cancelled"}, 409),
+        (1, {"status": "refunded"}, 409),
+    ],
+)
+def test_pay_booking_rejects_invalid_purchase_states(email_test_env, purchase_id, purchase_patch, expected_status):
+    state, purchase_router = email_test_env
+
+    data = purchase_router.PurchaseCreate(
+        tour_id=1,
+        seat_nums=[1],
+        passenger_names=["Alice"],
+        passenger_phone="123",
+        passenger_email="alice@example.com",
+        departure_stop_id=1,
+        arrival_stop_id=3,
+        adult_count=1,
+        discount_count=0,
+        lang="en",
+    )
+    initial_tasks = BackgroundTasks()
+    purchase_router.create_purchase(data, background_tasks=initial_tasks)
+    _run_background_tasks(initial_tasks)
+
+    purchase_before = dict(state["purchases"].get(1, {}))
+    tickets_before = list(state["tickets"])
+    sales_before = list(state["sales"])
+    emails_before = len(state["emails"])
+
+    if purchase_patch and 1 in state["purchases"]:
+        state["purchases"][1].update(purchase_patch)
+    status_before_pay = state["purchases"].get(1, {}).get("status")
+
+    pay_tasks = BackgroundTasks()
+    scope = {"type": "http", "headers": [], "query_string": b""}
+    request = Request(scope)
+    request.state.is_admin = True
+
+    pay_in = purchase_router.PayIn(purchase_id=purchase_id)
+    with pytest.raises(purchase_router.HTTPException) as exc_info:
+        purchase_router.pay_booking(
+            pay_in,
+            request,
+            background_tasks=pay_tasks,
+            context=SimpleNamespace(is_admin=True),
+        )
+
+    assert exc_info.value.status_code == expected_status
+    assert not pay_tasks.tasks
+    assert len(state["emails"]) == emails_before
+    assert list(state["tickets"]) == tickets_before
+    assert state["sales"] == sales_before
+
+    if purchase_id == 1:
+        assert state["purchases"][1]["status"] == status_before_pay
+
+
+def test_non_admin_pay_booking_returns_payload_and_keeps_reserved_status(email_test_env, monkeypatch):
+    state, purchase_router = email_test_env
+    monkeypatch.setenv("CLIENT_APP_BASE", "https://app.example.com")
+
+    data = purchase_router.PurchaseCreate(
+        tour_id=1,
+        seat_nums=[1],
+        passenger_names=["Alice"],
+        passenger_phone="123",
+        passenger_email="alice@example.com",
+        departure_stop_id=1,
+        arrival_stop_id=3,
+        adult_count=1,
+        discount_count=0,
+        lang="en",
+    )
+    initial_tasks = BackgroundTasks()
+    purchase_router.create_purchase(data, background_tasks=initial_tasks)
+    _run_background_tasks(initial_tasks)
+
+    state["emails"].clear()
+    sales_before = list(state["sales"])
+
+    pay_tasks = BackgroundTasks()
+    scope = {"type": "http", "headers": [], "query_string": b""}
+    request = Request(scope)
+    request.state.is_admin = False
+
+    context = SimpleNamespace(is_admin=False, scopes=["pay"], purchase_id=1)
+    pay_in = purchase_router.PayIn(purchase_id=1)
+
+    payload = purchase_router.pay_booking(
+        pay_in,
+        request,
+        background_tasks=pay_tasks,
+        context=context,
+    )
+
+    assert payload["provider"] == "liqpay"
+    assert payload["payload"]["order_id"].startswith("purchase-1")
+    assert state["purchases"][1]["status"] == "reserved"
+    assert not pay_tasks.tasks
+    assert state["emails"] == []
+    assert state["sales"] == sales_before

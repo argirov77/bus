@@ -21,6 +21,8 @@ class DummyCursor:
             return [1, 1]
         if "select status from purchase" in q:
             return [self.status_resp]
+        if "select amount_due, customer_email, status from purchase" in q:
+            return [10, "a@b.com", self.status_resp]
         if "select amount_due, customer_email from purchase" in q:
             return [10, "a@b.com"]
         if "select route_id, pricelist_id, date from tour" in q:
@@ -212,9 +214,12 @@ def test_purchase_flow(client):
     assert resp.status_code == 403
 
     resp = cli.post('/pay?token=token-pay', json={'purchase_id': 1})
-    assert resp.status_code == 204
-    assert any("status='paid'" in q[0] for q in store['cursor'].queries)
-    assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body['provider'] == 'liqpay'
+    assert body['payload']['order_id'] == 'purchase-1'
+    assert not any("status='paid'" in q[0] for q in store['cursor'].queries)
+    assert not any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
 
     store['cursor'].queries.clear()
 

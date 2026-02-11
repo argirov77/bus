@@ -18,6 +18,7 @@ from ._ticket_link_helpers import (
     enrich_ticket_link_results,
 )
 from ..services import ticket_links
+from ..services import liqpay
 from ..services.access_guard import guard_public_request
 from ..services.email import render_ticket_email, send_ticket_email
 from ..services.ticket_dto import get_ticket_dto
@@ -658,7 +659,7 @@ def purchase_and_pay(
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 
-@actions_router.post("/pay", status_code=204)
+@actions_router.post("/pay")
 def pay_booking(
     data: PayIn,
     request: Request,
@@ -670,6 +671,7 @@ def pay_booking(
     ticket_specs: List[TicketIssueSpec] = []
     tickets: List[TicketLinkResult] = []
     customer_email: str | None = None
+    is_admin = bool(context and getattr(context, "is_admin", False))
     try:
         actor, jti = _resolve_actor(request)
         _require_pay_access_for_public_endpoint(context, data.purchase_id)
@@ -680,7 +682,7 @@ def pay_booking(
             context=context,
         )
         cur.execute(
-            "SELECT amount_due, customer_email FROM purchase WHERE id=%s",
+            "SELECT amount_due, customer_email, status FROM purchase WHERE id=%s",
             (data.purchase_id,),
         )
         row = cur.fetchone()
@@ -688,6 +690,16 @@ def pay_booking(
             raise HTTPException(404, "Purchase not found")
         amount_due = float(row[0])
         customer_email = row[1]
+        status = str(row[2] or "")
+
+        if amount_due <= 0:
+            raise HTTPException(400, "Purchase has no outstanding balance")
+        if status in {"cancelled", "refunded"}:
+            raise HTTPException(409, "Purchase cannot be paid in current status")
+
+        if not is_admin:
+            conn.rollback()
+            return liqpay.build_checkout_payload(data.purchase_id, amount_due)
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, data.purchase_id)
 
