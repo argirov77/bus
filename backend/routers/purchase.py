@@ -1,10 +1,10 @@
-from typing import List, Sequence, cast
+from typing import List, Literal, Sequence, cast
 
 import datetime
 
 import logging
 from threading import Lock
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
 from ..auth import optional_scope, require_scope
@@ -18,6 +18,7 @@ from ._ticket_link_helpers import (
     enrich_ticket_link_results,
 )
 from ..services import ticket_links
+from ..services import liqpay
 from ..services.access_guard import guard_public_request
 from ..services.email import render_ticket_email, send_ticket_email
 from ..services.ticket_dto import get_ticket_dto
@@ -595,6 +596,24 @@ class PayIn(BaseModel):
     purchase_id: int
 
 
+class LiqPayCheckoutPayload(BaseModel):
+    version: str
+    public_key: str
+    action: str
+    amount: float
+    currency: str
+    description: str
+    order_id: str
+    result_url: str
+
+
+class LiqPayCheckoutOut(BaseModel):
+    provider: Literal["liqpay"]
+    data: str
+    signature: str
+    payload: LiqPayCheckoutPayload
+
+
 @actions_router.post("/book", response_model=PurchaseOut)
 def book_seat(data: PurchaseCreate, request: Request, background_tasks: BackgroundTasks):
     guard_public_request(request, "book")
@@ -658,7 +677,19 @@ def purchase_and_pay(
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 
-@actions_router.post("/pay", status_code=204)
+@actions_router.post(
+    "/pay",
+    response_model=LiqPayCheckoutOut,
+    responses={
+        200: {
+            "description": "LiqPay checkout payload for online payment",
+            "model": LiqPayCheckoutOut,
+        },
+        204: {
+            "description": "Admin offline payment marked as successful",
+        },
+    },
+)
 def pay_booking(
     data: PayIn,
     request: Request,
@@ -667,12 +698,20 @@ def pay_booking(
 ):
     conn = get_connection()
     cur = conn.cursor()
+    is_admin = bool(
+        (context and getattr(context, "is_admin", False))
+        or getattr(request.state, "is_admin", False)
+    )
     ticket_specs: List[TicketIssueSpec] = []
     tickets: List[TicketLinkResult] = []
     customer_email: str | None = None
     try:
-        actor, jti = _resolve_actor(request)
-        _require_pay_access_for_public_endpoint(context, data.purchase_id)
+        actor: str | None = None
+        jti: str | None = None
+        if is_admin:
+            actor, jti = _resolve_actor(request)
+        if not is_admin:
+            _require_pay_access_for_public_endpoint(context, data.purchase_id)
         guard_public_request(
             request,
             "pay",
@@ -689,10 +728,13 @@ def pay_booking(
         amount_due = float(row[0])
         customer_email = row[1]
 
+        if not is_admin:
+            return liqpay.build_checkout_payload(data.purchase_id, amount_due)
+
         ticket_specs = _collect_ticket_specs_for_purchase(cur, data.purchase_id)
 
         cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (data.purchase_id,))
-        _log_action(cur, data.purchase_id, "paid", amount_due, by=actor, method="online")
+        _log_action(cur, data.purchase_id, "paid", amount_due, by=actor, method="offline")
         tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         conn.commit()
         if jti:
@@ -708,6 +750,7 @@ def pay_booking(
         conn.close()
 
     _queue_ticket_emails(background_tasks, tickets, None, customer_email)
+    return Response(status_code=204)
 
 
 @actions_router.post("/cancel/{purchase_id}", status_code=204)
