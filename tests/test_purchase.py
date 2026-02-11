@@ -9,6 +9,13 @@ import jwt
 
 class DummyCursor:
     status_resp = "reserved"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
     def __init__(self):
         self.queries = []
         self.query = ""
@@ -24,6 +31,8 @@ class DummyCursor:
             return [self.status_resp]
         if "select amount_due, customer_email from purchase" in q:
             return [10, "a@b.com"]
+        if "select amount_due, status from purchase" in q:
+            return [10, "reserved"]
         if "select route_id, pricelist_id, date from tour" in q:
             return [1, 1, date(2024, 1, 1)]
         if "select route_id, date from tour" in q:
@@ -219,9 +228,9 @@ def test_purchase_flow(client):
     assert resp.status_code == 403
 
     resp = cli.post('/pay?token=token-pay', json={'purchase_id': 1})
-    assert resp.status_code == 204
-    assert any("status='paid'" in q[0] for q in store['cursor'].queries)
-    assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
+    assert resp.status_code == 200
+    assert resp.json()["provider"] == "liqpay"
+    assert resp.json()["payload"]["result_url"] == "https://example.test/purchase/1"
 
     store['cursor'].queries.clear()
 
@@ -323,6 +332,39 @@ def test_admin_pay_logs_offline_method(client):
     ]
     assert sales_inserts, 'Expected INSERT INTO sales for admin /pay'
     assert sales_inserts[-1][1][4] == 'offline'
+
+
+def test_result_url_is_consistent_between_pay_endpoints(client, monkeypatch):
+    cli, _store = client
+
+    from backend.routers import public as public_module
+
+    def fake_require_purchase_context(request, purchase_id, scope):
+        return object(), 77, purchase_id, "purchase_session"
+
+    monkeypatch.setattr(public_module, "_require_purchase_context", fake_require_purchase_context)
+
+    pay_resp = cli.post('/pay?token=token-pay', json={'purchase_id': 1})
+    public_pay_resp = cli.post('/public/purchase/1/pay')
+
+    assert pay_resp.status_code == 200
+    assert public_pay_resp.status_code == 200
+
+    pay_result_url = pay_resp.json()["payload"]["result_url"]
+    public_result_url = public_pay_resp.json()["payload"]["result_url"]
+
+    assert pay_result_url == public_result_url == "https://example.test/purchase/1"
+
+
+def test_result_url_rejects_localhost_in_production_config(client, monkeypatch):
+    cli, _store = client
+
+    monkeypatch.setenv("CLIENT_APP_BASE", "http://localhost:3000")
+
+    resp = cli.post('/pay?token=token-pay', json={'purchase_id': 1})
+
+    assert resp.status_code == 500
+    assert "localhost" in resp.json()["detail"].lower()
 
 
 def test_discount_price_applied(client):
