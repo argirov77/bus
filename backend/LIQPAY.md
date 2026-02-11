@@ -55,11 +55,58 @@ POST /public/payment/liqpay/callback
 на `paid`, выпускает билеты и отправляет письмо с deep-link'ами по email покупателя. Статусы, отличные от `success`, `sandbox` или
 `wait_accept`, возвращаются без изменения заказа.
 
-## 6. Альтернативный способ авторизации для оплаты (внешний фронт)
+## 6. Recommended flow for external frontend
 
-Помимо cookie-session сценария `/public/...`, в API есть отдельный endpoint `POST /pay` для внешних интеграций по билетному токену:
+Для внешнего фронтенда (без cookie-сессии и CSRF) **канонический endpoint — `POST /pay`**.
+
+`POST /public/purchase/{purchase_id}/pay` остаётся для публичного кабинета на cookie-сессии, открытого через QR/deep-link, и не является основным для внешних интеграций.
+
+### Обязательные заголовки для `POST /pay`
+
+- `Content-Type: application/json`
+- `X-Ticket-Token: <ticket_token_with_pay_scope>` для non-admin клиентов
+- `Authorization: Bearer <admin_jwt>` — только для админских интеграций (вместо `X-Ticket-Token`)
+
+### Правила авторизации
 
 - non-admin доступ только с `X-Ticket-Token` (или `?token=`), содержащим scope `pay`;
 - `purchase_id` в токене обязан совпадать с `purchase_id` в теле запроса;
 - без токена ответ `401`, с токеном без scope `pay` или с токеном от другого заказа — `403`;
 - admin может вызывать `POST /pay` через bearer JWT.
+
+### Пример запроса/ответа
+
+Запрос:
+
+```http
+POST /pay HTTP/1.1
+Host: api.example.com
+Content-Type: application/json
+X-Ticket-Token: eyJhbGciOi...
+
+{
+  "purchase_id": 15
+}
+```
+
+Успешный ответ (`200 OK`):
+
+```json
+{
+  "provider": "liqpay",
+  "data": "<base64>",
+  "signature": "<base64>",
+  "payload": {
+    "version": "3",
+    "public_key": "...",
+    "action": "pay",
+    "amount": 100.0,
+    "currency": "UAH",
+    "description": "Purchase #15",
+    "order_id": "purchase-15",
+    "result_url": "https://frontend.example.com/purchase/15"
+  }
+}
+```
+
+Далее фронтенд отправляет `data` и `signature` на `https://www.liqpay.ua/api/3/checkout` (см. раздел 3).
