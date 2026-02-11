@@ -20,3 +20,9 @@ def get_client_app_base() -> str:
     if "localhost" in hostname or hostname in {"127.0.0.1", "::1"}:
         raise ValueError("CLIENT_APP_BASE must not point to localhost")
     return normalized
+
+
+def build_purchase_result_url(purchase_id: int) -> str:
+    """Build a customer-facing purchase result URL for the given purchase id."""
+
+    return f"{get_client_app_base()}/purchase/{int(purchase_id)}"

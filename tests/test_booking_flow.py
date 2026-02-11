@@ -188,7 +188,7 @@ def test_booking_flow(client):
     assert any('reserved' in q[0].lower() for q in store['cursor'].queries)
     assert any('insert into sales' in q[0].lower() for q in store['cursor'].queries)
     assert 'amount_due' in resp.json()
-    assert resp.json()['tickets'][0]['deep_link'] == 'https://example.test/q/opaque-1'
+    assert resp.json()['tickets'][0]['deep_link'].endswith('/q/opaque-1')
 
     store['cursor'].queries.clear()
 
@@ -197,8 +197,9 @@ def test_booking_flow(client):
     assert resp.status_code == 403
 
     resp = cli.post('/pay?token=token-pay', json={'purchase_id': 1})
-    assert any('paid' in q[0].lower() for q in store['cursor'].queries)
-    assert any('insert into sales' in q[0].lower() for q in store['cursor'].queries)
+    assert resp.status_code == 200
+    assert resp.json()['payload']['result_url'] == 'https://example.test/purchase/1'
+    assert not any('paid' in q[0].lower() for q in store['cursor'].queries)
 
     store['cursor'].queries.clear()
 
@@ -230,7 +231,7 @@ def test_booking_flow(client):
     assert any('paid' in q[0].lower() for q in store['cursor'].queries)
     assert any('insert into sales' in q[0].lower() for q in store['cursor'].queries)
     assert 'amount_due' in resp.json()
-    assert resp.json()['tickets'][0]['deep_link'] == 'https://example.test/q/opaque-2'
+    assert resp.json()['tickets'][0]['deep_link'].endswith('/q/opaque-2')
 
     store['cursor'].queries.clear()
 

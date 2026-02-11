@@ -26,7 +26,7 @@ from ._ticket_link_helpers import (
     build_deep_link,
     combine_departure_datetime,
 )
-from ..utils.client_app import get_client_app_base
+from ..utils.client_app import build_purchase_result_url, get_client_app_base
 
 session_router = APIRouter(tags=["public"])
 router = APIRouter(prefix="/public", tags=["public"])
@@ -1144,7 +1144,13 @@ def public_pay(purchase_id: int, request: Request) -> Mapping[str, Any]:
     if amount_due <= 0:
         raise HTTPException(status_code=400, detail="Purchase has no outstanding balance")
 
-    return liqpay.build_checkout_payload(resolved_purchase_id, amount_due, ticket_id=ticket_id)
+    result_url = build_purchase_result_url(resolved_purchase_id)
+    return liqpay.build_payment_payload(
+        resolved_purchase_id,
+        amount_due,
+        ticket_id=ticket_id,
+        result_url=result_url,
+    )
 
 
 @router.post("/purchase/{purchase_id}/reschedule/quote")

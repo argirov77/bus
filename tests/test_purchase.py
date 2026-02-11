@@ -212,9 +212,9 @@ def test_purchase_flow(client):
     assert resp.status_code == 403
 
     resp = cli.post('/pay?token=token-pay', json={'purchase_id': 1})
-    assert resp.status_code == 204
-    assert any("status='paid'" in q[0] for q in store['cursor'].queries)
-    assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
+    assert resp.status_code == 200
+    assert resp.json()['payload']['result_url'] == 'https://example.test/purchase/1'
+    assert not any("status='paid'" in q[0] for q in store['cursor'].queries)
 
     store['cursor'].queries.clear()
 
@@ -268,6 +268,46 @@ def test_purchase_flow(client):
     assert resp.status_code == 204
     assert any("status='refunded'" in q[0] for q in store['cursor'].queries)
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
+
+
+def test_pay_result_url_is_consistent_between_public_and_actions(client, monkeypatch):
+    cli, _ = client
+
+    actions_response = cli.post('/pay?token=token-pay', json={'purchase_id': 1})
+    assert actions_response.status_code == 200
+
+    from backend.routers import public as public_module
+
+    class _DummyCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _DummyConnection:
+        def cursor(self):
+            return _DummyCursor()
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        public_module,
+        '_require_purchase_context',
+        lambda request, purchase_id, scope: (object(), None, purchase_id, 'cookie'),
+    )
+    monkeypatch.setattr(public_module, 'get_connection', lambda: _DummyConnection())
+    monkeypatch.setattr(public_module, '_load_purchase_state', lambda cur, purchase_id: (10.0, 'reserved'))
+
+    public_response = cli.post('/public/purchase/1/pay')
+    assert public_response.status_code == 200
+
+    assert (
+        actions_response.json()['payload']['result_url']
+        == public_response.json()['payload']['result_url']
+        == 'https://example.test/purchase/1'
+    )
 
 
 def test_passenger_count_mismatch(client):

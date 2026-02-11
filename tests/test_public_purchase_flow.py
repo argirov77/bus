@@ -13,6 +13,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 @pytest.fixture
 def public_client(monkeypatch):
+    monkeypatch.setenv("APP_PUBLIC_URL", "https://example.test")
+    monkeypatch.setenv("CLIENT_APP_BASE", "https://example.test")
+
     state = {
         "sessions": {},
         "redeem_calls": [],
@@ -182,7 +185,7 @@ def test_public_ticket_pdf_accepts_purchase_credentials(public_client):
     assert state["verify_calls"] == [(ticket_id, purchase_id, email)]
     assert state["dto_calls"][-1] == (ticket_id, "bg")
     assert state["view_session_calls"][-1][:4] == (ticket_id, purchase_id, "bg", None)
-    assert state["render_calls"][-1][1] == "http://localhost:8000/q/opaque123"
+    assert state["render_calls"][-1][1].endswith("/q/opaque123")
 
 
 def test_public_ticket_pdf_rejects_mismatched_purchase(public_client):

@@ -17,11 +17,12 @@ from ._ticket_link_helpers import (
     issue_ticket_links,
     enrich_ticket_link_results,
 )
-from ..services import ticket_links
+from ..services import liqpay, ticket_links
 from ..services.access_guard import guard_public_request
 from ..services.email import render_ticket_email, send_ticket_email
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
+from ..utils.client_app import build_purchase_result_url
 
 logger = logging.getLogger(__name__)
 
@@ -658,7 +659,7 @@ def purchase_and_pay(
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 
-@actions_router.post("/pay", status_code=204)
+@actions_router.post("/pay")
 def pay_booking(
     data: PayIn,
     request: Request,
@@ -688,6 +689,14 @@ def pay_booking(
             raise HTTPException(404, "Purchase not found")
         amount_due = float(row[0])
         customer_email = row[1]
+
+        if context and not getattr(context, "is_admin", False):
+            result_url = build_purchase_result_url(data.purchase_id)
+            return liqpay.build_payment_payload(
+                data.purchase_id,
+                amount_due,
+                result_url=result_url,
+            )
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, data.purchase_id)
 
