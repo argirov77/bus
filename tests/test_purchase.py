@@ -5,6 +5,7 @@ from datetime import date, time, datetime, timezone
 
 from fastapi.testclient import TestClient
 import pytest
+import jwt
 
 class DummyCursor:
     status_resp = "reserved"
@@ -166,6 +167,12 @@ def client(monkeypatch):
     monkeypatch.setattr('backend.routers.purchase.free_ticket', lambda *a, **k: None)
     monkeypatch.setattr('backend.services.ticket_links.issue', fake_issue)
     monkeypatch.setattr('backend.services.ticket_links.verify', fake_verify)
+    def fake_decode_token(token):
+        if token == "admin-token":
+            return {"role": "admin", "jti": "admin-jti"}
+        raise jwt.PyJWTError("invalid")
+
+    monkeypatch.setattr('backend.auth.decode_token', fake_decode_token)
     monkeypatch.setattr('backend.routers._ticket_link_helpers.get_or_create_view_session', fake_get_or_create_view_session)
     monkeypatch.setattr('backend.routers.purchase.render_ticket_pdf', lambda *a, **k: b'%PDF-FAKE%')
     monkeypatch.setattr(
@@ -284,6 +291,38 @@ def test_passenger_count_mismatch(client):
         'discount_count': 1,
     })
     assert resp.status_code == 400
+
+
+def test_admin_pay_logs_offline_method(client):
+    cli, store = client
+    reserve_resp = cli.post('/book', json={
+        'tour_id': 1,
+        'seat_nums': [1],
+        'passenger_names': ['A'],
+        'passenger_phone': '1',
+        'passenger_email': 'a@b.com',
+        'departure_stop_id': 1,
+        'arrival_stop_id': 2,
+        'adult_count': 1,
+        'discount_count': 0,
+    })
+    assert reserve_resp.status_code == 200
+    store['cursor'].queries.clear()
+
+    resp = cli.post(
+        '/pay',
+        json={'purchase_id': 1},
+        headers={'Authorization': 'Bearer admin-token'},
+    )
+
+    assert resp.status_code == 204
+    sales_inserts = [
+        (query, params)
+        for query, params in store['cursor'].queries
+        if 'insert into sales' in query.lower() and params is not None
+    ]
+    assert sales_inserts, 'Expected INSERT INTO sales for admin /pay'
+    assert sales_inserts[-1][1][4] == 'offline'
 
 
 def test_discount_price_applied(client):

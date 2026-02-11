@@ -26,6 +26,8 @@ from ..services.ticket_pdf import render_ticket_pdf
 
 logger = logging.getLogger(__name__)
 
+ADMIN_PAY_METHOD = "offline"
+
 _action_hint_lock = Lock()
 _pending_sql_hints: List[str] = []
 
@@ -532,7 +534,7 @@ def pay_purchase(
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
 
         cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
-        _log_action(cur, purchase_id, "paid", amount_due, by=actor, method="offline")
+        _log_action(cur, purchase_id, "paid", amount_due, by=actor, method=ADMIN_PAY_METHOD)
         tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         conn.commit()
         if jti:
@@ -734,7 +736,7 @@ def pay_booking(
         ticket_specs = _collect_ticket_specs_for_purchase(cur, data.purchase_id)
 
         cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (data.purchase_id,))
-        _log_action(cur, data.purchase_id, "paid", amount_due, by=actor, method="offline")
+        _log_action(cur, data.purchase_id, "paid", amount_due, by=actor, method=ADMIN_PAY_METHOD)
         tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         conn.commit()
         if jti:

@@ -105,7 +105,7 @@
 | POST | `/tickets/{ticket_id}/seat` | `seat` | Смена места в рамках того же рейса. |
 | POST | `/tickets/{ticket_id}/reschedule` | `reschedule` | Перенос билета на другой рейс или сегмент. |
 | POST | `/tickets/reassign` | `edit` | Массовая пересадка между местами внутри рейса. |
-| POST | `/purchase/{purchase_id}/pay` | `pay` | Изменение статуса заказа на `paid` и повторная выдача ссылок. |
+| POST | `/purchase/{purchase_id}/pay` | `pay` | Изменение статуса заказа на `paid`, запись продажи с `method=offline` и повторная выдача ссылок. |
 | POST | `/purchase/{purchase_id}/cancel` | `cancel` | Отмена заказа с освобождением мест и записью в лог продаж. |
 
 ### Отдельный режим авторизации для внешнего фронта (`POST /pay`)
@@ -113,7 +113,7 @@
 ### Ответы `POST /pay`
 
 - `200 OK` — non-admin сценарий: возвращается LiqPay payload вида `{ provider, data, signature, payload }` для перенаправления на оплату.
-- `204 No Content` — admin-сценарий: заказ помечается как оплаченный офлайн, тело ответа отсутствует.
+- `204 No Content` — admin-сценарий: заказ помечается как оплаченный офлайн, в `sales` пишется `category=paid` и `method=offline`, тело ответа отсутствует.
 
 - Эндпоинт `POST /pay` предназначен для сценария внешнего фронта с билетными ссылками и **не использует cookie-session + CSRF** из `/public/...`.
 - Для non-admin запроса обязательно передать `X-Ticket-Token` (или `?token=`) со scope `pay`.
