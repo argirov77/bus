@@ -1,4 +1,4 @@
-from typing import List, Sequence, cast
+from typing import Any, List, Sequence, cast
 
 import datetime
 
@@ -18,10 +18,12 @@ from ._ticket_link_helpers import (
     enrich_ticket_link_results,
 )
 from ..services import ticket_links
+from ..services import liqpay
 from ..services.access_guard import guard_public_request
 from ..services.email import render_ticket_email, send_ticket_email
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
+from ..utils.client_app import get_client_app_base
 
 logger = logging.getLogger(__name__)
 
@@ -568,6 +570,14 @@ class PayIn(BaseModel):
     purchase_id: int
 
 
+def _build_liqpay_payload(purchase_id: int, amount: float) -> dict[str, Any]:
+    return liqpay.build_payment_payload(
+        purchase_id,
+        amount,
+        result_url=f"{get_client_app_base()}/purchase/{purchase_id}",
+    )
+
+
 @actions_router.post("/book", response_model=PurchaseOut)
 def book_seat(data: PurchaseCreate, request: Request, background_tasks: BackgroundTasks):
     guard_public_request(request, "book")
@@ -631,7 +641,7 @@ def purchase_and_pay(
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 
-@actions_router.post("/pay", status_code=204)
+@actions_router.post("/pay")
 def pay_booking(
     data: PayIn,
     request: Request,
@@ -645,12 +655,29 @@ def pay_booking(
     customer_email: str | None = None
     try:
         actor, jti = _resolve_actor(request)
+        is_admin = bool(context) and bool(getattr(context, "is_admin", False))
         guard_public_request(
             request,
             "pay",
             purchase_id=data.purchase_id,
             context=context,
         )
+        if not is_admin:
+            cur.execute(
+                "SELECT amount_due, status FROM purchase WHERE id=%s",
+                (data.purchase_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(404, "Purchase not found")
+            amount_due = float(row[0] or 0.0)
+            status = str(row[1]) if row[1] is not None else "reserved"
+            if status in {"cancelled", "refunded"}:
+                raise HTTPException(status_code=409, detail="Purchase is not active")
+            if amount_due <= 0:
+                raise HTTPException(status_code=400, detail="Purchase has no outstanding balance")
+            return _build_liqpay_payload(data.purchase_id, amount_due)
+
         cur.execute(
             "SELECT amount_due, customer_email FROM purchase WHERE id=%s",
             (data.purchase_id,),
@@ -664,7 +691,7 @@ def pay_booking(
         ticket_specs = _collect_ticket_specs_for_purchase(cur, data.purchase_id)
 
         cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (data.purchase_id,))
-        _log_action(cur, data.purchase_id, "paid", amount_due, by=actor, method="online")
+        _log_action(cur, data.purchase_id, "paid", amount_due, by=actor, method="offline")
         tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         conn.commit()
         if jti:
@@ -680,6 +707,7 @@ def pay_booking(
         conn.close()
 
     _queue_ticket_emails(background_tasks, tickets, None, customer_email)
+    return None
 
 
 @actions_router.post("/cancel/{purchase_id}", status_code=204)
@@ -756,4 +784,3 @@ def refund_purchase(
     finally:
         cur.close()
         conn.close()
-

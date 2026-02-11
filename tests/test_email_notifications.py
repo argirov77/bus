@@ -392,6 +392,46 @@ def test_create_purchase_sends_email(email_test_env):
     assert "Your ticket" in email["subject"]
 
 
+def test_pay_booking_without_admin_returns_liqpay_payload(email_test_env, monkeypatch):
+    state, purchase_router = email_test_env
+
+    data = purchase_router.PurchaseCreate(
+        tour_id=1,
+        seat_nums=[1],
+        passenger_names=["Alice"],
+        passenger_phone="123",
+        passenger_email="alice@example.com",
+        departure_stop_id=1,
+        arrival_stop_id=3,
+        adult_count=1,
+        discount_count=0,
+        lang="en",
+    )
+    initial_tasks = BackgroundTasks()
+    purchase_router.create_purchase(data, background_tasks=initial_tasks)
+
+    monkeypatch.setattr(purchase_router, "get_client_app_base", lambda: "https://frontend.example")
+
+    pay_tasks = BackgroundTasks()
+    scope = {"type": "http", "headers": [], "query_string": b""}
+    request = Request(scope)
+
+    pay_in = purchase_router.PayIn(purchase_id=1)
+    payload = purchase_router.pay_booking(
+        pay_in,
+        request,
+        background_tasks=pay_tasks,
+        context=None,
+    )
+
+    assert isinstance(payload, dict)
+    assert payload["provider"] == "liqpay"
+    assert payload["payload"]["order_id"] == "purchase-1"
+    assert payload["payload"]["result_url"] == "https://frontend.example/purchase/1"
+    assert state["purchases"][1]["status"] == "reserved"
+    assert not pay_tasks.tasks
+
+
 def test_pay_booking_sends_payment_confirmation(email_test_env):
     state, purchase_router = email_test_env
 
