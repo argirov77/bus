@@ -4,6 +4,8 @@ import json
 import os
 from typing import Any, Mapping
 
+from ..utils.client_app import get_client_app_base
+
 
 def _env(key: str, default: str) -> str:
     value = os.getenv(key)
@@ -58,6 +60,22 @@ def build_payment_payload(
         "signature": signature,
         "payload": payload,
     }
+
+
+def build_checkout_payload(
+    purchase_id: int,
+    amount: float,
+    *,
+    ticket_id: int | None = None,
+) -> dict[str, Any]:
+    """Single source of truth for all online payment payload scenarios."""
+    result_url = f"{get_client_app_base()}/purchase/{purchase_id}"
+    return build_payment_payload(
+        purchase_id,
+        amount,
+        ticket_id=ticket_id,
+        result_url=result_url,
+    )
 
 
 def verify_signature(data: str, signature: str) -> bool:

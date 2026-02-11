@@ -369,20 +369,6 @@ def _verify_ticket_purchase_access(ticket_id: int, purchase_id: int, email: str)
         raise HTTPException(status_code=403, detail="Email does not match purchase")
 
 
-def _build_liqpay_payload(
-    purchase_id: int,
-    amount: float,
-    *,
-    ticket_id: int | None = None,
-) -> dict[str, Any]:
-    return liqpay.build_payment_payload(
-        purchase_id,
-        amount,
-        ticket_id=ticket_id,
-        result_url=_redirect_base_url(purchase_id),
-    )
-
-
 def _extract_purchase_id_from_order(order_id: str) -> int | None:
     if not order_id:
         return None
@@ -1158,7 +1144,7 @@ def public_pay(purchase_id: int, request: Request) -> Mapping[str, Any]:
     if amount_due <= 0:
         raise HTTPException(status_code=400, detail="Purchase has no outstanding balance")
 
-    return _build_liqpay_payload(resolved_purchase_id, amount_due, ticket_id=ticket_id)
+    return liqpay.build_checkout_payload(resolved_purchase_id, amount_due, ticket_id=ticket_id)
 
 
 @router.post("/purchase/{purchase_id}/reschedule/quote")
