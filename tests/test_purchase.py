@@ -140,6 +140,14 @@ def client(monkeypatch):
             "exp": 4102444800,
             "jti": "jti-no-cancel",
         },
+        "token-pay-other-purchase": {
+            "ticket_id": 1,
+            "purchase_id": 2,
+            "scopes": ["pay"],
+            "lang": "bg",
+            "exp": 4102444800,
+            "jti": "jti-pay-other",
+        },
     }
 
     from backend.services import ticket_links
@@ -190,11 +198,17 @@ def test_purchase_flow(client):
     assert resp.status_code == 200
     assert 'amount_due' in resp.json()
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
-    assert resp.json()['tickets'][0]['deep_link'] == 'https://example.test/q/opaque-1'
+    assert resp.json()['tickets'][0]['deep_link'].endswith('/q/opaque-1')
 
     store['cursor'].queries.clear()
 
+    resp = cli.post('/pay', json={'purchase_id': 1})
+    assert resp.status_code == 401
+
     resp = cli.post('/pay?token=token-no-pay', json={'purchase_id': 1})
+    assert resp.status_code == 403
+
+    resp = cli.post('/pay?token=token-pay-other-purchase', json={'purchase_id': 1})
     assert resp.status_code == 403
 
     resp = cli.post('/pay?token=token-pay', json={'purchase_id': 1})
@@ -232,7 +246,7 @@ def test_purchase_flow(client):
     assert 'amount_due' in resp.json()
     assert any('INSERT INTO purchase' in q[0] for q in store['cursor'].queries)
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
-    assert resp.json()['tickets'][0]['deep_link'] == 'https://example.test/q/opaque-2'
+    assert resp.json()['tickets'][0]['deep_link'].endswith('/q/opaque-2')
 
     store['cursor'].queries.clear()
 

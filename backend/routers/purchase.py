@@ -75,6 +75,33 @@ class PurchaseOut(BaseModel):
     tickets: List[TicketLinkOut] = Field(default_factory=list)
 
 
+def _require_pay_access_for_public_endpoint(
+    context,
+    purchase_id: int,
+) -> None:
+    """Enforce explicit auth rules for non-admin POST /pay access.
+
+    Rules:
+    - Admin bearer token is always allowed.
+    - Non-admin requests must provide ticket-token scope ``pay``.
+    - Non-admin token must be bound to the same purchase.
+    """
+
+    if context and getattr(context, "is_admin", False):
+        return
+
+    if context is None:
+        raise HTTPException(401, "Ticket token with scope 'pay' is required")
+
+    context_scopes = getattr(context, "scopes", []) or []
+    if "pay" not in context_scopes:
+        raise HTTPException(403, "Insufficient scope")
+
+    token_purchase_id = getattr(context, "purchase_id", None)
+    if token_purchase_id is None or int(token_purchase_id) != int(purchase_id):
+        raise HTTPException(403, "Token does not match purchase")
+
+
 def _log_action(
     cur,
     purchase_id: int,
@@ -645,6 +672,7 @@ def pay_booking(
     customer_email: str | None = None
     try:
         actor, jti = _resolve_actor(request)
+        _require_pay_access_for_public_endpoint(context, data.purchase_id)
         guard_public_request(
             request,
             "pay",
@@ -756,4 +784,3 @@ def refund_purchase(
     finally:
         cur.close()
         conn.close()
-
