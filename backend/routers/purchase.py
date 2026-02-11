@@ -664,7 +664,7 @@ def pay_booking(
         ticket_specs = _collect_ticket_specs_for_purchase(cur, data.purchase_id)
 
         cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (data.purchase_id,))
-        _log_action(cur, data.purchase_id, "paid", amount_due, by=actor, method="online")
+        _log_action(cur, data.purchase_id, "paid", amount_due, by=actor, method="offline")
         tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         conn.commit()
         if jti:
@@ -756,4 +756,3 @@ def refund_purchase(
     finally:
         cur.close()
         conn.close()
-

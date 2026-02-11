@@ -201,6 +201,12 @@ def test_purchase_flow(client):
     assert resp.status_code == 204
     assert any("status='paid'" in q[0] for q in store['cursor'].queries)
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
+    paid_sales = [
+        q for q in store['cursor'].queries
+        if 'INSERT INTO sales' in q[0] and q[1] and q[1][1] == 'paid'
+    ]
+    assert paid_sales
+    assert paid_sales[-1][1][4] == 'offline'
 
     store['cursor'].queries.clear()
 
@@ -314,3 +320,16 @@ def test_booking_rolls_back_when_ticket_issue_fails(client, monkeypatch):
     assert resp.status_code == 500
     assert store['conn'].was_rolled_back
     assert not store['conn'].was_committed
+
+
+def test_admin_pay_logs_offline_method(client):
+    cli, store = client
+    resp = cli.post('/pay?token=token-pay', json={'purchase_id': 1})
+
+    assert resp.status_code == 204
+    paid_sales = [
+        q for q in store['cursor'].queries
+        if 'INSERT INTO sales' in q[0] and q[1] and q[1][1] == 'paid'
+    ]
+    assert paid_sales
+    assert paid_sales[-1][1][4] == 'offline'
