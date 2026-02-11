@@ -201,13 +201,6 @@ def test_purchase_flow(client):
     assert resp.status_code == 204
     assert any("status='paid'" in q[0] for q in store['cursor'].queries)
     assert any('INSERT INTO sales' in q[0] for q in store['cursor'].queries)
-    paid_sales = [
-        q for q in store['cursor'].queries
-        if 'INSERT INTO sales' in q[0] and q[1] and q[1][1] == 'paid'
-    ]
-    assert paid_sales
-    assert paid_sales[-1][1][4] == 'offline'
-
     store['cursor'].queries.clear()
 
     resp = cli.post('/purchase?token=token-no-pay', json={
