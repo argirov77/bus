@@ -169,6 +169,14 @@ def _collect_ticket_specs_for_purchase(cur, purchase_id: int) -> List[TicketIssu
     return specs
 
 
+def _validate_purchase_payable(amount_due: float, status: str) -> None:
+    normalized_status = (status or "").lower()
+    if amount_due <= 0:
+        raise HTTPException(400, "Purchase amount is not payable")
+    if normalized_status in {"cancelled", "refunded"}:
+        raise HTTPException(409, f"Purchase is {normalized_status}")
+
+
 def _queue_ticket_emails(
     background_tasks: BackgroundTasks,
     tickets: Sequence[TicketLinkResult],
@@ -522,14 +530,16 @@ def pay_purchase(
             context=context,
         )
         cur.execute(
-            "SELECT amount_due, customer_email FROM purchase WHERE id=%s",
+            "SELECT amount_due, status, customer_email FROM purchase WHERE id=%s",
             (purchase_id,),
         )
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "Purchase not found")
         amount_due = float(row[0])
-        customer_email = row[1]
+        purchase_status = row[1]
+        customer_email = row[2]
+        _validate_purchase_payable(amount_due, purchase_status)
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
 
@@ -721,14 +731,16 @@ def pay_booking(
             context=context,
         )
         cur.execute(
-            "SELECT amount_due, customer_email FROM purchase WHERE id=%s",
+            "SELECT amount_due, status, customer_email FROM purchase WHERE id=%s",
             (data.purchase_id,),
         )
         row = cur.fetchone()
         if not row:
             raise HTTPException(404, "Purchase not found")
         amount_due = float(row[0])
-        customer_email = row[1]
+        purchase_status = row[1]
+        customer_email = row[2]
+        _validate_purchase_payable(amount_due, purchase_status)
 
         if not is_admin:
             return liqpay.build_checkout_payload(data.purchase_id, amount_due)
