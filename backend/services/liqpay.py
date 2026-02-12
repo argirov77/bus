@@ -10,17 +10,13 @@ from ..utils.client_app import build_purchase_result_url
 
 
 LIQPAY_CHECKOUT_URL = "https://www.liqpay.ua/api/3/checkout"
-DEFAULT_LIQPAY_PUBLIC_KEY = "sandbox_i85725531845"
-DEFAULT_LIQPAY_PRIVATE_KEY = "sandbox_AV9oE459nfHAIiD7A0kfyN5kkae9Ss9S01pyyD9A"
-
-
 def _env(key: str, default: str) -> str:
     value = os.getenv(key)
     return value if value else default
 
 
 def sign(data: str, private_key: str | None = None) -> str:
-    key = private_key or _env("LIQPAY_PRIVATE_KEY", DEFAULT_LIQPAY_PRIVATE_KEY)
+    key = private_key or _env("LIQPAY_PRIVATE_KEY", "sandbox")
     signature_raw = f"{key}{data}{key}".encode("utf-8")
     return base64.b64encode(hashlib.sha1(signature_raw).digest()).decode("utf-8")
 
@@ -44,7 +40,7 @@ def build_payment_payload(
     ticket_id: int | None = None,
     result_url: str,
 ) -> dict[str, Any]:
-    public_key = _env("LIQPAY_PUBLIC_KEY", DEFAULT_LIQPAY_PUBLIC_KEY)
+    public_key = _env("LIQPAY_PUBLIC_KEY", "sandbox")
     currency = _env("LIQPAY_CURRENCY", "UAH")
 
     description = f"Ticket #{ticket_id}" if ticket_id is not None else f"Purchase #{purchase_id}"
@@ -101,7 +97,7 @@ def verify_order(order_id: str) -> Mapping[str, Any]:
 
     payload = {
         "version": "3",
-        "public_key": _env("LIQPAY_PUBLIC_KEY", DEFAULT_LIQPAY_PUBLIC_KEY),
+        "public_key": _env("LIQPAY_PUBLIC_KEY", "sandbox"),
         "action": "status",
         "order_id": order_value,
     }
