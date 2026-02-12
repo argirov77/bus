@@ -16,6 +16,9 @@ def test_build_checkout_payload_has_expected_fields(monkeypatch):
     payload = response["payload"]
 
     assert response["provider"] == "liqpay"
+    assert response["checkout_form_url"] == "https://www.liqpay.ua/api/3/checkout"
+    assert response["checkout_url"].startswith("https://www.liqpay.ua/api/3/checkout?data=")
+    assert "&signature=" in response["checkout_url"]
     assert isinstance(response["data"], str) and response["data"]
     assert isinstance(response["signature"], str) and response["signature"]
 

@@ -9,6 +9,7 @@ import httpx
 from ..utils.client_app import build_purchase_result_url
 
 
+LIQPAY_CHECKOUT_URL = "https://www.liqpay.ua/api/3/checkout"
 def _env(key: str, default: str) -> str:
     value = os.getenv(key)
     return value if value else default
@@ -58,6 +59,8 @@ def build_payment_payload(
 
     return {
         "provider": "liqpay",
+        "checkout_url": f"{LIQPAY_CHECKOUT_URL}?data={data}&signature={signature}",
+        "checkout_form_url": LIQPAY_CHECKOUT_URL,
         "data": data,
         "signature": signature,
         "payload": payload,
