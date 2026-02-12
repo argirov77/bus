@@ -24,4 +24,5 @@ def test_build_checkout_payload_has_expected_fields(monkeypatch):
 
     assert payload["version"] == "3"
     assert payload["order_id"] == "ticket-77-15"
-    assert payload["result_url"] == "https://app.example.com/purchase/15"
+    assert payload["result_url"] == "https://app.example.com/return"
+    assert payload["server_url"] == "https://app.example.com/api/public/payment/liqpay/callback"

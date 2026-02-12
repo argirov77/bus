@@ -26,3 +26,15 @@ def build_purchase_result_url(purchase_id: int) -> str:
     """Build a canonical client result URL for a purchase."""
 
     return f"{get_client_app_base()}/purchase/{int(purchase_id)}"
+
+
+def build_liqpay_result_url() -> str:
+    """Build the URL where LiqPay should redirect the customer."""
+
+    return f"{get_client_app_base()}/return"
+
+
+def build_liqpay_server_url() -> str:
+    """Build the public callback URL that LiqPay can call."""
+
+    return f"{get_client_app_base()}/api/public/payment/liqpay/callback"
