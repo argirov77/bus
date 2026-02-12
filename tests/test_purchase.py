@@ -29,6 +29,8 @@ class DummyCursor:
             return [1, 1]
         if "select status from purchase" in q:
             return [self.status_resp]
+        if "select amount_due, status, customer_email from purchase" in q:
+            return [10, "reserved", "a@b.com"]
         if "select amount_due, customer_email from purchase" in q:
             return [10, "a@b.com"]
         if "select amount_due, status from purchase" in q:
