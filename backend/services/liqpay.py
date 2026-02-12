@@ -4,6 +4,8 @@ import json
 import os
 from typing import Any, Mapping
 
+import httpx
+
 from ..utils.client_app import build_purchase_result_url
 
 
@@ -81,3 +83,32 @@ def build_checkout_payload(
 def verify_signature(data: str, signature: str) -> bool:
     expected_signature = sign(data)
     return expected_signature == signature
+
+
+def verify_order(order_id: str) -> Mapping[str, Any]:
+    """Verify payment state for a specific order via LiqPay API."""
+
+    order_value = (order_id or "").strip()
+    if not order_value:
+        raise ValueError("order_id is required")
+
+    payload = {
+        "version": "3",
+        "public_key": _env("LIQPAY_PUBLIC_KEY", "sandbox"),
+        "action": "status",
+        "order_id": order_value,
+    }
+    data, signature = encode_payload(payload)
+
+    timeout = float(os.getenv("LIQPAY_VERIFY_TIMEOUT_S", "8"))
+    response = httpx.post(
+        "https://www.liqpay.ua/api/request",
+        data={"data": data, "signature": signature},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+
+    body = response.json()
+    if not isinstance(body, Mapping):
+        raise ValueError("Unexpected LiqPay verify response")
+    return body

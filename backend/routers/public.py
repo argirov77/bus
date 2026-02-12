@@ -6,7 +6,7 @@ import logging
 import secrets
 import zipfile
 from datetime import datetime, timezone
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Literal, Sequence
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
@@ -65,6 +65,20 @@ class BaggageRequest(BaseModel):
 
 class CancelRequest(BaseModel):
     ticket_ids: list[int] = Field(..., min_length=1)
+
+
+class PaymentResolvePurchase(BaseModel):
+    id: int
+    status: str
+    amount_due: float
+    customer_email: str | None = None
+    customer_name: str | None = None
+
+
+class PaymentResolveOut(BaseModel):
+    status: Literal["paid", "pending", "failed"]
+    purchaseId: int
+    purchase: PaymentResolvePurchase | None = None
 
 
 def _generate_csrf_token() -> str:
@@ -382,6 +396,154 @@ def _extract_purchase_id_from_order(order_id: str) -> int | None:
     return None
 
 
+def _normalize_liqpay_result_status(value: str | None) -> Literal["paid", "pending", "failed"]:
+    status = (value or "").strip().lower()
+    if status in {"success", "sandbox", "wait_accept", "subscribed"}:
+        return "paid"
+    if status in {"failure", "error", "reversed", "unsubscribed"}:
+        return "failed"
+    return "pending"
+
+
+def _sync_purchase_paid_from_liqpay_callback(
+    purchase_id: int,
+    order_id: str,
+    payload: Mapping[str, Any],
+    background_tasks: BackgroundTasks | None = None,
+) -> tuple[str, str | None]:
+    status = str(payload.get("status") or "")
+    payment_id = str(payload.get("payment_id") or "") or None
+    liqpay_status = status.lower()
+
+    from ._ticket_link_helpers import issue_ticket_links
+    from .purchase import _collect_ticket_specs_for_purchase, _log_action, _queue_ticket_emails
+
+    conn = get_connection()
+    cur = conn.cursor()
+    tickets: list[dict[str, Any]] = []
+    customer_email: str | None = None
+    try:
+        cur.execute(
+            "SELECT amount_due, status, customer_email FROM purchase WHERE id=%s FOR UPDATE",
+            (purchase_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Purchase not found")
+
+        amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
+        cur.execute(
+            """
+            UPDATE purchase
+               SET liqpay_order_id=%s,
+                   liqpay_status=%s,
+                   liqpay_payment_id=%s,
+                   liqpay_payload=%s,
+                   update_at=NOW()
+             WHERE id=%s
+            """,
+            (order_id, liqpay_status or None, payment_id, json.dumps(payload), purchase_id),
+        )
+
+        normalized = _normalize_liqpay_result_status(liqpay_status)
+        if normalized != "paid":
+            conn.commit()
+            return normalized, payment_id
+
+        if purchase_status == "paid":
+            conn.commit()
+            return "paid", payment_id
+
+        if purchase_status != "reserved":
+            raise HTTPException(status_code=409, detail="Purchase cannot be paid")
+
+        ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
+        cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
+        _log_action(cur, purchase_id, "paid", amount_due, by="liqpay", method="liqpay")
+        tickets = issue_ticket_links(ticket_specs, None, conn=conn)
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:  # pragma: no cover - defensive
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        cur.close()
+        conn.close()
+
+    if background_tasks:
+        _queue_ticket_emails(background_tasks, tickets, None, customer_email)
+    return "paid", payment_id
+
+
+@router.get("/payments/resolve", response_model=PaymentResolveOut)
+def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")):
+    purchase_id = _extract_purchase_id_from_order(order_id)
+    if purchase_id is None:
+        raise HTTPException(status_code=400, detail="Unrecognized order_id format")
+
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, status, amount_due, customer_email, customer_name,
+                       liqpay_order_id, liqpay_status
+                  FROM purchase
+                 WHERE id=%s
+                """,
+                (purchase_id,),
+            )
+            row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Purchase not found")
+    finally:
+        conn.close()
+
+    stored_order_id = row[5]
+    if stored_order_id and stored_order_id != order_id:
+        raise HTTPException(status_code=404, detail="order_id does not match purchase")
+
+    purchase_status = str(row[1] or "")
+    liqpay_status = row[6]
+
+    resolved_status = "pending"
+    if purchase_status == "paid":
+        resolved_status = "paid"
+    elif liqpay_status:
+        resolved_status = _normalize_liqpay_result_status(liqpay_status)
+
+    if resolved_status != "paid":
+        try:
+            verify_payload = liqpay.verify_order(order_id)
+        except Exception:
+            verify_payload = None
+
+        if isinstance(verify_payload, Mapping):
+            verified_order_id = str(verify_payload.get("order_id") or order_id)
+            if verified_order_id == order_id:
+                verified_status, _ = _sync_purchase_paid_from_liqpay_callback(
+                    purchase_id,
+                    order_id,
+                    verify_payload,
+                )
+                resolved_status = verified_status
+
+    purchase = {
+        "id": int(row[0]),
+        "status": str(row[1]),
+        "amount_due": _round_currency(float(row[2] or 0.0)),
+        "customer_email": row[3],
+        "customer_name": row[4],
+    }
+    return {
+        "status": resolved_status,
+        "purchaseId": int(row[0]),
+        "purchase": purchase,
+    }
+
+
 @router.post("/payment/liqpay/callback")
 async def liqpay_callback(request: Request, background_tasks: BackgroundTasks) -> Mapping[str, Any]:
     form = await request.form()
@@ -408,49 +570,18 @@ async def liqpay_callback(request: Request, background_tasks: BackgroundTasks) -
     if purchase_id is None:
         raise HTTPException(status_code=400, detail="Unrecognized LiqPay order")
 
-    status = str(payload.get("status") or "")
-    if status not in {"success", "sandbox", "wait_accept"}:
-        return {"ok": True, "status": status, "purchase_id": purchase_id}
-
-    from ._ticket_link_helpers import issue_ticket_links
-    from .purchase import _collect_ticket_specs_for_purchase, _log_action, _queue_ticket_emails
-
-    conn = get_connection()
-    cur = conn.cursor()
-    tickets: list[dict[str, Any]] = []
-    customer_email: str | None = None
-    try:
-        cur.execute(
-            "SELECT amount_due, status, customer_email FROM purchase WHERE id=%s",
-            (purchase_id,),
-        )
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Purchase not found")
-
-        amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
-        if purchase_status == "paid":
-            return {"ok": True, "status": "already_paid", "purchase_id": purchase_id}
-        if purchase_status != "reserved":
-            raise HTTPException(status_code=409, detail="Purchase cannot be paid")
-
-        ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
-        cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
-        _log_action(cur, purchase_id, "paid", amount_due, by="liqpay", method="liqpay")
-        tickets = issue_ticket_links(ticket_specs, None, conn=conn)
-        conn.commit()
-    except HTTPException:
-        conn.rollback()
-        raise
-    except Exception as exc:  # pragma: no cover - defensive
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(exc))
-    finally:
-        cur.close()
-        conn.close()
-
-    _queue_ticket_emails(background_tasks, tickets, None, customer_email)
-    return {"ok": True, "status": "paid", "purchase_id": purchase_id}
+    resolved_status, payment_id = _sync_purchase_paid_from_liqpay_callback(
+        purchase_id,
+        order_id,
+        payload,
+        background_tasks,
+    )
+    return {
+        "ok": True,
+        "status": resolved_status,
+        "purchase_id": purchase_id,
+        "payment_id": payment_id,
+    }
 
 
 def _fetch_route_stops(cur, route_id: int) -> list[int]:
@@ -1144,7 +1275,22 @@ def public_pay(purchase_id: int, request: Request) -> Mapping[str, Any]:
     if amount_due <= 0:
         raise HTTPException(status_code=400, detail="Purchase has no outstanding balance")
 
-    return liqpay.build_checkout_payload(resolved_purchase_id, amount_due, ticket_id=ticket_id)
+    checkout = liqpay.build_checkout_payload(resolved_purchase_id, amount_due, ticket_id=ticket_id)
+    payload = checkout.get("payload") if isinstance(checkout, Mapping) else None
+    order_id = payload.get("order_id") if isinstance(payload, Mapping) else None
+    if order_id:
+        conn = get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE purchase SET liqpay_order_id=%s, update_at=NOW() WHERE id=%s",
+                    (str(order_id), resolved_purchase_id),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    return checkout
 
 
 @router.post("/purchase/{purchase_id}/reschedule/quote")

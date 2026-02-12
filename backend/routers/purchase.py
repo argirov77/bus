@@ -743,7 +743,16 @@ def pay_booking(
         _validate_purchase_payable(amount_due, purchase_status)
 
         if not is_admin:
-            return liqpay.build_checkout_payload(data.purchase_id, amount_due)
+            checkout = liqpay.build_checkout_payload(data.purchase_id, amount_due)
+            payload = checkout.get("payload") if isinstance(checkout, dict) else None
+            order_id = payload.get("order_id") if isinstance(payload, dict) else None
+            if order_id:
+                cur.execute(
+                    "UPDATE purchase SET liqpay_order_id=%s, update_at=NOW() WHERE id=%s",
+                    (str(order_id), data.purchase_id),
+                )
+            conn.commit()
+            return checkout
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, data.purchase_id)
 

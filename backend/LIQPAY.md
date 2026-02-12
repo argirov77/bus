@@ -42,7 +42,8 @@
 3. После сабмита LiqPay перенаправит пользователя на `result_url`; убедитесь, что URL указывает на фронтенд вашего проекта.
 
 ## 4. Настройка страницы возврата
-Бэкенд по умолчанию использует `http://localhost:3001/purchase/{purchase_id}` как базовый `result_url`. Для продакшена обновите значение в функции `_redirect_base_url` (файл `backend/routers/public.py`), чтобы вернуть пользователя на нужный домен, либо реализуйте собственную логику построения ссылки перед сборкой образа.
+`result_url` строится из `CLIENT_APP_BASE` (или `APP_PUBLIC_URL`) и всегда должен указывать на клиентское приложение (например, `https://client-mt.netlify.app/purchase/{purchase_id}`).
+Если переменная не задана или указывает на `localhost`, API вернёт ошибку 500 и не сформирует checkout payload.
 
 ## 5. Callback от LiqPay
 LiqPay отправляет уведомления о статусе платежа на серверный endpoint:
@@ -63,3 +64,32 @@ POST /public/payment/liqpay/callback
 - `purchase_id` в токене обязан совпадать с `purchase_id` в теле запроса;
 - без токена ответ `401`, с токеном без scope `pay` или с токеном от другого заказа — `403`;
 - admin может вызывать `POST /pay` через bearer JWT.
+
+## 7. Разрешение статуса оплаты по `order_id`
+Добавлен endpoint:
+
+```
+GET /public/payments/resolve?order_id=...
+```
+
+- валидирует `order_id`;
+- находит связанный `purchase_id`;
+- смотрит сохранённый статус покупки и последний статус LiqPay в БД;
+- при необходимости делает server-to-server verify (`action=status`) в LiqPay;
+- при подтверждении оплаты отмечает покупку `paid` тем же путём, что и callback.
+
+Ответ:
+
+```json
+{
+  "status": "paid|pending|failed",
+  "purchaseId": 15,
+  "purchase": {
+    "id": 15,
+    "status": "paid",
+    "amount_due": 100.0,
+    "customer_email": "...",
+    "customer_name": "..."
+  }
+}
+```
