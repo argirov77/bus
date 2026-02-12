@@ -41,11 +41,11 @@ body{
 }
 
 .sheet{
-  width:980px;
-  margin:0 auto;
+  width:100%;
+  margin:0;
   background:var(--bg);
   border-radius:26px;
-  padding:16px;                 /* 980 - 32 = 948px inner */
+  padding:16px;
 }
 
 .ticket{
@@ -146,7 +146,7 @@ body{
 
 /* ===== LEFT BOARD ===== */
 .board{
-  width:630px;
+  width:100%;
   border:1px solid var(--line);
   border-radius:22px;
   background:#fff;
@@ -185,7 +185,7 @@ body{
 }
 
 .cityName{
-  font-size:30px;
+  font-size:22px;
   font-weight:800;
   letter-spacing:-.01em;
   margin-bottom:6px;
@@ -212,13 +212,23 @@ body{
 }
 
 .stopLoc{
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  line-clamp:2;
+  overflow:hidden;
   font-size:13px;
   color:var(--muted);
   font-weight:600;
   max-width:260px;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  line-height:1.25;
+  min-height:calc(1.25em * 2);
+  text-decoration:none;
+}
+
+.stopLoc.clickable{
+  color:var(--primary);
+  text-decoration:underline;
 }
 
 /* PASSENGER */
@@ -297,7 +307,7 @@ body{
 
 /* ===== QR ===== */
 .qr{
-  width:300px;
+  width:100%;
   border:1px solid var(--line);
   border-radius:22px;
   background:#fff;
@@ -422,8 +432,8 @@ body{
 
       <table class="mainTable">
         <colgroup>
-          <col style="width:630px">
-          <col style="width:300px">
+          <col style="width:68%">
+          <col style="width:32%">
         </colgroup>
         <tr>
           <td>
@@ -440,14 +450,14 @@ body{
                       <div class="citySub">ОТПРАВЛЕНИЕ</div>
                       <div class="cityName" id="fromCity">Болград</div>
                       <div class="stopTime" id="depTime">12:03</div>
-                      <div class="stopLoc break" id="depLoc">Поворот</div>
+                      <a class="stopLoc break clickable" id="depLoc" target="_blank" rel="noopener">Поворот</a>
                     </td>
                     <td class="arrow">→</td>
                     <td class="city alignRight">
                       <div class="citySub">ПРИБЫТИЕ</div>
                       <div class="cityName" id="toCity">Констанца</div>
                       <div class="stopTime" id="arrTime">13:10</div>
-                      <div class="stopLoc break" id="arrLoc">OMV Заправка</div>
+                      <a class="stopLoc break clickable" id="arrLoc" target="_blank" rel="noopener">OMV Заправка</a>
                     </td>
                   </tr>
                 </table>
@@ -521,8 +531,7 @@ body{
             <td class="break">+380930004636</td>
             <td class="break">+359894290356</td>
             <td class="break">Avroraiko@gmail.com</td>
-            <td class="break"><a href="https://www.instagram.com/maximov_turs?igsh=OTR5eGtuOTBoMm5u" target="_blank" rel="noopener">📷 Instagram</a></td>
-            <td class="break">maximovtours.com</td>
+                        <td class="break">maximovtours.com</td>
           </tr>
         </table>
       </div>
@@ -561,8 +570,12 @@ body{
   document.getElementById("toCity").textContent = TICKET.arrival.city;
   document.getElementById("depTime").textContent = TICKET.departure.time;
   document.getElementById("arrTime").textContent = TICKET.arrival.time;
-  document.getElementById("depLoc").textContent = TICKET.departure.loc;
-  document.getElementById("arrLoc").textContent = TICKET.arrival.loc;
+  const depLocEl = document.getElementById("depLoc");
+  depLocEl.textContent = TICKET.departure.loc;
+  depLocEl.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(TICKET.departure.loc || "")}`;
+  const arrLocEl = document.getElementById("arrLoc");
+  arrLocEl.textContent = TICKET.arrival.loc;
+  arrLocEl.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(TICKET.arrival.loc || "")}`;
 
   // Passenger
   document.getElementById("passengerName").textContent = TICKET.passenger.name;
