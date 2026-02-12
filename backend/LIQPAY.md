@@ -42,7 +42,7 @@
 3. После сабмита LiqPay перенаправит пользователя на `result_url`; убедитесь, что URL указывает на фронтенд вашего проекта.
 
 ## 4. Настройка страницы возврата
-`result_url` строится из `CLIENT_APP_BASE` (или `APP_PUBLIC_URL`) и всегда должен указывать на клиентское приложение (например, `https://client-mt.netlify.app/purchase/{purchase_id}`).
+`result_url` строится из `CLIENT_APP_BASE` (или `APP_PUBLIC_URL`) и всегда должен указывать на клиентское приложение (например, `https://maximovtours.com/purchase/{purchase_id}`).
 Если переменная не задана или указывает на `localhost`, API вернёт ошибку 500 и не сформирует checkout payload.
 
 ## 5. Callback от LiqPay
