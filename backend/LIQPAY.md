@@ -28,13 +28,15 @@
        "currency": "UAH",
        "description": "Purchase #15",
        "order_id": "purchase-15",
-       "result_url": "http://frontend/purchase/15"
+       "result_url": "https://maximovtours.com/return",
+       "server_url": "https://maximovtours.com/api/public/payment/liqpay/callback"
      }
    }
    ```
    - `amount` — сумма к оплате с учётом задолженности заказа.
    - `order_id` принимает вид `purchase-{purchase_id}` или `ticket-{ticket_id}-{purchase_id}` при оплате конкретного билета.
    - `result_url` указывает на страницу, куда LiqPay вернёт пользователя после оплаты.
+   - `server_url` указывает на публичный endpoint, куда LiqPay отправляет callback-уведомления.
 
 ## 3. Отправка формы в LiqPay
 1. На фронтенде сформируйте форму `POST` на `https://www.liqpay.ua/api/3/checkout` с полями `data` и `signature` из ответа.
@@ -42,8 +44,9 @@
 3. После сабмита LiqPay перенаправит пользователя на `result_url`; убедитесь, что URL указывает на фронтенд вашего проекта.
 
 ## 4. Настройка страницы возврата
-`result_url` строится из `CLIENT_APP_BASE` (или `APP_PUBLIC_URL`) и всегда должен указывать на клиентское приложение (например, `https://maximovtours.com/purchase/{purchase_id}`).
-Если переменная не задана или указывает на `localhost`, API вернёт ошибку 500 и не сформирует checkout payload.
+`result_url` строится из `CLIENT_APP_BASE` (или `APP_PUBLIC_URL`) и указывает на публичную страницу возврата (по умолчанию `https://maximovtours.com/return`).
+`server_url` формируется как публичный HTTPS callback endpoint (например, `https://maximovtours.com/api/public/payment/liqpay/callback`) и должен быть доступен извне через ваш домен/прокси.
+Если переменная не задана, указывает на `localhost` или использует не-HTTPS схему, API вернёт ошибку 500 и не сформирует checkout payload.
 
 ## 5. Callback от LiqPay
 LiqPay отправляет уведомления о статусе платежа на серверный endpoint:

@@ -22,7 +22,23 @@ def get_client_app_base() -> str:
     return normalized
 
 
-def build_purchase_result_url(purchase_id: int) -> str:
-    """Build a canonical client result URL for a purchase."""
+def get_client_app_base_https() -> str:
+    """Return client base URL and enforce HTTPS for payment provider callbacks."""
 
-    return f"{get_client_app_base()}/purchase/{int(purchase_id)}"
+    base_url = get_client_app_base()
+    parsed = urlparse(base_url)
+    if parsed.scheme.lower() != "https":
+        raise ValueError("CLIENT_APP_BASE must use https for LiqPay URLs")
+    return base_url
+
+
+def build_purchase_result_url(_purchase_id: int) -> str:
+    """Build a canonical LiqPay return URL in client app."""
+
+    return f"{get_client_app_base_https()}/return"
+
+
+def build_liqpay_server_url() -> str:
+    """Build a public callback URL for LiqPay server notifications."""
+
+    return f"{get_client_app_base_https()}/api/public/payment/liqpay/callback"
