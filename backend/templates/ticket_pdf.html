@@ -40,10 +40,10 @@ body{
 }
 
 .wrap{
-  width:700px;
-  margin:12px auto;
+  width:100%;
+  margin:0;
   background:var(--paper);
-  border-radius:18px;
+  border-radius:0;
   overflow:hidden;
 }
 
@@ -190,7 +190,7 @@ body{
 }
 
 .cityName{
-  font-size:27px;
+  font-size:22px;
   font-weight:800;
   letter-spacing:-.005em;
   margin-bottom:6px;
@@ -215,13 +215,23 @@ body{
 }
 
 .stopLoc{
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  line-clamp:2;
+  overflow:hidden;
   font-size:13px;
   color:var(--muted);
   font-weight:600;
   max-width:200px;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  line-height:1.25;
+  min-height:calc(1.25em * 2);
+  text-decoration:none;
+}
+
+.stopLoc.clickable{
+  color:var(--primary);
+  text-decoration:underline;
 }
 
 /* PASSENGER */
@@ -450,14 +460,22 @@ body{
                       <div class="citySub">{{ i18n.departure_label }}</div>
                       <div class="cityName">{{ route.from_city or i18n.value_not_available }}</div>
                       <div class="stopTime">{{ departure.time or i18n.value_not_available }}</div>
-                      <div class="stopLoc break">{{ departure.address or i18n.value_not_available }}</div>
+                      {% if departure.map_link %}
+                        <a class="stopLoc break clickable" href="{{ departure.map_link }}">{{ departure.address or i18n.value_not_available }}</a>
+                      {% else %}
+                        <div class="stopLoc break">{{ departure.address or i18n.value_not_available }}</div>
+                      {% endif %}
                     </td>
                     <td class="arrow">→</td>
                     <td class="city alignRight">
                       <div class="citySub">{{ i18n.arrival_label }}</div>
                       <div class="cityName">{{ route.to_city or i18n.value_not_available }}</div>
                       <div class="stopTime">{{ arrival.time or i18n.value_not_available }}</div>
-                      <div class="stopLoc break">{{ arrival.address or i18n.value_not_available }}</div>
+                      {% if arrival.map_link %}
+                        <a class="stopLoc break clickable" href="{{ arrival.map_link }}">{{ arrival.address or i18n.value_not_available }}</a>
+                      {% else %}
+                        <div class="stopLoc break">{{ arrival.address or i18n.value_not_available }}</div>
+                      {% endif %}
                     </td>
                   </tr>
                 </table>
@@ -538,7 +556,6 @@ body{
             <td class="break">{{ i18n.company_phone }}</td>
             <td class="break">{{ i18n.company_phone_alt }}</td>
             <td class="break">{{ i18n.company_email }}</td>
-            <td class="break"><a href="{{ i18n.company_instagram }}">📷 Instagram</a></td>
             <td class="break">{{ i18n.company_web }}</td>
           </tr>
         </table>
