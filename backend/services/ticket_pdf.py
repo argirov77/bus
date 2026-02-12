@@ -8,7 +8,6 @@ from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional
-from urllib.parse import quote_plus
 
 import qrcode
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -252,16 +251,12 @@ def _build_route_context(dto: Mapping[str, Any], i18n: Mapping[str, Any]) -> Dic
 
     trip_date = _format_date((dto.get("tour") or {}).get("date"))
 
-    departure_map_raw = (dep_stop or {}).get("location")
-    arrival_map_raw = (arr_stop or {}).get("location")
-
     departure_context = {
         "title": f"{i18n['departure_label']} — {dep_name}" if dep_name else i18n["departure_label"],
         "date": trip_date,
         "time": _format_time(departure.get("time")),
         "address": (dep_stop or {}).get("description"),
-        "map_url": departure_map_raw,
-        "map_link": _build_google_maps_url(departure_map_raw, (dep_stop or {}).get("description")),
+        "map_url": (dep_stop or {}).get("location"),
     }
 
     arrival_context = {
@@ -269,8 +264,7 @@ def _build_route_context(dto: Mapping[str, Any], i18n: Mapping[str, Any]) -> Dic
         "date": trip_date,
         "time": _format_time(arrival.get("time")),
         "address": (arr_stop or {}).get("description"),
-        "map_url": arrival_map_raw,
-        "map_link": _build_google_maps_url(arrival_map_raw, (arr_stop or {}).get("description")),
+        "map_url": (arr_stop or {}).get("location"),
     }
 
     duration_text = _format_duration(
@@ -299,17 +293,6 @@ def _select_currency(dto: Mapping[str, Any], i18n: Mapping[str, Any]) -> str:
         or ""
     )
     return currency
-
-
-def _build_google_maps_url(location: Optional[str], fallback_address: Optional[str]) -> Optional[str]:
-    if location:
-        normalized = location.strip()
-        if normalized.lower().startswith(("http://", "https://")):
-            return normalized
-        return f"https://www.google.com/maps/search/?api=1&query={quote_plus(normalized)}"
-    if fallback_address:
-        return f"https://www.google.com/maps/search/?api=1&query={quote_plus(fallback_address)}"
-    return None
 
 
 def _build_template_context(
