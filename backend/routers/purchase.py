@@ -617,6 +617,7 @@ class LiqPayCheckoutPayload(BaseModel):
     description: str
     order_id: str
     result_url: str
+    server_url: str
 
 
 class LiqPayCheckoutOut(BaseModel):
