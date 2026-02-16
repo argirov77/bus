@@ -134,3 +134,306 @@
 | POST | `/public/purchase/{purchase_id}/baggage/quote` | Расчёт изменения суммы при добавлении/уборке дополнительного багажа. |
 | POST | `/public/purchase/{purchase_id}/baggage` | Применение изменений по багажу и обновление заказа. |
 | POST | `/public/purchase/{purchase_id}/cancel` | Частичная или полная отмена билетов в заказе, очистка cookie при полном возврате. |
+
+## Детальные payload-контракты по публичным эндпоинтам
+
+> Ниже перечислены именно публично доступные маршруты (без обязательного admin JWT). Для маршрутов из `/public/...` дополнительно требуются cookie-сессия после `GET /q/{opaque}` и, для mutating-операций, заголовок `X-CSRF`.
+
+### Базовые и auth
+
+#### `GET /health`
+- **Body:** отсутствует.
+- **200:** `{ "status": "ok" }`.
+
+#### `POST /auth/register`
+- **Body:**
+```json
+{
+  "username": "string",
+  "email": "user@example.com",
+  "password": "string",
+  "role": "user"
+}
+```
+- **200:** `{ "id": 1, "username": "...", "email": "...", "role": "user" }`.
+
+#### `POST /auth/login`
+- **Body:**
+```json
+{ "username": "string", "password": "string" }
+```
+- **200:** `{ "token": "<jwt>" }`.
+- **401:** `Invalid credentials`.
+
+### Бронирование/покупка (внешний публичный поток)
+
+#### Общий payload для `POST /purchase/`, `POST /book`, `POST /purchase`
+- **Body:**
+```json
+{
+  "tour_id": 101,
+  "seat_nums": [5, 6],
+  "passenger_names": ["Ivan Ivanov", "Petar Petrov"],
+  "passenger_phone": "+380501234567",
+  "passenger_email": "mail@example.com",
+  "departure_stop_id": 1,
+  "arrival_stop_id": 4,
+  "adult_count": 2,
+  "discount_count": 0,
+  "extra_baggage": [false, true],
+  "purchase_id": null,
+  "lang": "bg"
+}
+```
+- **200:**
+```json
+{
+  "purchase_id": 555,
+  "amount_due": 3200.0,
+  "tickets": [
+    { "ticket_id": 9001, "deep_link": "https://.../q/..." }
+  ]
+}
+```
+
+#### `POST /pay`
+- **Body:**
+```json
+{ "purchase_id": 555 }
+```
+- **Non-admin (`X-Ticket-Token` со scope `pay`) → 200:**
+```json
+{
+  "provider": "liqpay",
+  "data": "base64...",
+  "signature": "...",
+  "payload": {
+    "version": "3",
+    "public_key": "...",
+    "action": "pay",
+    "amount": 3200.0,
+    "currency": "UAH",
+    "description": "...",
+    "order_id": "purchase-555-...",
+    "result_url": "https://...",
+    "server_url": "https://.../public/payment/liqpay/callback"
+  }
+}
+```
+- **Admin JWT → 204 No Content** (офлайн-оплата).
+- **401/403:** нет токена/нет scope/чужой `purchase_id`.
+
+#### `POST /cancel/{purchase_id}`
+- **Body:** отсутствует.
+- **204:** успешно.
+
+#### `POST /refund/{purchase_id}`
+- **Body:** отсутствует.
+- **204:** успешно.
+
+### Публичные данные для витрины
+
+#### `POST /selected_route`
+- **Body:** `{ "lang": "bg" }`.
+- **200:**
+```json
+{
+  "forward": { "id": 1, "name": "...", "stops": [{ "id": 1, "name": "...", "arrival_time": "08:00", "departure_time": "08:10" }] },
+  "backward": { "id": 2, "name": "...", "stops": [] }
+}
+```
+
+#### `POST /selected_pricelist`
+- **Body:** `{ "lang": "bg" }`.
+- **200:**
+```json
+{
+  "pricelist_id": 1,
+  "currency": "UAH",
+  "prices": [
+    {
+      "departure_stop_id": 1,
+      "departure_name": "Sofia",
+      "arrival_stop_id": 4,
+      "arrival_name": "Kyiv",
+      "price": 1600.0
+    }
+  ]
+}
+```
+
+#### `POST /search/departures`
+- **Body:** `{ "lang": "bg", "seats": 2 }`.
+- **200:** `[{ "id": 1, "stop_name": "..." }]`.
+
+#### `POST /search/arrivals`
+- **Body:** `{ "lang": "bg", "departure_stop_id": 1, "seats": 2 }`.
+- **200:** `[{ "id": 4, "stop_name": "..." }]`.
+
+#### `GET /search/dates?departure_stop_id=1&arrival_stop_id=4&seats=2`
+- **Body:** отсутствует.
+- **200:** массив дат, например `['2026-03-01', '2026-03-05']`.
+
+#### `GET /tours/search?departure_stop_id=1&arrival_stop_id=4&date=2026-03-01&seats=2`
+- **200:**
+```json
+[
+  {
+    "id": 77,
+    "date": "2026-03-01",
+    "seats": 40,
+    "layout_variant": 1,
+    "departure_time": "08:00",
+    "arrival_time": "20:00",
+    "price": 1600.0
+  }
+]
+```
+
+#### `GET /seat/?tour_id=77&departure_stop_id=1&arrival_stop_id=4&adminMode=false`
+- **200:**
+```json
+{
+  "seats": [
+    { "seat_id": 11, "seat_num": 1, "status": "available" },
+    { "seat_id": 12, "seat_num": 2, "status": "blocked" }
+  ]
+}
+```
+
+#### `GET /passengers/`
+- **200:** `[{ "id": 1, "name": "Test Passenger" }]`.
+
+#### `POST /passengers/`
+- **Body:** `{ "name": "Test Passenger" }`.
+- **200:** `{ "id": 999, "name": "Created Passenger" }`.
+
+### Публичные ticket-операции
+
+#### `POST /tickets/`
+- **Body:**
+```json
+{
+  "tour_id": 77,
+  "seat_num": 5,
+  "purchase_id": 555,
+  "passenger_name": "Ivan Ivanov",
+  "passenger_phone": "+380501234567",
+  "passenger_email": "mail@example.com",
+  "departure_stop_id": 1,
+  "arrival_stop_id": 4,
+  "extra_baggage": false,
+  "lang": "bg"
+}
+```
+- **200:** `{ "ticket_id": 9001, "deep_link": "https://.../q/..." }` (дополнительно могут прийти обогащённые поля маршрута/даты).
+
+#### `GET /tickets/{ticket_id}/pdf?lang=bg`
+- **Body:** отсутствует.
+- **Headers (опц.):** `X-Ticket-Token` или `?token=`.
+- **200:** PDF (`application/pdf`).
+
+#### `DELETE /tickets/{ticket_id}`
+- **Body:** отсутствует.
+- **204:** успешно.
+
+### Сессия публичного кабинета
+
+#### `GET /q/{opaque}`
+- Обменивает QR/deep-link на cookies:
+  - `minicab_purchase_{purchase_id}` (httpOnly),
+  - `mc_csrf` (для последующих POST).
+- **302:** redirect на клиентский URL заказа.
+
+### `/public/...` — кабинет по cookie-сессии
+
+#### `GET /public/tickets/{ticket_id}`
+- **Body:** отсутствует.
+- **200:** DTO билета (ключ `ticket` + денормализованные поля маршрута/пассажира/цены).
+
+#### `POST /public/tickets/{ticket_id}/reschedule`
+- **Body:**
+```json
+{ "tour_id": 88, "seat_num": 9 }
+```
+- **200:** обновлённый DTO билета.
+
+#### `GET /public/purchase/{purchase_id}`
+- **200:** агрегированные данные покупки + список билетов.
+
+#### `GET /public/tickets/{ticket_id}/pdf`
+- **200:** PDF билета.
+
+#### `GET /public/purchase/{purchase_id}/pdf`
+- **200:** ZIP-архив PDF билетов (`application/zip`).
+
+#### `POST /public/purchase/{purchase_id}/pay`
+- **Body:** отсутствует.
+- **200:** LiqPay checkout payload (`provider`, `data`, `signature`, `payload`).
+
+#### `POST /public/purchase/{purchase_id}/reschedule/quote`
+- **Body:**
+```json
+{
+  "tickets": [
+    { "ticket_id": 9001, "new_tour_id": 88, "seat_num": 9 }
+  ]
+}
+```
+- **200:** расчёт (`tickets`, `total_delta`, `current_amount_due`, `new_amount_due`, `need_payment`).
+
+#### `POST /public/purchase/{purchase_id}/reschedule`
+- **Body:** такой же, как у `.../reschedule/quote`.
+- **200:** применение расчёта + обновлённые суммы заказа.
+
+#### `POST /public/purchase/{purchase_id}/baggage/quote`
+- **Body:**
+```json
+{
+  "tickets": [
+    { "ticket_id": 9001, "extra_baggage": 1 }
+  ]
+}
+```
+- **200:** расчёт по багажу (`tickets`, `total_delta`, `current_amount_due`, `new_amount_due`, `need_payment`).
+
+#### `POST /public/purchase/{purchase_id}/baggage`
+- **Body:** такой же, как у `.../baggage/quote`.
+- **200:** применённые изменения по багажу + обновлённые суммы.
+
+#### `POST /public/purchase/{purchase_id}/cancel/preview`
+- **Body:**
+```json
+{ "ticket_ids": [9001, 9002] }
+```
+- **200:** предварительный расчёт отмены (`ticket_ids`, `amount_delta`, `current_amount_due`, `new_amount_due`, `need_payment`).
+
+#### `POST /public/purchase/{purchase_id}/cancel`
+- **Body:** `{ "ticket_ids": [9001, 9002] }`.
+- **200:** `{ cancelled_ticket_ids, amount_delta, current_amount_due, new_amount_due, remaining_tickets }`.
+- При полном обнулении билетов очищается purchase-cookie.
+
+### LiqPay интеграция (публичная)
+
+#### `GET /public/payments/resolve?order_id=purchase-555-...`
+- **200:**
+```json
+{
+  "status": "paid",
+  "purchaseId": 555,
+  "purchase": {
+    "id": 555,
+    "status": "paid",
+    "amount_due": 0,
+    "customer_email": "mail@example.com",
+    "customer_name": "Ivan"
+  }
+}
+```
+
+#### `POST /public/payment/liqpay/callback`
+- **Body:** form-data или JSON с полями `data` и `signature`.
+- **200:**
+```json
+{ "ok": true, "status": "paid", "purchase_id": 555, "payment_id": "..." }
+```
