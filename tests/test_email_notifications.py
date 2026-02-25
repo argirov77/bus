@@ -425,7 +425,7 @@ def test_create_purchase_sends_email(email_test_env):
     assert "Your ticket" in email["subject"]
 
 
-def test_pay_booking_sends_payment_confirmation(email_test_env):
+def test_admin_pay_booking_is_rejected_with_redirect_hint(email_test_env):
     state, purchase_router = email_test_env
 
     data = purchase_router.PurchaseCreate(
@@ -445,7 +445,6 @@ def test_pay_booking_sends_payment_confirmation(email_test_env):
     _run_background_tasks(initial_tasks)
 
     state["emails"].clear()
-    state["dto_status"] = "paid"
 
     pay_tasks = BackgroundTasks()
     scope = {"type": "http", "headers": [], "query_string": b""}
@@ -453,42 +452,36 @@ def test_pay_booking_sends_payment_confirmation(email_test_env):
     request.state.is_admin = True
 
     pay_in = purchase_router.PayIn(purchase_id=1)
-    purchase_router.pay_booking(
-        pay_in,
-        request,
-        background_tasks=pay_tasks,
-        context=SimpleNamespace(),
+    with pytest.raises(purchase_router.HTTPException) as exc_info:
+        purchase_router.pay_booking(
+            pay_in,
+            request,
+            context=SimpleNamespace(is_admin=True),
+        )
+
+    assert exc_info.value.status_code == 403
+    assert (
+        exc_info.value.detail
+        == "Use /purchase/{purchase_id}/pay for admin offline payment"
     )
-
-    assert pay_tasks.tasks, "Expected payment email task"
-    _run_background_tasks(pay_tasks)
-
-    emails = state["emails"]
-    assert len(emails) == 1
-    email = emails[0]
-    confirmation_markers = [
-        "(payment confirmed)",
-        "(плащането е потвърдено)",
-        "(оплату підтверджено)",
-    ]
-    assert any(marker in email["html"] for marker in confirmation_markers)
-    assert "https://example.test/api/q/opaque-2" in email["html"]
-    assert email["pdf"] == b"%PDF-FAKE%"
+    assert state["emails"] == []
+    assert pay_tasks.tasks == []
 
 
 def test_pay_booking_not_found_does_not_mutate_or_email(email_test_env):
     state, purchase_router = email_test_env
 
+    state["emails"].clear()
+
     pay_tasks = BackgroundTasks()
     scope = {"type": "http", "headers": [], "query_string": b""}
     request = Request(scope)
-    context = SimpleNamespace(is_admin=True)
+    context = SimpleNamespace(is_admin=False, scopes=["pay"], purchase_id=404)
 
     with pytest.raises(purchase_router.HTTPException) as exc_info:
         purchase_router.pay_booking(
             purchase_router.PayIn(purchase_id=404),
             request,
-            background_tasks=pay_tasks,
             context=context,
         )
 
@@ -511,17 +504,16 @@ def test_pay_booking_non_positive_amount_due_rejected(email_test_env):
         "status": "reserved",
     }
 
+    state["emails"].clear()
+
     pay_tasks = BackgroundTasks()
     scope = {"type": "http", "headers": [], "query_string": b""}
     request = Request(scope)
-    request.state.is_admin = True
-
     with pytest.raises(purchase_router.HTTPException) as exc_info:
         purchase_router.pay_booking(
             purchase_router.PayIn(purchase_id=1),
             request,
-            background_tasks=pay_tasks,
-            context=SimpleNamespace(is_admin=True),
+            context=SimpleNamespace(is_admin=False, scopes=["pay"], purchase_id=1),
         )
 
     assert exc_info.value.status_code == 400
@@ -544,17 +536,16 @@ def test_pay_booking_blocked_status_rejected(email_test_env, blocked_status):
         "status": blocked_status,
     }
 
+    state["emails"].clear()
+
     pay_tasks = BackgroundTasks()
     scope = {"type": "http", "headers": [], "query_string": b""}
     request = Request(scope)
-    request.state.is_admin = True
-
     with pytest.raises(purchase_router.HTTPException) as exc_info:
         purchase_router.pay_booking(
             purchase_router.PayIn(purchase_id=1),
             request,
-            background_tasks=pay_tasks,
-            context=SimpleNamespace(is_admin=True),
+            context=SimpleNamespace(is_admin=False, scopes=["pay"], purchase_id=1),
         )
 
     assert exc_info.value.status_code == 409
@@ -576,6 +567,8 @@ def test_non_admin_pay_booking_returns_payload_without_status_change(email_test_
         "status": "reserved",
     }
 
+    state["emails"].clear()
+
     pay_tasks = BackgroundTasks()
     scope = {"type": "http", "headers": [], "query_string": b""}
     request = Request(scope)
@@ -584,7 +577,6 @@ def test_non_admin_pay_booking_returns_payload_without_status_change(email_test_
     response = purchase_router.pay_booking(
         purchase_router.PayIn(purchase_id=1),
         request,
-        background_tasks=pay_tasks,
         context=context,
     )
 

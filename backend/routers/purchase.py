@@ -4,7 +4,7 @@ import datetime
 
 import logging
 from threading import Lock
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
 from ..auth import optional_scope, require_scope
@@ -82,16 +82,12 @@ def _require_pay_access_for_public_endpoint(
     context,
     purchase_id: int,
 ) -> None:
-    """Enforce explicit auth rules for non-admin POST /pay access.
+    """Enforce explicit auth rules for POST /pay access.
 
     Rules:
-    - Admin bearer token is always allowed.
-    - Non-admin requests must provide ticket-token scope ``pay``.
-    - Non-admin token must be bound to the same purchase.
+    - Requests must provide ticket-token scope ``pay``.
+    - Token must be bound to the same purchase.
     """
-
-    if context and getattr(context, "is_admin", False):
-        return
 
     if context is None:
         raise HTTPException(401, "Ticket token with scope 'pay' is required")
@@ -698,15 +694,11 @@ def purchase_and_pay(
             "description": "LiqPay checkout payload for online payment",
             "model": LiqPayCheckoutOut,
         },
-        204: {
-            "description": "Admin offline payment marked as successful",
-        },
     },
 )
 def pay_booking(
     data: PayIn,
     request: Request,
-    background_tasks: BackgroundTasks,
     context=Depends(optional_scope("pay")),
 ):
     conn = get_connection()
@@ -715,16 +707,14 @@ def pay_booking(
         (context and getattr(context, "is_admin", False))
         or getattr(request.state, "is_admin", False)
     )
-    ticket_specs: List[TicketIssueSpec] = []
-    tickets: List[TicketLinkResult] = []
-    customer_email: str | None = None
     try:
-        actor: str | None = None
-        jti: str | None = None
         if is_admin:
-            actor, jti = _resolve_actor(request)
-        if not is_admin:
-            _require_pay_access_for_public_endpoint(context, data.purchase_id)
+            raise HTTPException(
+                403,
+                "Use /purchase/{purchase_id}/pay for admin offline payment",
+            )
+
+        _require_pay_access_for_public_endpoint(context, data.purchase_id)
         guard_public_request(
             request,
             "pay",
@@ -740,29 +730,19 @@ def pay_booking(
             raise HTTPException(404, "Purchase not found")
         amount_due = float(row[0])
         purchase_status = row[1]
-        customer_email = row[2]
+        _ = row[2]
         _validate_purchase_payable(amount_due, purchase_status)
 
-        if not is_admin:
-            checkout = liqpay.build_checkout_payload(data.purchase_id, amount_due)
-            payload = checkout.get("payload") if isinstance(checkout, dict) else None
-            order_id = payload.get("order_id") if isinstance(payload, dict) else None
-            if order_id:
-                cur.execute(
-                    "UPDATE purchase SET liqpay_order_id=%s, update_at=NOW() WHERE id=%s",
-                    (str(order_id), data.purchase_id),
-                )
-            conn.commit()
-            return checkout
-
-        ticket_specs = _collect_ticket_specs_for_purchase(cur, data.purchase_id)
-
-        cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (data.purchase_id,))
-        _log_action(cur, data.purchase_id, "paid", amount_due, by=actor, method=ADMIN_PAY_METHOD)
-        tickets = issue_ticket_links(ticket_specs, None, conn=conn)
+        checkout = liqpay.build_checkout_payload(data.purchase_id, amount_due)
+        payload = checkout.get("payload") if isinstance(checkout, dict) else None
+        order_id = payload.get("order_id") if isinstance(payload, dict) else None
+        if order_id:
+            cur.execute(
+                "UPDATE purchase SET liqpay_order_id=%s, update_at=NOW() WHERE id=%s",
+                (str(order_id), data.purchase_id),
+            )
         conn.commit()
-        if jti:
-            logger.info("Purchase %s paid with token jti=%s", data.purchase_id, jti)
+        return checkout
     except HTTPException:
         conn.rollback()
         raise
@@ -772,9 +752,6 @@ def pay_booking(
     finally:
         cur.close()
         conn.close()
-
-    _queue_ticket_emails(background_tasks, tickets, None, customer_email)
-    return Response(status_code=204)
 
 
 @actions_router.post("/cancel/{purchase_id}", status_code=204)
