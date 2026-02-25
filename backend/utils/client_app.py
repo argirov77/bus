@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 
 def get_client_app_base() -> str:
@@ -28,10 +28,18 @@ def build_purchase_result_url(purchase_id: int) -> str:
     return f"{get_client_app_base()}/purchase/{int(purchase_id)}"
 
 
-def build_liqpay_result_url() -> str:
+def build_liqpay_result_url(*, order_id: str | None = None, purchase_id: int | None = None) -> str:
     """Build the URL where LiqPay should redirect the customer."""
 
-    return f"{get_client_app_base()}/return"
+    base = f"{get_client_app_base()}/return"
+    query: dict[str, str] = {}
+    if order_id:
+        query["order_id"] = str(order_id)
+    if purchase_id is not None:
+        query["purchase_id"] = str(int(purchase_id))
+    if not query:
+        return base
+    return f"{base}?{urlencode(query)}"
 
 
 def build_liqpay_server_url() -> str:
