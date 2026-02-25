@@ -19,7 +19,7 @@
 | POST | `/auth/login` | Авторизация и выдача JWT. |
 | POST | `/purchase/` | Создание бронирования со статусом `reserved`, возвращает ссылки на билеты. |
 | POST | `/book` | Псевдоним для создания бронирования, используется на публичной витрине. |
-| POST | `/purchase` | Создание бронирования со статусом `paid`; при наличии токена проверяет scope `pay`, без токена выполняется как публичный вызов. |
+| POST | `/purchase` | **DEPRECATED, только админ**: мгновенная офлайн-оплата при создании заказа. Для внешних продаж не использовать; применять поток `/book` -> `/pay` (LiqPay). |
 | POST | `/pay` | Возвращает `200` с LiqPay payload (`provider`, `data`, `signature`, `payload`) для онлайн-оплаты заказа во внешнем/token-потоке. Обязателен билетный токен со scope `pay`, привязанный к этому же `purchase_id`. Admin-запросы отклоняются с подсказкой использовать `/purchase/{purchase_id}/pay`. |
 | POST | `/cancel/{purchase_id}` | Отмена бронирования. Поддерживает необязательный токен со scope `cancel`. |
 | POST | `/refund/{purchase_id}` | Полный возврат по бронированию. Поддерживает необязательный токен со scope `cancel`. |
@@ -124,7 +124,7 @@
 ## Правило маршрутизации оплаты
 
 - **Внутренний фронт (admin)** для офлайн-оплаты всегда использует `POST /purchase/{purchase_id}/pay`.
-- **Внешний фронт (token/public)** использует `POST /pay` (token-модель) или `POST /public/purchase/{purchase_id}/pay` (cookie/public-модель).
+- **Внешний фронт (token/public)** использует безопасный поток: `POST /book` -> `POST /pay` (token-модель LiqPay) либо `POST /public/purchase/{purchase_id}/pay` (cookie/public-модель).
 
 ## Публичный кабинет по cookie-сессии
 
@@ -173,7 +173,9 @@
 
 ### Бронирование/покупка (внешний публичный поток)
 
-#### Общий payload для `POST /purchase/`, `POST /book`, `POST /purchase`
+> Для новых интеграций внешний публичный сценарий продажи: **только** `POST /book` с последующим `POST /pay` (LiqPay). `POST /purchase` помечен deprecated и доступен только с admin JWT.
+
+#### Общий payload для `POST /purchase/`, `POST /book`, `POST /purchase` (deprecated, admin-only)
 - **Body:**
 ```json
 {

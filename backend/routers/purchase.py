@@ -7,7 +7,7 @@ from threading import Lock
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
-from ..auth import optional_scope, require_scope
+from ..auth import optional_scope, require_admin_token, require_scope
 from ..database import get_connection
 from ..ticket_utils import free_ticket
 from ._ticket_link_helpers import (
@@ -623,7 +623,12 @@ class LiqPayCheckoutOut(BaseModel):
     payload: LiqPayCheckoutPayload
 
 
-@actions_router.post("/book", response_model=PurchaseOut)
+@actions_router.post(
+    "/book",
+    response_model=PurchaseOut,
+    summary="Public booking (step 1 for external sales)",
+    description="Creates a reserved purchase. For external sales continue with POST /pay (LiqPay).",
+)
 def book_seat(data: PurchaseCreate, request: Request, background_tasks: BackgroundTasks):
     guard_public_request(request, "book")
 
@@ -650,28 +655,34 @@ def book_seat(data: PurchaseCreate, request: Request, background_tasks: Backgrou
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 
-@actions_router.post("/purchase", response_model=PurchaseOut)
+@actions_router.post(
+    "/purchase",
+    response_model=PurchaseOut,
+    deprecated=True,
+    summary="[DEPRECATED] Admin-only immediate purchase",
+    description=(
+        "Deprecated for public integrations. "
+        "Use POST /book followed by POST /pay (LiqPay) for external sales. "
+        "This endpoint now requires an admin bearer token."
+    ),
+)
 def purchase_and_pay(
     data: PurchaseCreate,
-    request: Request,
     background_tasks: BackgroundTasks,
-    context=Depends(optional_scope("pay")),
+    _admin=Depends(require_admin_token),
 ):
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
     tickets: List[TicketLinkResult] = []
     try:
-        actor, jti = _resolve_actor(request)
-        guard_public_request(request, "purchase", context=context)
+        actor = "admin"
         purchase_id, amount_due, ticket_specs = _create_purchase(
             cur, data, "paid", "offline", actor
         )
         tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
         tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
         conn.commit()
-        if jti:
-            logger.info("Purchase %s created and paid with token jti=%s", purchase_id, jti)
     except HTTPException:
         conn.rollback()
         raise
@@ -689,6 +700,12 @@ def purchase_and_pay(
 @actions_router.post(
     "/pay",
     response_model=LiqPayCheckoutOut,
+    summary="Public LiqPay checkout (step 2 after /book)",
+    description=(
+        "Safe public route for external sales. "
+        "Requires ticket token with scope pay bound to the same purchase_id. "
+        "Admin users must use POST /purchase/{purchase_id}/pay for offline settlement."
+    ),
     responses={
         200: {
             "description": "LiqPay checkout payload for online payment",
