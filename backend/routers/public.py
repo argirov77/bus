@@ -383,6 +383,30 @@ def _verify_ticket_purchase_access(ticket_id: int, purchase_id: int, email: str)
         raise HTTPException(status_code=403, detail="Email does not match purchase")
 
 
+def _verify_purchase_email_access(purchase_id: int, email: str) -> None:
+    normalized_email = (email or "").strip().lower()
+    if not normalized_email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT customer_email FROM purchase WHERE id = %s",
+                (purchase_id,),
+            )
+            row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Purchase not found")
+
+    stored_normalized = (row[0] or "").strip().lower()
+    if not stored_normalized or stored_normalized != normalized_email:
+        raise HTTPException(status_code=403, detail="Email does not match purchase")
+
+
 def _extract_purchase_id_from_order(order_id: str) -> int | None:
     if not order_id:
         return None
@@ -1258,10 +1282,29 @@ def get_public_purchase_pdf(purchase_id: int, request: Request) -> Response:
 
 
 @router.post("/purchase/{purchase_id}/pay")
-def public_pay(purchase_id: int, request: Request) -> Mapping[str, Any]:
-    _session, ticket_id, resolved_purchase_id, _cookie = _require_purchase_context(
-        request, purchase_id, "pay"
-    )
+def public_pay(
+    purchase_id: int,
+    request: Request,
+    email: str | None = Query(None, min_length=1),
+) -> Mapping[str, Any]:
+    ticket_id: int | None
+    resolved_purchase_id: int
+    try:
+        _session, ticket_id, resolved_purchase_id, _cookie = _require_purchase_context(
+            request, purchase_id, "pay"
+        )
+    except HTTPException as exc:
+        if exc.status_code != 401 or exc.detail != "Missing purchase session" or not email:
+            raise
+
+        guard_public_request(
+            request,
+            "pay",
+            purchase_id=purchase_id,
+        )
+        _verify_purchase_email_access(purchase_id, email)
+        ticket_id = None
+        resolved_purchase_id = purchase_id
 
     amount_due = 0.0
     conn = get_connection()
