@@ -9,6 +9,7 @@ import jwt
 
 class DummyCursor:
     status_resp = "reserved"
+    has_liqpay_column = True
 
     def __enter__(self):
         return self
@@ -25,6 +26,8 @@ class DummyCursor:
         self.queries.append((query, params))
     def fetchone(self):
         q = self.query.lower()
+        if "from information_schema.columns" in q:
+            return [1] if self.has_liqpay_column else None
         if "select id, seat_id from ticket" in q:
             return [1, 1]
         if "select status from purchase" in q:
@@ -373,6 +376,48 @@ def test_public_pay_missing_session_includes_q_flow_hint(client):
     assert resp.status_code == 401
     assert resp.json()["detail"].startswith("Purchase session is not initialized")
     assert "/q/{opaque}" in resp.json()["detail"]
+
+
+def test_public_pay_skips_liqpay_order_persistence_when_column_missing(client, monkeypatch):
+    cli, _store = client
+
+    from backend.routers import public as public_module
+
+    def fake_require_purchase_context(request, purchase_id, scope):
+        return object(), 77, purchase_id, "purchase_session"
+
+    class MissingLiqpayCursor(DummyCursor):
+        has_liqpay_column = False
+
+    class MissingLiqpayConn(DummyConn):
+        def __init__(self):
+            self.cursor_obj = MissingLiqpayCursor()
+            self.was_committed = False
+            self.was_rolled_back = False
+
+    queries: list[tuple[str, object]] = []
+
+    def fake_get_connection_missing_columns():
+        conn = MissingLiqpayConn()
+        orig_execute = conn.cursor_obj.execute
+
+        def capture_execute(query, params=None):
+            queries.append((query, params))
+            orig_execute(query, params)
+
+        conn.cursor_obj.execute = capture_execute  # type: ignore[assignment]
+        return conn
+
+    monkeypatch.setattr(public_module, "_require_purchase_context", fake_require_purchase_context)
+    monkeypatch.setattr(public_module, "get_connection", fake_get_connection_missing_columns)
+
+    resp = cli.post('/public/purchase/1/pay')
+
+    assert resp.status_code == 200
+    assert not any(
+        "update purchase set liqpay_order_id" in q.lower()
+        for q, _ in queries
+    )
 
 
 def test_result_url_rejects_localhost_in_production_config(client, monkeypatch):
