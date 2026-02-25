@@ -749,7 +749,12 @@ def public_purchase_and_pay(
         tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
         tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
 
-        checkout = liqpay.build_checkout_payload(purchase_id, amount_due)
+        payment_description = liqpay.build_purchase_description(cur, purchase_id)
+        checkout = liqpay.build_checkout_payload(
+            purchase_id,
+            amount_due,
+            description=payment_description,
+        )
         payload = checkout.get("payload") if isinstance(checkout, dict) else None
         order_id = payload.get("order_id") if isinstance(payload, dict) else None
         if order_id:
@@ -828,7 +833,12 @@ def pay_booking(
         _ = row[2]
         _validate_purchase_payable(amount_due, purchase_status)
 
-        checkout = liqpay.build_checkout_payload(data.purchase_id, amount_due)
+        payment_description = liqpay.build_purchase_description(cur, data.purchase_id)
+        checkout = liqpay.build_checkout_payload(
+            data.purchase_id,
+            amount_due,
+            description=payment_description,
+        )
         payload = checkout.get("payload") if isinstance(checkout, dict) else None
         order_id = payload.get("order_id") if isinstance(payload, dict) else None
         if order_id:

@@ -1264,18 +1264,25 @@ def public_pay(purchase_id: int, request: Request) -> Mapping[str, Any]:
     )
 
     amount_due = 0.0
+    payment_description = None
     conn = get_connection()
     try:
         with conn.cursor() as cur:
             amount_due, status = _load_purchase_state(cur, resolved_purchase_id)
             _ensure_purchase_active(status)
+            payment_description = liqpay.build_purchase_description(cur, resolved_purchase_id)
     finally:
         conn.close()
 
     if amount_due <= 0:
         raise HTTPException(status_code=400, detail="Purchase has no outstanding balance")
 
-    checkout = liqpay.build_checkout_payload(resolved_purchase_id, amount_due, ticket_id=ticket_id)
+    checkout = liqpay.build_checkout_payload(
+        resolved_purchase_id,
+        amount_due,
+        ticket_id=ticket_id,
+        description=payment_description,
+    )
     payload = checkout.get("payload") if isinstance(checkout, Mapping) else None
     order_id = payload.get("order_id") if isinstance(payload, Mapping) else None
     if order_id:
