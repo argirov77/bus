@@ -142,3 +142,38 @@ def test_payments_resolve_handles_missing_liqpay_columns(client):
     assert body["status"] == "paid"
     assert state["verify_called"] == 1
     assert state["synced"] == 1
+
+
+def test_payments_resolve_handles_desynced_liqpay_schema(client):
+    cli, state = client
+    state["row"] = [1, "reserved", 15.0, "a@b.com", "Alice", None, None]
+
+    class UndefinedColumnError(Exception):
+        pass
+
+    from backend.routers import public as public_module
+
+    public_module.psycopg2.errors.UndefinedColumn = UndefinedColumnError
+
+    conn = public_module.get_connection()
+    original_execute = conn.cursor_obj.execute
+
+    calls = {"purchase_select": 0}
+
+    def flaky_execute(query, params=None):
+        q = query.lower()
+        if "from purchase" in q and "liqpay_order_id" in q:
+            calls["purchase_select"] += 1
+            if calls["purchase_select"] == 1:
+                raise UndefinedColumnError()
+        return original_execute(query, params)
+
+    conn.cursor_obj.execute = flaky_execute
+
+    public_module.get_connection = lambda: conn
+
+    resp = cli.get("/public/payments/resolve", params={"order_id": "purchase-1"})
+
+    assert resp.status_code == 200
+    assert resp.json()["purchaseId"] == 1
+    assert state["verify_called"] == 1
