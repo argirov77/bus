@@ -94,6 +94,7 @@
 | PUT | `/tours/{tour_id}` | Обновление рейса и доступности мест. |
 | DELETE | `/tours/{tour_id}` | Удаление рейса (с опцией `force`). |
 | PUT | `/seat/block` | Блокировка/разблокировка места рейса. |
+| POST | `/purchase/{purchase_id}/pay` | **Внутренний admin-only** endpoint: пометка заказа как оплаченного офлайн, без LiqPay. Доступен только админскому фронту с bearer JWT. |
 
 ## Маршруты с проверкой билетного токена (scope) или админа
 
@@ -105,10 +106,12 @@
 | POST | `/tickets/{ticket_id}/seat` | `seat` | Смена места в рамках того же рейса. |
 | POST | `/tickets/{ticket_id}/reschedule` | `reschedule` | Перенос билета на другой рейс или сегмент. |
 | POST | `/tickets/reassign` | `edit` | Массовая пересадка между местами внутри рейса. |
-| POST | `/purchase/{purchase_id}/pay` | `pay` | Изменение статуса заказа на `paid`, запись продажи с `method=offline` и повторная выдача ссылок. |
+| POST | `/purchase/{purchase_id}/pay` | — | **Только внутренний админ-фронт**: офлайн-оплата заказа (`method=offline`). Требуется `Authorization: Bearer <admin JWT>`. Билетные токены (`X-Ticket-Token`, `?token=`) не поддерживаются. |
 | POST | `/purchase/{purchase_id}/cancel` | `cancel` | Отмена заказа с освобождением мест и записью в лог продаж. |
 
 ### Отдельный режим авторизации для внешнего фронта (`POST /pay`)
+
+> Важно: `POST /purchase/{purchase_id}/pay` — другой endpoint, он **не** для внешнего клиента; только для внутреннего админ-фронта.
 
 ### Ответы `POST /pay`
 
