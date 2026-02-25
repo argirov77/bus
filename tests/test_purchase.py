@@ -365,6 +365,16 @@ def test_result_url_is_consistent_between_pay_endpoints(client, monkeypatch):
     assert pay_server_url == public_server_url == "https://example.test/api/public/payment/liqpay/callback"
 
 
+def test_public_pay_missing_session_includes_q_flow_hint(client):
+    cli, _store = client
+
+    resp = cli.post('/public/purchase/1/pay')
+
+    assert resp.status_code == 401
+    assert resp.json()["detail"].startswith("Missing purchase session")
+    assert "/q/{opaque}" in resp.json()["detail"]
+
+
 def test_result_url_rejects_localhost_in_production_config(client, monkeypatch):
     cli, _store = client
 

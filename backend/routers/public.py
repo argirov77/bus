@@ -162,7 +162,7 @@ def _extract_session_cookie(
         name = _purchase_cookie_name(purchase_id)
         value = cookies.get(name)
         if not value:
-            raise HTTPException(status_code=401, detail="Missing purchase session")
+            raise HTTPException(status_code=401, detail="Missing purchase session. Open /q/{opaque} first to initialize cookies and CSRF.")
         return purchase_id, name, value
 
     if ticket_id is not None:
@@ -172,7 +172,7 @@ def _extract_session_cookie(
             return ticket_id, name, value
         return _pick_cookie(
             _iter_purchase_cookies(cookies),
-            missing_detail="Missing purchase session",
+            missing_detail="Missing purchase session. Open /q/{opaque} first to initialize cookies and CSRF.",
             ambiguous_detail="Ambiguous purchase session",
         )
 
@@ -180,7 +180,7 @@ def _extract_session_cookie(
     if purchase_match:
         return _pick_cookie(
             purchase_match,
-            missing_detail="Missing purchase session",
+            missing_detail="Missing purchase session. Open /q/{opaque} first to initialize cookies and CSRF.",
             ambiguous_detail="Ambiguous purchase session",
         )
 
