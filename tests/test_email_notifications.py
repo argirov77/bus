@@ -95,6 +95,12 @@ def email_test_env(monkeypatch):
             elif "select price from prices" in q:
                 self.last_result = [10]
                 self.last_fetch_mode = "one"
+            elif "from information_schema.columns" in q and "table_name = 'purchase'" in q:
+                if params and params[0] == "liqpay_order_id":
+                    self.last_result = [1]
+                else:
+                    self.last_result = None
+                self.last_fetch_mode = "one"
             elif "select amount_due, status from purchase" in q:
                 purchase = state["purchases"].get(params[0])
                 if not purchase:
@@ -195,6 +201,11 @@ def email_test_env(monkeypatch):
                     purchase["amount_due"] = params[0]
                     if "status=%s" in q:
                         purchase["status"] = params[1]
+            elif "update purchase set liqpay_order_id" in q:
+                purchase_id = params[1]
+                purchase = state["purchases"].get(purchase_id)
+                if purchase:
+                    purchase["liqpay_order_id"] = params[0]
             elif "update purchase set status='paid'" in q:
                 purchase_id = params[0]
                 purchase = state["purchases"].get(purchase_id)
