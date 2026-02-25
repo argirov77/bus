@@ -371,7 +371,7 @@ def test_public_pay_missing_session_includes_q_flow_hint(client):
     resp = cli.post('/public/purchase/1/pay')
 
     assert resp.status_code == 401
-    assert resp.json()["detail"].startswith("Missing purchase session")
+    assert resp.json()["detail"].startswith("Purchase session is not initialized")
     assert "/q/{opaque}" in resp.json()["detail"]
 
 
