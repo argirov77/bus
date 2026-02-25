@@ -7,8 +7,9 @@ import pytest
 
 
 class ResolveCursor:
-    def __init__(self, row):
+    def __init__(self, row, has_liqpay_column=True):
         self._row = row
+        self._has_liqpay_column = has_liqpay_column
         self.query = ""
         self.params = None
 
@@ -23,6 +24,8 @@ class ResolveCursor:
         self.params = params
 
     def fetchone(self):
+        if "from information_schema.columns" in self.query.lower():
+            return [1] if self._has_liqpay_column else None
         if "from purchase" in self.query.lower():
             return self._row
         return None
@@ -32,8 +35,8 @@ class ResolveCursor:
 
 
 class ResolveConn:
-    def __init__(self, row):
-        self.cursor_obj = ResolveCursor(row)
+    def __init__(self, row, has_liqpay_column=True):
+        self.cursor_obj = ResolveCursor(row, has_liqpay_column=has_liqpay_column)
 
     def cursor(self):
         return self.cursor_obj
@@ -55,12 +58,13 @@ def client(monkeypatch):
 
     state = {
         "row": [1, "reserved", 15.0, "a@b.com", "Alice", "purchase-1", None],
+        "has_liqpay_column": True,
         "verify_called": 0,
         "synced": 0,
     }
 
     def fake_get_connection():
-        return ResolveConn(state["row"])
+        return ResolveConn(state["row"], has_liqpay_column=state["has_liqpay_column"])
 
     def fake_verify_order(order_id: str):
         state["verify_called"] += 1
@@ -70,7 +74,10 @@ def client(monkeypatch):
         state["synced"] += 1
         return "paid", "p-1"
 
-    monkeypatch.setattr("psycopg2.connect", lambda *a, **kw: ResolveConn(state["row"]))
+    monkeypatch.setattr(
+        "psycopg2.connect",
+        lambda *a, **kw: ResolveConn(state["row"], has_liqpay_column=state["has_liqpay_column"]),
+    )
     monkeypatch.setattr("backend.database.get_connection", fake_get_connection)
 
     if "backend.main" in sys.modules:
@@ -121,3 +128,17 @@ def test_payments_resolve_rejects_unknown_order_format(client):
     resp = cli.get("/public/payments/resolve", params={"order_id": "bad.order"})
 
     assert resp.status_code == 422
+
+
+def test_payments_resolve_handles_missing_liqpay_columns(client):
+    cli, state = client
+    state["row"] = [1, "reserved", 15.0, "a@b.com", "Alice", None, None]
+    state["has_liqpay_column"] = False
+
+    resp = cli.get("/public/payments/resolve", params={"order_id": "purchase-1"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "paid"
+    assert state["verify_called"] == 1
+    assert state["synced"] == 1

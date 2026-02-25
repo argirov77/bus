@@ -106,6 +106,21 @@ def _round_currency(value: float | None) -> float:
     return round(float(value or 0.0), 2)
 
 
+def _purchase_has_column(cur, column_name: str) -> bool:
+    cur.execute(
+        """
+        SELECT 1
+          FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'purchase'
+           AND column_name = %s
+         LIMIT 1
+        """,
+        (column_name,),
+    )
+    return cur.fetchone() is not None
+
+
 def _redirect_base_url(purchase_id: int) -> str:
     try:
         base_url = get_client_app_base()
@@ -432,18 +447,25 @@ def _sync_purchase_paid_from_liqpay_callback(
             raise HTTPException(status_code=404, detail="Purchase not found")
 
         amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
-        cur.execute(
-            """
-            UPDATE purchase
-               SET liqpay_order_id=%s,
-                   liqpay_status=%s,
-                   liqpay_payment_id=%s,
-                   liqpay_payload=%s,
-                   update_at=NOW()
-             WHERE id=%s
-            """,
-            (order_id, liqpay_status or None, payment_id, json.dumps(payload), purchase_id),
-        )
+        has_liqpay_tracking = _purchase_has_column(cur, "liqpay_order_id")
+        if has_liqpay_tracking:
+            cur.execute(
+                """
+                UPDATE purchase
+                   SET liqpay_order_id=%s,
+                       liqpay_status=%s,
+                       liqpay_payment_id=%s,
+                       liqpay_payload=%s,
+                       update_at=NOW()
+                 WHERE id=%s
+                """,
+                (order_id, liqpay_status or None, payment_id, json.dumps(payload), purchase_id),
+            )
+        else:
+            logger.warning(
+                "Skipping LiqPay tracking persistence for purchase=%s because liqpay columns are missing",
+                purchase_id,
+            )
 
         normalized = _normalize_liqpay_result_status(liqpay_status)
         if normalized != "paid":
@@ -486,15 +508,28 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT id, status, amount_due, customer_email, customer_name,
-                       liqpay_order_id, liqpay_status
-                  FROM purchase
-                 WHERE id=%s
-                """,
-                (purchase_id,),
-            )
+            has_liqpay_tracking = _purchase_has_column(cur, "liqpay_order_id")
+            if has_liqpay_tracking:
+                cur.execute(
+                    """
+                    SELECT id, status, amount_due, customer_email, customer_name,
+                           liqpay_order_id, liqpay_status
+                      FROM purchase
+                     WHERE id=%s
+                    """,
+                    (purchase_id,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT id, status, amount_due, customer_email, customer_name,
+                           NULL::TEXT AS liqpay_order_id,
+                           NULL::TEXT AS liqpay_status
+                      FROM purchase
+                     WHERE id=%s
+                    """,
+                    (purchase_id,),
+                )
             row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Purchase not found")
@@ -1289,10 +1324,16 @@ def public_pay(purchase_id: int, request: Request) -> Mapping[str, Any]:
         conn = get_connection()
         try:
             with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE purchase SET liqpay_order_id=%s, update_at=NOW() WHERE id=%s",
-                    (str(order_id), resolved_purchase_id),
-                )
+                if _purchase_has_column(cur, "liqpay_order_id"):
+                    cur.execute(
+                        "UPDATE purchase SET liqpay_order_id=%s, update_at=NOW() WHERE id=%s",
+                        (str(order_id), resolved_purchase_id),
+                    )
+                else:
+                    logger.warning(
+                        "Skipping LiqPay order_id persistence for purchase=%s because column liqpay_order_id is missing",
+                        resolved_purchase_id,
+                    )
             conn.commit()
         finally:
             conn.close()
