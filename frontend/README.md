@@ -78,6 +78,95 @@ doors are represented with small SVG icons so the orientation of the bus remains
 clear even on wide screens. The seat numbers are arranged from left to right in
 rows to match the real arrangement inside the coach.
 
+## External frontend: payment flow via cookie session + CSRF
+
+For browser-based integrations with public purchase endpoints, follow this order
+strictly:
+
+1. Get `deep_link` / `opaque` from the ticket link payload.
+2. Open `GET /q/{opaque}` in the browser to initialize:
+   - purchase session cookie (`minicab_purchase_{purchase_id}`),
+   - CSRF cookie (`mc_csrf`).
+3. Call `POST /public/purchase/{purchase_id}/pay` with:
+   - browser cookies from step 2,
+   - `X-CSRF` header with the token from `mc_csrf` cookie,
+   - `credentials: 'include'` (or `withCredentials: true` for axios).
+
+If step 2 is skipped, `POST /public/...` requests will fail because the backend
+will not see a valid purchase session and CSRF context.
+
+### Browser checklist (API gateway / client)
+
+- Ensure cookie forwarding is enabled end-to-end (`credentials: 'include'` / `withCredentials: true`).
+- Ensure the gateway does not strip `Set-Cookie` from `GET /q/{opaque}`.
+- Ensure cookie attributes are compatible with your deployment:
+  - `SameSite=None; Secure` for cross-site frontend/backend.
+  - shared/parent `Domain` when frontend and API are on subdomains.
+- Ensure `X-CSRF` header is forwarded by the gateway to backend.
+
+### Browser example (`fetch`, with credentials)
+
+```js
+// 1) Initialize cookie session by opening the deep link once in browser context
+await fetch(`${API_BASE}/q/${opaque}`, {
+  method: 'GET',
+  credentials: 'include',
+  redirect: 'follow'
+});
+
+// 2) Read CSRF token from cookie and send payment request
+const csrf = document.cookie
+  .split('; ')
+  .find((row) => row.startsWith('mc_csrf='))
+  ?.split('=')[1];
+
+const payRes = await fetch(`${API_BASE}/public/purchase/${purchaseId}/pay`, {
+  method: 'POST',
+  credentials: 'include',
+  headers: {
+    'X-CSRF': decodeURIComponent(csrf || '')
+  }
+});
+
+const payPayload = await payRes.json();
+console.log(payPayload);
+```
+
+Example successful response:
+
+```json
+{
+  "provider": "liqpay",
+  "data": "eyJ2ZXJzaW9uIjozLCJwdWJsaWNfa2V5Ijoi...",
+  "signature": "Q1Q4QXh3b3...",
+  "payload": {
+    "version": 3,
+    "action": "pay",
+    "amount": "250.00",
+    "currency": "UAH",
+    "description": "Purchase #555",
+    "order_id": "purchase-555-1700000000"
+  }
+}
+```
+
+### Browser example (`axios`, `withCredentials`)
+
+```js
+await axios.get(`${API_BASE}/q/${opaque}`, { withCredentials: true });
+
+const csrf = Cookies.get('mc_csrf');
+
+const { data } = await axios.post(
+  `${API_BASE}/public/purchase/${purchaseId}/pay`,
+  null,
+  {
+    withCredentials: true,
+    headers: { 'X-CSRF': csrf }
+  }
+);
+```
+
 ## Learn More
 
 You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).

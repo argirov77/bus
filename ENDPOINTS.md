@@ -135,6 +135,7 @@
 | GET | `/public/tickets/{ticket_id}/pdf` | Генерация PDF билета в контексте публичной сессии. |
 | GET | `/public/purchase/{purchase_id}/pdf` | Архив PDF-файлов всех билетов заказа. |
 | POST | `/public/purchase/{purchase_id}/pay` | Формирование платёжных данных (LiqPay) для доплаты по заказу. Требует CSRF. |
+|  |  | **Security requirements:** обязательны purchase-session cookie (`minicab_purchase_{purchase_id}`) и заголовок `X-CSRF` со значением из cookie `mc_csrf` (после `GET /q/{opaque}`). |
 | POST | `/public/purchase/{purchase_id}/reschedule/quote` | Предварительный расчёт доплаты/возврата при переносе билетов. |
 | POST | `/public/purchase/{purchase_id}/reschedule` | Подтверждение переноса билетов, пересчёт сумм и логирование. |
 | POST | `/public/purchase/{purchase_id}/baggage/quote` | Расчёт изменения суммы при добавлении/уборке дополнительного багажа. |
@@ -374,8 +375,71 @@
 - **200:** ZIP-архив PDF билетов (`application/zip`).
 
 #### `POST /public/purchase/{purchase_id}/pay`
+
+**Security requirements: session cookie + CSRF**
+- Предварительно выполните `GET /q/{opaque}`, чтобы браузер получил cookie:
+  - `minicab_purchase_{purchase_id}` (purchase-session),
+  - `mc_csrf` (CSRF token).
+- Для вызова `POST` обязательно передайте:
+  - cookie-сессию (browser credentials / `withCredentials`),
+  - заголовок `X-CSRF` со значением `mc_csrf`.
+
 - **Body:** отсутствует.
 - **200:** LiqPay checkout payload (`provider`, `data`, `signature`, `payload`).
+
+**Browser example (fetch, credentials include):**
+```js
+await fetch(`${API_BASE}/q/${opaque}`, {
+  credentials: 'include',
+  redirect: 'follow'
+});
+
+const csrf = document.cookie
+  .split('; ')
+  .find((row) => row.startsWith('mc_csrf='))
+  ?.split('=')[1];
+
+const resp = await fetch(`${API_BASE}/public/purchase/${purchaseId}/pay`, {
+  method: 'POST',
+  credentials: 'include',
+  headers: { 'X-CSRF': decodeURIComponent(csrf || '') }
+});
+
+const payload = await resp.json();
+```
+
+**Example `200` response:**
+```json
+{
+  "provider": "liqpay",
+  "data": "eyJ2ZXJzaW9uIjozLCJwdWJsaWNfa2V5Ijoi...",
+  "signature": "Q1Q4QXh3b3...",
+  "payload": {
+    "version": 3,
+    "action": "pay",
+    "amount": "250.00",
+    "currency": "UAH",
+    "description": "Purchase #555",
+    "order_id": "purchase-555-1700000000"
+  }
+}
+```
+
+**Browser example (axios, withCredentials):**
+```js
+await axios.get(`${API_BASE}/q/${opaque}`, { withCredentials: true });
+
+const csrf = Cookies.get('mc_csrf');
+
+const { data } = await axios.post(
+  `${API_BASE}/public/purchase/${purchaseId}/pay`,
+  null,
+  {
+    withCredentials: true,
+    headers: { 'X-CSRF': csrf }
+  }
+);
+```
 
 #### `POST /public/purchase/{purchase_id}/reschedule/quote`
 - **Body:**
