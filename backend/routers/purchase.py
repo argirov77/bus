@@ -7,7 +7,7 @@ from threading import Lock
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
-from ..auth import optional_scope, require_scope
+from ..auth import optional_scope, require_admin_token, require_scope
 from ..database import get_connection
 from ..ticket_utils import free_ticket
 from ._ticket_link_helpers import (
@@ -661,15 +661,51 @@ def book_seat(data: PurchaseCreate, request: Request, background_tasks: Backgrou
 
 @actions_router.post(
     "/purchase",
+    response_model=PurchaseOut,
+    summary="Admin immediate purchase (book + paid offline)",
+    description="Admin-only endpoint: creates booking already paid with offline method.",
+)
+def purchase_and_pay(
+    data: PurchaseCreate,
+    background_tasks: BackgroundTasks,
+    _admin=Depends(require_admin_token),
+):
+    conn = get_connection()
+    cur = conn.cursor()
+    ticket_specs: List[TicketIssueSpec] = []
+    tickets: List[TicketLinkResult] = []
+    try:
+        actor = "admin"
+        purchase_id, amount_due, ticket_specs = _create_purchase(
+            cur, data, "paid", "offline", actor
+        )
+        tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
+        tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:
+        conn.rollback()
+        raise HTTPException(500, str(exc))
+    finally:
+        cur.close()
+        conn.close()
+
+    _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
+    return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
+
+
+@actions_router.post(
+    "/public/purchase",
     response_model=PurchaseCheckoutOut,
     summary="Public immediate checkout (book + LiqPay)",
     description=(
-        "Public shortcut for external sales: creates a reserved purchase and immediately "
-        "returns LiqPay checkout payload. "
-        "Admin offline settlement must use POST /purchase/{purchase_id}/pay."
+        "Public endpoint: creates reserved booking and immediately returns LiqPay payload "
+        "to start online payment."
     ),
 )
-def purchase_and_pay(
+def public_purchase_and_pay(
     data: PurchaseCreate,
     request: Request,
     background_tasks: BackgroundTasks,
