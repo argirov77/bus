@@ -2,7 +2,8 @@ import base64
 import hashlib
 import json
 import os
-from typing import Any, Mapping
+from datetime import date
+from typing import Any, Mapping, Sequence
 
 import httpx
 
@@ -10,6 +11,8 @@ from ..utils.client_app import build_liqpay_result_url, build_liqpay_server_url
 
 
 LIQPAY_CHECKOUT_URL = "https://www.liqpay.ua/api/3/checkout"
+
+
 def _env(key: str, default: str) -> str:
     value = os.getenv(key)
     return value if value else default
@@ -38,20 +41,23 @@ def build_payment_payload(
     amount: float,
     *,
     ticket_id: int | None = None,
+    description: str | None = None,
     result_url: str,
     server_url: str,
 ) -> dict[str, Any]:
     public_key = _env("LIQPAY_PUBLIC_KEY", "sandbox")
     currency = _env("LIQPAY_CURRENCY", "UAH")
 
-    description = f"Ticket #{ticket_id}" if ticket_id is not None else f"Purchase #{purchase_id}"
+    description_value = description or (
+        f"Ticket #{ticket_id}" if ticket_id is not None else f"Purchase #{purchase_id}"
+    )
     payload = {
         "version": "3",
         "public_key": public_key,
         "action": "pay",
         "amount": round(max(amount, 0.0), 2),
         "currency": currency,
-        "description": description,
+        "description": description_value,
         "order_id": f"purchase-{purchase_id}" if ticket_id is None else f"ticket-{ticket_id}-{purchase_id}",
         "result_url": result_url,
         "server_url": server_url,
@@ -74,6 +80,7 @@ def build_checkout_payload(
     amount: float,
     *,
     ticket_id: int | None = None,
+    description: str | None = None,
 ) -> dict[str, Any]:
     """Single source of truth for all online payment payload scenarios."""
     result_url = build_liqpay_result_url()
@@ -82,9 +89,51 @@ def build_checkout_payload(
         purchase_id,
         amount,
         ticket_id=ticket_id,
+        description=description,
         result_url=result_url,
         server_url=server_url,
     )
+
+
+def build_purchase_description(cur, purchase_id: int) -> str | None:
+    """Build a human-friendly LiqPay payment description for a purchase."""
+
+    cur.execute(
+        """
+        SELECT
+            tr.date,
+            COALESCE(dep.stop_ua, dep.stop_name),
+            COALESCE(arr.stop_ua, arr.stop_name)
+        FROM ticket t
+        JOIN tour tr ON tr.id = t.tour_id
+        JOIN stop dep ON dep.id = t.departure_stop_id
+        JOIN stop arr ON arr.id = t.arrival_stop_id
+        WHERE t.purchase_id = %s
+        ORDER BY tr.date ASC, t.id ASC
+        """,
+        (purchase_id,),
+    )
+    rows: Sequence[tuple[date, str, str]] = cur.fetchall() or []
+    if not rows:
+        return None
+
+    outbound_date, departure_name, arrival_name = rows[0]
+    seats_count = len(rows)
+    outbound_date_text = outbound_date.strftime("%d.%m.%Y")
+    unique_dates = sorted({row[0] for row in rows})
+
+    parts = [
+        f"Відправлення: {departure_name}",
+        f"Прибуття: {arrival_name}",
+        f"Дата: {outbound_date_text}",
+        f"Місць: {seats_count}",
+    ]
+
+    if len(unique_dates) > 1:
+        return_date_text = unique_dates[1].strftime("%d.%m.%Y")
+        parts.append(f"Зворотна дата: {return_date_text}")
+
+    return "; ".join(parts)[:255]
 
 
 def verify_signature(data: str, signature: str) -> bool:

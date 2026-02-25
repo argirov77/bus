@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import date
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -24,5 +25,36 @@ def test_build_checkout_payload_has_expected_fields(monkeypatch):
 
     assert payload["version"] == "3"
     assert payload["order_id"] == "ticket-77-15"
+    assert payload["description"] == "Ticket #77"
     assert payload["result_url"] == "https://app.example.com/return"
     assert payload["server_url"] == "https://app.example.com/api/public/payment/liqpay/callback"
+
+
+def test_build_purchase_description_contains_full_trip_info():
+    class FakeCursor:
+        def execute(self, _query, _params):
+            return None
+
+        def fetchall(self):
+            return [
+                (date(2026, 3, 5), "Київ", "Львів"),
+                (date(2026, 3, 5), "Київ", "Львів"),
+                (date(2026, 3, 10), "Львів", "Київ"),
+            ]
+
+    text = liqpay.build_purchase_description(FakeCursor(), 10)
+
+    assert text is not None
+    assert "Відправлення: Київ" in text
+    assert "Прибуття: Львів" in text
+    assert "Дата: 05.03.2026" in text
+    assert "Місць: 3" in text
+    assert "Зворотна дата: 10.03.2026" in text
+
+
+def test_build_checkout_payload_uses_custom_description(monkeypatch):
+    monkeypatch.setenv("CLIENT_APP_BASE", "https://app.example.com")
+
+    response = liqpay.build_checkout_payload(15, 20, description="Custom description")
+
+    assert response["payload"]["description"] == "Custom description"

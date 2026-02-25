@@ -345,7 +345,7 @@ def email_test_env(monkeypatch):
     monkeypatch.setattr(
         purchase_router.liqpay,
         'build_checkout_payload',
-        lambda purchase_id, amount_due: {
+        lambda purchase_id, amount_due, **kwargs: {
             'provider': 'liqpay',
             'data': 'encoded',
             'signature': 'signed',
@@ -355,7 +355,7 @@ def email_test_env(monkeypatch):
                 'action': 'pay',
                 'amount': amount_due,
                 'currency': 'UAH',
-                'description': f'Purchase #{purchase_id}',
+                'description': kwargs.get('description') or f'Purchase #{purchase_id}',
                 'order_id': f'purchase-{purchase_id}',
                 'result_url': 'https://example.test/result',
             },
