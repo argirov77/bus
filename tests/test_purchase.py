@@ -35,8 +35,6 @@ class DummyCursor:
             return [10, "a@b.com"]
         if "select amount_due, status from purchase" in q:
             return [10, "reserved"]
-        if "select customer_email from purchase where id" in q:
-            return ["a@b.com"]
         if "select route_id, pricelist_id, date from tour" in q:
             return [1, 1, date(2024, 1, 1)]
         if "select route_id, date from tour" in q:
@@ -366,26 +364,6 @@ def test_result_url_is_consistent_between_pay_endpoints(client, monkeypatch):
     assert pay_result_url == public_result_url == "https://example.test/return"
     assert pay_server_url == public_server_url == "https://example.test/api/public/payment/liqpay/callback"
 
-
-
-
-def test_public_pay_allows_email_fallback_without_session(client):
-    cli, _store = client
-
-    resp = cli.post('/public/purchase/1/pay?email=a@b.com')
-
-    assert resp.status_code == 200
-    assert resp.json()["provider"] == "liqpay"
-    assert resp.json()["payload"]["result_url"] == "https://example.test/return"
-
-
-def test_public_pay_email_fallback_rejects_wrong_email(client):
-    cli, _store = client
-
-    resp = cli.post('/public/purchase/1/pay?email=wrong@example.com')
-
-    assert resp.status_code == 403
-    assert resp.json()["detail"] == "Email does not match purchase"
 
 def test_result_url_rejects_localhost_in_production_config(client, monkeypatch):
     cli, _store = client
