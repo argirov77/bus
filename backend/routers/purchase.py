@@ -7,7 +7,7 @@ from threading import Lock
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
-from ..auth import optional_scope, require_scope
+from ..auth import optional_scope, require_admin_token, require_scope
 from ..database import get_connection
 from ..ticket_utils import free_ticket
 from ._ticket_link_helpers import (
@@ -509,12 +509,16 @@ def create_purchase(data: PurchaseCreate, background_tasks: BackgroundTasks):
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 
-@router.post("/{purchase_id}/pay", status_code=204)
+@router.post(
+    "/{purchase_id}/pay",
+    status_code=204,
+    summary="Admin offline payment only, no LiqPay",
+    description="Admin offline payment only, no LiqPay",
+)
 def pay_purchase(
     purchase_id: int,
-    request: Request,
     background_tasks: BackgroundTasks,
-    context=Depends(require_scope("pay")),
+    admin_payload: dict = Depends(require_admin_token),
 ):
     conn = get_connection()
     cur = conn.cursor()
@@ -522,13 +526,7 @@ def pay_purchase(
     tickets: List[TicketLinkResult] = []
     customer_email: str | None = None
     try:
-        actor, jti = _resolve_actor(request)
-        guard_public_request(
-            request,
-            "pay",
-            purchase_id=purchase_id,
-            context=context,
-        )
+        actor = str(admin_payload.get("sub") or admin_payload.get("id") or "admin")
         cur.execute(
             "SELECT amount_due, status, customer_email FROM purchase WHERE id=%s",
             (purchase_id,),
@@ -547,8 +545,6 @@ def pay_purchase(
         _log_action(cur, purchase_id, "paid", amount_due, by=actor, method=ADMIN_PAY_METHOD)
         tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         conn.commit()
-        if jti:
-            logger.info("Purchase %s paid with token jti=%s", purchase_id, jti)
     except HTTPException:
         conn.rollback()
         raise
