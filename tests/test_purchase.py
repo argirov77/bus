@@ -305,7 +305,7 @@ def test_passenger_count_mismatch(client):
     assert resp.status_code == 400
 
 
-def test_admin_pay_logs_offline_method(client):
+def test_admin_pay_is_rejected_with_redirect_hint(client):
     cli, store = client
     reserve_resp = cli.post('/book', json={
         'tour_id': 1,
@@ -327,14 +327,17 @@ def test_admin_pay_logs_offline_method(client):
         headers={'Authorization': 'Bearer admin-token'},
     )
 
-    assert resp.status_code == 204
+    assert resp.status_code == 403
+    assert (
+        resp.json()["detail"]
+        == "Use /purchase/{purchase_id}/pay for admin offline payment"
+    )
     sales_inserts = [
         (query, params)
         for query, params in store['cursor'].queries
         if 'insert into sales' in query.lower() and params is not None
     ]
-    assert sales_inserts, 'Expected INSERT INTO sales for admin /pay'
-    assert sales_inserts[-1][1][4] == 'offline'
+    assert not sales_inserts
 
 
 def test_result_url_is_consistent_between_pay_endpoints(client, monkeypatch):

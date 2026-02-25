@@ -20,7 +20,7 @@
 | POST | `/purchase/` | Создание бронирования со статусом `reserved`, возвращает ссылки на билеты. |
 | POST | `/book` | Псевдоним для создания бронирования, используется на публичной витрине. |
 | POST | `/purchase` | Создание бронирования со статусом `paid`; при наличии токена проверяет scope `pay`, без токена выполняется как публичный вызов. |
-| POST | `/pay` | Для non-admin возвращает `200` с LiqPay payload (`provider`, `data`, `signature`, `payload`) для онлайн-оплаты заказа; для admin выполняет офлайн-пометку оплаты и возвращает `204 No Content`. Для non-admin обязателен билетный токен со scope `pay`, привязанный к этому же `purchase_id`; admin может вызывать с bearer JWT. |
+| POST | `/pay` | Возвращает `200` с LiqPay payload (`provider`, `data`, `signature`, `payload`) для онлайн-оплаты заказа во внешнем/token-потоке. Обязателен билетный токен со scope `pay`, привязанный к этому же `purchase_id`. Admin-запросы отклоняются с подсказкой использовать `/purchase/{purchase_id}/pay`. |
 | POST | `/cancel/{purchase_id}` | Отмена бронирования. Поддерживает необязательный токен со scope `cancel`. |
 | POST | `/refund/{purchase_id}` | Полный возврат по бронированию. Поддерживает необязательный токен со scope `cancel`. |
 | POST | `/selected_route` | Возвращает данные демо-маршрутов (используется посадочной страницей). |
@@ -112,13 +112,19 @@
 
 ### Ответы `POST /pay`
 
-- `200 OK` — non-admin сценарий: возвращается LiqPay payload вида `{ provider, data, signature, payload }` для перенаправления на оплату.
-- `204 No Content` — admin-сценарий: заказ помечается как оплаченный офлайн, в `sales` пишется `category=paid` и `method=offline`, тело ответа отсутствует.
+- `200 OK` — возвращается LiqPay payload вида `{ provider, data, signature, payload }` для перенаправления на оплату.
 
 - Эндпоинт `POST /pay` предназначен для сценария внешнего фронта с билетными ссылками и **не использует cookie-session + CSRF** из `/public/...`.
-- Для non-admin запроса обязательно передать `X-Ticket-Token` (или `?token=`) со scope `pay`.
+- Для запроса обязательно передать `X-Ticket-Token` (или `?token=`) со scope `pay`.
 - Токен должен быть выпущен для того же заказа: `purchase_id` из токена обязан совпадать с `purchase_id` в теле запроса.
+- Admin JWT на этом маршруте отклоняется (`403`) с сообщением: `Use /purchase/{purchase_id}/pay for admin offline payment`.
 - При отсутствии токена возвращается `401`, при отсутствии scope `pay` или несовпадении заказа — `403`.
+
+
+## Правило маршрутизации оплаты
+
+- **Внутренний фронт (admin)** для офлайн-оплаты всегда использует `POST /purchase/{purchase_id}/pay`.
+- **Внешний фронт (token/public)** использует `POST /pay` (token-модель) или `POST /public/purchase/{purchase_id}/pay` (cookie/public-модель).
 
 ## Публичный кабинет по cookie-сессии
 
@@ -220,7 +226,7 @@
   }
 }
 ```
-- **Admin JWT → 204 No Content** (офлайн-оплата).
+- **Admin JWT → 403** с сообщением `Use /purchase/{purchase_id}/pay for admin offline payment`.
 - **401/403:** нет токена/нет scope/чужой `purchase_id`.
 
 #### `POST /cancel/{purchase_id}`
