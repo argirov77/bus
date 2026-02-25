@@ -12,6 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
+import psycopg2
 
 from ..database import get_connection
 from ..services import link_sessions
@@ -510,15 +511,28 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
         with conn.cursor() as cur:
             has_liqpay_tracking = _purchase_has_column(cur, "liqpay_order_id")
             if has_liqpay_tracking:
-                cur.execute(
-                    """
-                    SELECT id, status, amount_due, customer_email, customer_name,
-                           liqpay_order_id, liqpay_status
-                      FROM purchase
-                     WHERE id=%s
-                    """,
-                    (purchase_id,),
-                )
+                try:
+                    cur.execute(
+                        """
+                        SELECT id, status, amount_due, customer_email, customer_name,
+                               liqpay_order_id, liqpay_status
+                          FROM purchase
+                         WHERE id=%s
+                        """,
+                        (purchase_id,),
+                    )
+                except psycopg2.errors.UndefinedColumn:
+                    conn.rollback()
+                    cur.execute(
+                        """
+                        SELECT id, status, amount_due, customer_email, customer_name,
+                               NULL::TEXT AS liqpay_order_id,
+                               NULL::TEXT AS liqpay_status
+                          FROM purchase
+                         WHERE id=%s
+                        """,
+                        (purchase_id,),
+                    )
             else:
                 cur.execute(
                     """
