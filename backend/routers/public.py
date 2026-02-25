@@ -12,6 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
+import psycopg2
 
 from ..database import get_connection
 from ..services import link_sessions
@@ -411,6 +412,17 @@ def _extract_purchase_id_from_order(order_id: str) -> int | None:
     return None
 
 
+
+
+def _is_undefined_column_error(exc: Exception) -> bool:
+    if isinstance(exc, psycopg2.errors.UndefinedColumn):
+        return True
+    if isinstance(exc, psycopg2.ProgrammingError):
+        message = str(exc).lower()
+        return "does not exist" in message and "column" in message
+    return False
+
+
 def _normalize_liqpay_result_status(value: str | None) -> Literal["paid", "pending", "failed"]:
     status = (value or "").strip().lower()
     if status in {"success", "sandbox", "wait_accept", "subscribed"}:
@@ -449,18 +461,36 @@ def _sync_purchase_paid_from_liqpay_callback(
         amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
         has_liqpay_tracking = _purchase_has_column(cur, "liqpay_order_id")
         if has_liqpay_tracking:
-            cur.execute(
-                """
-                UPDATE purchase
-                   SET liqpay_order_id=%s,
-                       liqpay_status=%s,
-                       liqpay_payment_id=%s,
-                       liqpay_payload=%s,
-                       update_at=NOW()
-                 WHERE id=%s
-                """,
-                (order_id, liqpay_status or None, payment_id, json.dumps(payload), purchase_id),
-            )
+            try:
+                cur.execute(
+                    """
+                    UPDATE purchase
+                       SET liqpay_order_id=%s,
+                           liqpay_status=%s,
+                           liqpay_payment_id=%s,
+                           liqpay_payload=%s,
+                           update_at=NOW()
+                     WHERE id=%s
+                    """,
+                    (order_id, liqpay_status or None, payment_id, json.dumps(payload), purchase_id),
+                )
+            except Exception as exc:
+                if not _is_undefined_column_error(exc):
+                    raise
+                conn.rollback()
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT amount_due, status, customer_email FROM purchase WHERE id=%s FOR UPDATE",
+                    (purchase_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Purchase not found")
+                amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
+                logger.warning(
+                    "Skipping LiqPay tracking persistence for purchase=%s because liqpay columns are missing",
+                    purchase_id,
+                )
         else:
             logger.warning(
                 "Skipping LiqPay tracking persistence for purchase=%s because liqpay columns are missing",
@@ -510,15 +540,30 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
         with conn.cursor() as cur:
             has_liqpay_tracking = _purchase_has_column(cur, "liqpay_order_id")
             if has_liqpay_tracking:
-                cur.execute(
-                    """
-                    SELECT id, status, amount_due, customer_email, customer_name,
-                           liqpay_order_id, liqpay_status
-                      FROM purchase
-                     WHERE id=%s
-                    """,
-                    (purchase_id,),
-                )
+                try:
+                    cur.execute(
+                        """
+                        SELECT id, status, amount_due, customer_email, customer_name,
+                               liqpay_order_id, liqpay_status
+                          FROM purchase
+                         WHERE id=%s
+                        """,
+                        (purchase_id,),
+                    )
+                except Exception as exc:
+                    if not _is_undefined_column_error(exc):
+                        raise
+                    conn.rollback()
+                    cur.execute(
+                        """
+                        SELECT id, status, amount_due, customer_email, customer_name,
+                               NULL::TEXT AS liqpay_order_id,
+                               NULL::TEXT AS liqpay_status
+                          FROM purchase
+                         WHERE id=%s
+                        """,
+                        (purchase_id,),
+                    )
             else:
                 cur.execute(
                     """
