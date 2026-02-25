@@ -7,7 +7,7 @@ from threading import Lock
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
-from ..auth import optional_scope, require_admin_token, require_scope
+from ..auth import optional_scope, require_scope
 from ..database import get_connection
 from ..ticket_utils import free_ticket
 from ._ticket_link_helpers import (
@@ -623,6 +623,10 @@ class LiqPayCheckoutOut(BaseModel):
     payload: LiqPayCheckoutPayload
 
 
+class PurchaseCheckoutOut(PurchaseOut):
+    checkout: LiqPayCheckoutOut
+
+
 @actions_router.post(
     "/book",
     response_model=PurchaseOut,
@@ -657,31 +661,39 @@ def book_seat(data: PurchaseCreate, request: Request, background_tasks: Backgrou
 
 @actions_router.post(
     "/purchase",
-    response_model=PurchaseOut,
-    deprecated=True,
-    summary="[DEPRECATED] Admin-only immediate purchase",
+    response_model=PurchaseCheckoutOut,
+    summary="Public immediate checkout (book + LiqPay)",
     description=(
-        "Deprecated for public integrations. "
-        "Use POST /book followed by POST /pay (LiqPay) for external sales. "
-        "This endpoint now requires an admin bearer token."
+        "Public shortcut for external sales: creates a reserved purchase and immediately "
+        "returns LiqPay checkout payload. "
+        "Admin offline settlement must use POST /purchase/{purchase_id}/pay."
     ),
 )
 def purchase_and_pay(
     data: PurchaseCreate,
+    request: Request,
     background_tasks: BackgroundTasks,
-    _admin=Depends(require_admin_token),
 ):
+    guard_public_request(request, "purchase")
+
     conn = get_connection()
     cur = conn.cursor()
     ticket_specs: List[TicketIssueSpec] = []
     tickets: List[TicketLinkResult] = []
     try:
-        actor = "admin"
-        purchase_id, amount_due, ticket_specs = _create_purchase(
-            cur, data, "paid", "offline", actor
-        )
+        purchase_id, amount_due, ticket_specs = _create_purchase(cur, data, "reserved")
         tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
         tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
+
+        checkout = liqpay.build_checkout_payload(purchase_id, amount_due)
+        payload = checkout.get("payload") if isinstance(checkout, dict) else None
+        order_id = payload.get("order_id") if isinstance(payload, dict) else None
+        if order_id:
+            cur.execute(
+                "UPDATE purchase SET liqpay_order_id=%s, update_at=NOW() WHERE id=%s",
+                (str(order_id), purchase_id),
+            )
+
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -694,7 +706,12 @@ def purchase_and_pay(
         conn.close()
 
     _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
-    return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
+    return {
+        "purchase_id": purchase_id,
+        "amount_due": amount_due,
+        "tickets": tickets,
+        "checkout": checkout,
+    }
 
 
 @actions_router.post(

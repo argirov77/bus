@@ -19,7 +19,7 @@
 | POST | `/auth/login` | Авторизация и выдача JWT. |
 | POST | `/purchase/` | Создание бронирования со статусом `reserved`, возвращает ссылки на билеты. |
 | POST | `/book` | Псевдоним для создания бронирования, используется на публичной витрине. |
-| POST | `/purchase` | **DEPRECATED, только админ**: мгновенная офлайн-оплата при создании заказа. Для внешних продаж не использовать; применять поток `/book` -> `/pay` (LiqPay). |
+| POST | `/purchase` | Публичная «мгновенная покупка»: backend делает `book` + сразу возвращает LiqPay payload для оплаты. |
 | POST | `/pay` | Возвращает `200` с LiqPay payload (`provider`, `data`, `signature`, `payload`) для онлайн-оплаты заказа во внешнем/token-потоке. Обязателен билетный токен со scope `pay`, привязанный к этому же `purchase_id`. Admin-запросы отклоняются с подсказкой использовать `/purchase/{purchase_id}/pay`. |
 | POST | `/cancel/{purchase_id}` | Отмена бронирования. Поддерживает необязательный токен со scope `cancel`. |
 | POST | `/refund/{purchase_id}` | Полный возврат по бронированию. Поддерживает необязательный токен со scope `cancel`. |
@@ -124,7 +124,7 @@
 ## Правило маршрутизации оплаты
 
 - **Внутренний фронт (admin)** для офлайн-оплаты всегда использует `POST /purchase/{purchase_id}/pay`.
-- **Внешний фронт (token/public)** использует безопасный поток: `POST /book` -> `POST /pay` (token-модель LiqPay) либо `POST /public/purchase/{purchase_id}/pay` (cookie/public-модель).
+- **Внешний фронт (token/public)** может использовать либо `POST /purchase` (мгновенный flow: book+pay/LiqPay), либо двухшаговый flow `POST /book` -> `POST /pay`, либо cookie-flow `POST /public/purchase/{purchase_id}/pay`.
 
 ## Публичный кабинет по cookie-сессии
 
@@ -173,9 +173,9 @@
 
 ### Бронирование/покупка (внешний публичный поток)
 
-> Для новых интеграций внешний публичный сценарий продажи: **только** `POST /book` с последующим `POST /pay` (LiqPay). `POST /purchase` помечен deprecated и доступен только с admin JWT.
+> Для внешнего публичного сценария доступны оба безопасных варианта с LiqPay: `POST /purchase` (мгновенный book+pay) или `POST /book` с последующим `POST /pay`.
 
-#### Общий payload для `POST /purchase/`, `POST /book`, `POST /purchase` (deprecated, admin-only)
+#### Общий payload для `POST /purchase/`, `POST /book`, `POST /purchase`
 - **Body:**
 ```json
 {
@@ -193,7 +193,7 @@
   "lang": "bg"
 }
 ```
-- **200:**
+- **200 для `POST /book` / `POST /purchase/`:**
 ```json
 {
   "purchase_id": 555,
@@ -201,6 +201,32 @@
   "tickets": [
     { "ticket_id": 9001, "deep_link": "https://.../q/..." }
   ]
+}
+```
+- **200 для `POST /purchase` (мгновенный book+pay):**
+```json
+{
+  "purchase_id": 555,
+  "amount_due": 3200.0,
+  "tickets": [
+    { "ticket_id": 9001, "deep_link": "https://.../q/..." }
+  ],
+  "checkout": {
+    "provider": "liqpay",
+    "data": "base64...",
+    "signature": "...",
+    "payload": {
+      "version": "3",
+      "public_key": "...",
+      "action": "pay",
+      "amount": 3200.0,
+      "currency": "UAH",
+      "description": "...",
+      "order_id": "purchase-555-...",
+      "result_url": "https://...",
+      "server_url": "https://.../public/payment/liqpay/callback"
+    }
+  }
 }
 ```
 
