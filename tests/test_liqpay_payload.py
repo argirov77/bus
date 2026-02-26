@@ -26,7 +26,7 @@ def test_build_checkout_payload_has_expected_fields(monkeypatch):
     assert payload["version"] == "3"
     assert payload["order_id"] == "ticket-77-15"
     assert payload["description"] == "Ticket #77"
-    assert payload["result_url"] == "https://app.example.com/return?purchase_id=15"
+    assert payload["result_url"] == "https://app.example.com/return?ticket=1&source=liqpay&order_id=ticket-77-15&purchase_id=15"
     assert payload["server_url"] == "https://app.example.com/api/public/payment/liqpay/callback"
 
 
@@ -58,3 +58,14 @@ def test_build_checkout_payload_uses_custom_description(monkeypatch):
     response = liqpay.build_checkout_payload(15, 20, description="Custom description")
 
     assert response["payload"]["description"] == "Custom description"
+
+
+def test_build_checkout_payload_supports_root_result_path_override(monkeypatch):
+    monkeypatch.setenv("CLIENT_APP_BASE", "https://app.example.com")
+    monkeypatch.setenv("LIQPAY_RESULT_PATH", "/")
+
+    response = liqpay.build_checkout_payload(15, 20)
+
+    assert response["payload"]["result_url"] == (
+        "https://app.example.com/?ticket=1&source=liqpay&order_id=purchase-15&purchase_id=15"
+    )
