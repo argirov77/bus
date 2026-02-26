@@ -553,7 +553,7 @@ def _sync_purchase_paid_from_liqpay_callback(
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
         cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
-        _log_action(cur, purchase_id, "paid", amount_due, by="liqpay", method="liqpay")
+        _log_action(cur, purchase_id, "paid", amount_due, by="liqpay", method="online")
         try:
             tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         except Exception:

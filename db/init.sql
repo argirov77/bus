@@ -438,7 +438,7 @@ ALTER SEQUENCE public.tour_id_seq OWNED BY public.tour.id;
 SET search_path = public;
 
 CREATE TYPE purchase_status AS ENUM ('reserved','paid','cancelled','refunded');
-CREATE TYPE payment_method_type AS ENUM ('online','offline');
+CREATE TYPE payment_method_type AS ENUM ('online','offline','liqpay');
 
 CREATE TABLE IF NOT EXISTS public.purchase (
     id SERIAL PRIMARY KEY,
