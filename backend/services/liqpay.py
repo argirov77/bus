@@ -85,7 +85,7 @@ def build_checkout_payload(
 ) -> dict[str, Any]:
     """Single source of truth for all online payment payload scenarios."""
     order_id = f"purchase-{purchase_id}" if ticket_id is None else f"ticket-{ticket_id}-{purchase_id}"
-    result_url = build_liqpay_result_url(purchase_id=purchase_id)
+    result_url = build_liqpay_result_url(order_id=order_id, purchase_id=purchase_id)
     server_url = build_liqpay_server_url()
     return build_payment_payload(
         purchase_id,

@@ -29,10 +29,25 @@ def build_purchase_result_url(purchase_id: int) -> str:
 
 
 def build_liqpay_result_url(*, order_id: str | None = None, purchase_id: int | None = None) -> str:
-    """Build the URL where LiqPay should redirect the customer."""
+    """Build the URL where LiqPay should redirect the customer.
 
-    base = f"{get_client_app_base()}/return"
-    query: dict[str, str] = {}
+    By default we return the customer to a dedicated `/return` route so
+    client apps (e.g. Next.js) can run a deterministic payment-resolution
+    step before redirecting to the final UI state.
+
+    Set `LIQPAY_RESULT_PATH` to override the target path (for example,
+    `/return` for legacy clients).
+    """
+
+    result_path = (os.getenv("LIQPAY_RESULT_PATH") or "/return").strip()
+    if not result_path.startswith("/"):
+        result_path = f"/{result_path}"
+
+    base = f"{get_client_app_base()}{result_path}"
+    query: dict[str, str] = {
+        "ticket": "1",
+        "source": "liqpay",
+    }
     if order_id:
         query["order_id"] = str(order_id)
     if purchase_id is not None:
