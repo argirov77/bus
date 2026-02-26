@@ -235,7 +235,7 @@ def test_purchase_flow(client):
     resp = cli.post('/pay?token=token-pay', json={'purchase_id': 1})
     assert resp.status_code == 200
     assert resp.json()["provider"] == "liqpay"
-    assert resp.json()["payload"]["result_url"] == "https://example.test/return"
+    assert resp.json()["payload"]["result_url"] == "https://example.test/return?purchase_id=1"
     assert resp.json()["payload"]["server_url"] == "https://example.test/api/public/payment/liqpay/callback"
 
     store['cursor'].queries.clear()
@@ -364,7 +364,7 @@ def test_result_url_is_consistent_between_pay_endpoints(client, monkeypatch):
     pay_server_url = pay_resp.json()["payload"]["server_url"]
     public_server_url = public_pay_resp.json()["payload"]["server_url"]
 
-    assert pay_result_url == public_result_url == "https://example.test/return"
+    assert pay_result_url == public_result_url == "https://example.test/return?purchase_id=1"
     assert pay_server_url == public_server_url == "https://example.test/api/public/payment/liqpay/callback"
 
 
@@ -377,6 +377,21 @@ def test_public_pay_missing_session_includes_q_flow_hint(client):
     assert resp.json()["detail"].startswith("Purchase session is not initialized")
     assert "/q/{opaque}" in resp.json()["detail"]
 
+
+
+def test_public_pay_missing_session_reports_available_purchase_sessions(client):
+    cli, _store = client
+
+    cli.cookies.set("minicab_purchase_83", "session-83")
+    cli.cookies.set("minicab_purchase_84", "session-84")
+
+    resp = cli.post('/public/purchase/88/pay')
+
+    assert resp.status_code == 401
+    detail = resp.json()["detail"]
+    assert "requested purchase_id=88" in detail
+    assert "available purchase sessions: [83, 84]" in detail
+    assert "/q/{opaque}" in detail
 
 def test_public_pay_skips_liqpay_order_persistence_when_column_missing(client, monkeypatch):
     cli, _store = client

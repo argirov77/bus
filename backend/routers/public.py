@@ -5,6 +5,7 @@ import json
 import logging
 import secrets
 import zipfile
+from urllib.parse import parse_qs
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping, Literal, Sequence
 
@@ -12,6 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
+import psycopg2
 
 from ..database import get_connection
 from ..services import link_sessions
@@ -169,6 +171,20 @@ def _pick_cookie(
     return collected[0]
 
 
+
+
+def _describe_purchase_session_mismatch(cookies: Mapping[str, str], purchase_id: int) -> str:
+    available = sorted({pid for pid, _name, _value in _iter_purchase_cookies(cookies)})
+    if not available:
+        return "Purchase session is not initialized; open /q/{opaque} first to set cookies and CSRF."
+    available_text = ", ".join(str(pid) for pid in available)
+    return (
+        "Purchase session is not initialized for this purchase; "
+        f"requested purchase_id={purchase_id}, available purchase sessions: [{available_text}]. "
+        "Open /q/{opaque} for the requested purchase to set the correct cookies and CSRF."
+    )
+
+
 def _extract_session_cookie(
     request: Request, ticket_id: int | None = None, purchase_id: int | None = None
 ) -> tuple[int, str, str]:
@@ -177,7 +193,8 @@ def _extract_session_cookie(
         name = _purchase_cookie_name(purchase_id)
         value = cookies.get(name)
         if not value:
-            raise HTTPException(status_code=401, detail="Purchase session is not initialized; open /q/{opaque} first to set cookies and CSRF.")
+            detail = _describe_purchase_session_mismatch(cookies, purchase_id)
+            raise HTTPException(status_code=401, detail=detail)
         return purchase_id, name, value
 
     if ticket_id is not None:
@@ -411,6 +428,17 @@ def _extract_purchase_id_from_order(order_id: str) -> int | None:
     return None
 
 
+
+
+def _is_undefined_column_error(exc: Exception) -> bool:
+    if isinstance(exc, psycopg2.errors.UndefinedColumn):
+        return True
+    if isinstance(exc, psycopg2.ProgrammingError):
+        message = str(exc).lower()
+        return "does not exist" in message and "column" in message
+    return False
+
+
 def _normalize_liqpay_result_status(value: str | None) -> Literal["paid", "pending", "failed"]:
     status = (value or "").strip().lower()
     if status in {"success", "sandbox", "wait_accept", "subscribed"}:
@@ -449,18 +477,36 @@ def _sync_purchase_paid_from_liqpay_callback(
         amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
         has_liqpay_tracking = _purchase_has_column(cur, "liqpay_order_id")
         if has_liqpay_tracking:
-            cur.execute(
-                """
-                UPDATE purchase
-                   SET liqpay_order_id=%s,
-                       liqpay_status=%s,
-                       liqpay_payment_id=%s,
-                       liqpay_payload=%s,
-                       update_at=NOW()
-                 WHERE id=%s
-                """,
-                (order_id, liqpay_status or None, payment_id, json.dumps(payload), purchase_id),
-            )
+            try:
+                cur.execute(
+                    """
+                    UPDATE purchase
+                       SET liqpay_order_id=%s,
+                           liqpay_status=%s,
+                           liqpay_payment_id=%s,
+                           liqpay_payload=%s,
+                           update_at=NOW()
+                     WHERE id=%s
+                    """,
+                    (order_id, liqpay_status or None, payment_id, json.dumps(payload), purchase_id),
+                )
+            except Exception as exc:
+                if not _is_undefined_column_error(exc):
+                    raise
+                conn.rollback()
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT amount_due, status, customer_email FROM purchase WHERE id=%s FOR UPDATE",
+                    (purchase_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Purchase not found")
+                amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
+                logger.warning(
+                    "Skipping LiqPay tracking persistence for purchase=%s because liqpay columns are missing",
+                    purchase_id,
+                )
         else:
             logger.warning(
                 "Skipping LiqPay tracking persistence for purchase=%s because liqpay columns are missing",
@@ -510,15 +556,30 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
         with conn.cursor() as cur:
             has_liqpay_tracking = _purchase_has_column(cur, "liqpay_order_id")
             if has_liqpay_tracking:
-                cur.execute(
-                    """
-                    SELECT id, status, amount_due, customer_email, customer_name,
-                           liqpay_order_id, liqpay_status
-                      FROM purchase
-                     WHERE id=%s
-                    """,
-                    (purchase_id,),
-                )
+                try:
+                    cur.execute(
+                        """
+                        SELECT id, status, amount_due, customer_email, customer_name,
+                               liqpay_order_id, liqpay_status
+                          FROM purchase
+                         WHERE id=%s
+                        """,
+                        (purchase_id,),
+                    )
+                except Exception as exc:
+                    if not _is_undefined_column_error(exc):
+                        raise
+                    conn.rollback()
+                    cur.execute(
+                        """
+                        SELECT id, status, amount_due, customer_email, customer_name,
+                               NULL::TEXT AS liqpay_order_id,
+                               NULL::TEXT AS liqpay_status
+                          FROM purchase
+                         WHERE id=%s
+                        """,
+                        (purchase_id,),
+                    )
             else:
                 cur.execute(
                     """
@@ -579,19 +640,51 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
     }
 
 
+
+
+async def _extract_liqpay_post_payload(request: Request) -> tuple[str | None, str | None]:
+    data: str | None = None
+    signature: str | None = None
+
+    try:
+        form = await request.form()
+    except AssertionError:
+        form = None
+
+    if form is not None:
+        raw_data = form.get("data")
+        raw_signature = form.get("signature")
+        data = str(raw_data) if raw_data else None
+        signature = str(raw_signature) if raw_signature else None
+
+    if data and signature:
+        return data, signature
+
+    body_bytes = await request.body()
+    content_type = (request.headers.get("content-type") or "").lower()
+
+    if "application/json" in content_type:
+        try:
+            payload = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+        except Exception:
+            payload = {}
+        if isinstance(payload, Mapping):
+            raw_data = payload.get("data")
+            raw_signature = payload.get("signature")
+            return (str(raw_data) if raw_data else None, str(raw_signature) if raw_signature else None)
+        return None, None
+
+    form_payload = parse_qs(body_bytes.decode("utf-8"), keep_blank_values=False) if body_bytes else {}
+    raw_data_list = form_payload.get("data")
+    raw_signature_list = form_payload.get("signature")
+    raw_data = raw_data_list[0] if raw_data_list else None
+    raw_signature = raw_signature_list[0] if raw_signature_list else None
+    return raw_data, raw_signature
+
+
 @router.post("/payment/liqpay/callback")
 async def liqpay_callback(request: Request, background_tasks: BackgroundTasks) -> Mapping[str, Any]:
-    form = await request.form()
-    data = form.get("data")
-    signature = form.get("signature")
-
-    if not data or not signature:
-        try:
-            body = await request.json()
-        except Exception as exc:  # pragma: no cover - defensive
-            raise HTTPException(status_code=400, detail="Missing LiqPay data") from exc
-        data = body.get("data") if isinstance(body, Mapping) else None
-        signature = body.get("signature") if isinstance(body, Mapping) else None
+    data, signature = await _extract_liqpay_post_payload(request)
 
     if not data or not signature:
         raise HTTPException(status_code=400, detail="Missing LiqPay data")
