@@ -44,7 +44,6 @@ def build_payment_payload(
     description: str | None = None,
     result_url: str,
     server_url: str,
-    order_id: str,
 ) -> dict[str, Any]:
     public_key = _env("LIQPAY_PUBLIC_KEY", "sandbox")
     currency = _env("LIQPAY_CURRENCY", "UAH")
@@ -59,7 +58,7 @@ def build_payment_payload(
         "amount": round(max(amount, 0.0), 2),
         "currency": currency,
         "description": description_value,
-        "order_id": order_id,
+        "order_id": f"purchase-{purchase_id}" if ticket_id is None else f"ticket-{ticket_id}-{purchase_id}",
         "result_url": result_url,
         "server_url": server_url,
     }
@@ -84,8 +83,7 @@ def build_checkout_payload(
     description: str | None = None,
 ) -> dict[str, Any]:
     """Single source of truth for all online payment payload scenarios."""
-    order_id = f"purchase-{purchase_id}" if ticket_id is None else f"ticket-{ticket_id}-{purchase_id}"
-    result_url = build_liqpay_result_url(purchase_id=purchase_id)
+    result_url = build_liqpay_result_url()
     server_url = build_liqpay_server_url()
     return build_payment_payload(
         purchase_id,
@@ -94,7 +92,6 @@ def build_checkout_payload(
         description=description,
         result_url=result_url,
         server_url=server_url,
-        order_id=order_id,
     )
 
 
