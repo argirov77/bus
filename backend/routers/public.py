@@ -123,6 +123,14 @@ def _purchase_has_column(cur, column_name: str) -> bool:
     return cur.fetchone() is not None
 
 
+def _missing_purchase_columns(cur, column_names: Sequence[str]) -> list[str]:
+    missing: list[str] = []
+    for column_name in column_names:
+        if not _purchase_has_column(cur, column_name):
+            missing.append(column_name)
+    return missing
+
+
 def _redirect_base_url(purchase_id: int) -> str:
     try:
         base_url = get_client_app_base()
@@ -475,8 +483,9 @@ def _sync_purchase_paid_from_liqpay_callback(
             raise HTTPException(status_code=404, detail="Purchase not found")
 
         amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
-        has_liqpay_tracking = _purchase_has_column(cur, "liqpay_order_id")
-        if has_liqpay_tracking:
+        liqpay_columns = ("liqpay_order_id", "liqpay_status", "liqpay_payment_id", "liqpay_payload")
+        missing_liqpay_columns = _missing_purchase_columns(cur, liqpay_columns)
+        if not missing_liqpay_columns:
             try:
                 cur.execute(
                     """
@@ -503,22 +512,39 @@ def _sync_purchase_paid_from_liqpay_callback(
                 if not row:
                     raise HTTPException(status_code=404, detail="Purchase not found")
                 amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
+                missing_liqpay_columns = _missing_purchase_columns(cur, liqpay_columns)
                 logger.warning(
-                    "Skipping LiqPay tracking persistence for purchase=%s because liqpay columns are missing",
+                    "Skipping LiqPay tracking persistence for purchase=%s; missing columns: %s",
                     purchase_id,
+                    ", ".join(missing_liqpay_columns) or "unknown",
                 )
         else:
             logger.warning(
-                "Skipping LiqPay tracking persistence for purchase=%s because liqpay columns are missing",
+                "Skipping LiqPay tracking persistence for purchase=%s; missing columns: %s",
                 purchase_id,
+                ", ".join(missing_liqpay_columns),
             )
 
         normalized = _normalize_liqpay_result_status(liqpay_status)
+        logger.info(
+            "LiqPay callback processed for purchase=%s order_id=%s payment_id=%s liqpay_status=%s normalized=%s",
+            purchase_id,
+            order_id,
+            payment_id,
+            liqpay_status or None,
+            normalized,
+        )
         if normalized != "paid":
             conn.commit()
             return normalized, payment_id
 
         if purchase_status == "paid":
+            logger.info(
+                "Purchase already paid via LiqPay for purchase=%s order_id=%s payment_id=%s",
+                purchase_id,
+                order_id,
+                payment_id,
+            )
             conn.commit()
             return "paid", payment_id
 
@@ -528,7 +554,21 @@ def _sync_purchase_paid_from_liqpay_callback(
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
         cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
         _log_action(cur, purchase_id, "paid", amount_due, by="liqpay", method="liqpay")
-        tickets = issue_ticket_links(ticket_specs, None, conn=conn)
+        try:
+            tickets = issue_ticket_links(ticket_specs, None, conn=conn)
+        except Exception:
+            logger.exception(
+                "Failed to issue ticket links after LiqPay callback for purchase=%s; payment is still marked as paid",
+                purchase_id,
+            )
+            tickets = []
+        logger.info(
+            "Purchase marked paid from LiqPay callback purchase=%s order_id=%s payment_id=%s amount_due=%s",
+            purchase_id,
+            order_id,
+            payment_id,
+            amount_due,
+        )
         conn.commit()
     except HTTPException:
         conn.rollback()
@@ -619,12 +659,22 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
         if isinstance(verify_payload, Mapping):
             verified_order_id = str(verify_payload.get("order_id") or order_id)
             if verified_order_id == order_id:
-                verified_status, _ = _sync_purchase_paid_from_liqpay_callback(
-                    purchase_id,
-                    order_id,
-                    verify_payload,
-                )
-                resolved_status = verified_status
+                try:
+                    verified_status, _ = _sync_purchase_paid_from_liqpay_callback(
+                        purchase_id,
+                        order_id,
+                        verify_payload,
+                    )
+                except HTTPException as exc:
+                    if exc.status_code < 500:
+                        raise
+                    logger.exception(
+                        "Failed to sync purchase state from LiqPay verify for purchase=%s order_id=%s",
+                        purchase_id,
+                        order_id,
+                    )
+                else:
+                    resolved_status = verified_status
 
     purchase = {
         "id": int(row[0]),
@@ -698,11 +748,28 @@ async def liqpay_callback(request: Request, background_tasks: BackgroundTasks) -
     if purchase_id is None:
         raise HTTPException(status_code=400, detail="Unrecognized LiqPay order")
 
-    resolved_status, payment_id = _sync_purchase_paid_from_liqpay_callback(
+    try:
+        resolved_status, payment_id = _sync_purchase_paid_from_liqpay_callback(
+            purchase_id,
+            order_id,
+            payload,
+            background_tasks,
+        )
+    except HTTPException as exc:
+        if exc.status_code < 500:
+            raise
+        logger.exception(
+            "Failed to process LiqPay callback for purchase=%s order_id=%s",
+            purchase_id,
+            order_id,
+        )
+        resolved_status, payment_id = "pending", None
+    logger.info(
+        "LiqPay callback result purchase=%s order_id=%s status=%s payment_id=%s",
         purchase_id,
         order_id,
-        payload,
-        background_tasks,
+        resolved_status,
+        payment_id,
     )
     return {
         "ok": True,
