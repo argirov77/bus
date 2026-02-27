@@ -646,6 +646,7 @@ class LiqPayCheckoutPayload(BaseModel):
 
 class LiqPayCheckoutOut(BaseModel):
     provider: Literal["liqpay"]
+    checkout_url: str
     data: str
     signature: str
     payload: LiqPayCheckoutPayload

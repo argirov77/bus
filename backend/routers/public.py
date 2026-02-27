@@ -69,12 +69,22 @@ class CancelRequest(BaseModel):
     ticket_ids: list[int] = Field(..., min_length=1)
 
 
+class PaymentResolveTicket(BaseModel):
+    ticket_id: int
+    seat_number: int | None = None
+    route_label: str | None = None
+    trip_date: str | None = None
+    departure_name: str | None = None
+    arrival_name: str | None = None
+
+
 class PaymentResolvePurchase(BaseModel):
     id: int
     status: str
     amount_due: float
     customer_email: str | None = None
     customer_name: str | None = None
+    tickets: list[PaymentResolveTicket] = []
 
 
 class PaymentResolveOut(BaseModel):
@@ -682,7 +692,41 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
         "amount_due": _round_currency(float(row[2] or 0.0)),
         "customer_email": row[3],
         "customer_name": row[4],
+        "tickets": [],
     }
+
+    tickets_conn = get_connection()
+    try:
+        with tickets_conn.cursor() as tcur:
+            tcur.execute(
+                """
+                SELECT t.id, s.seat_num, r.name, tr.date,
+                       dep.stop_name, arr.stop_name
+                  FROM ticket t
+                  LEFT JOIN seat s ON s.id = t.seat_id
+                  LEFT JOIN tour tr ON tr.id = t.tour_id
+                  LEFT JOIN route r ON r.id = tr.route_id
+                  LEFT JOIN stop dep ON dep.id = t.departure_stop_id
+                  LEFT JOIN stop arr ON arr.id = t.arrival_stop_id
+                 WHERE t.purchase_id = %s
+                 ORDER BY t.id
+                """,
+                (purchase_id,),
+            )
+            purchase["tickets"] = [
+                {
+                    "ticket_id": int(r[0]),
+                    "seat_number": r[1],
+                    "route_label": r[2],
+                    "trip_date": str(r[3]) if r[3] else None,
+                    "departure_name": r[4],
+                    "arrival_name": r[5],
+                }
+                for r in tcur.fetchall()
+            ]
+    finally:
+        tickets_conn.close()
+
     return {
         "status": resolved_status,
         "purchaseId": int(row[0]),
