@@ -688,7 +688,7 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
 
     purchase = {
         "id": int(row[0]),
-        "status": str(row[1]),
+        "status": resolved_status,
         "amount_due": _round_currency(float(row[2] or 0.0)),
         "customer_email": row[3],
         "customer_name": row[4],
