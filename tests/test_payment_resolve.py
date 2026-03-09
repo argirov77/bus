@@ -118,6 +118,7 @@ def test_payments_resolve_verifies_and_syncs_pending_purchase(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "paid"
+    assert body["purchase"]["status"] == "paid"
     assert state["verify_called"] == 1
     assert state["synced"] == 1
 
