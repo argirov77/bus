@@ -10,6 +10,7 @@ from pydantic import BaseModel, EmailStr, Field
 from ..auth import optional_scope, require_admin_token, require_scope
 from ..database import get_connection
 from ..ticket_utils import free_ticket
+from ..services import link_sessions
 from ._ticket_link_helpers import (
     TicketIssueSpec,
     TicketLinkResult,
@@ -685,7 +686,53 @@ def book_seat(data: PurchaseCreate, request: Request, background_tasks: Backgrou
         conn.close()
 
     _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
-    return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
+    from starlette.responses import JSONResponse
+
+    from .public import _CSRF_COOKIE_NAME, _generate_csrf_token, _purchase_cookie_name
+
+    opaque = tickets[0]["deep_link"].split("/q/")[-1] if tickets else None
+    session = None
+    if opaque:
+        try:
+            session = link_sessions.redeem_session(opaque, scope="view")
+        except Exception:
+            logger.exception("Failed to redeem session for purchase_id=%s", purchase_id)
+
+    response_data = {
+        "purchase_id": purchase_id,
+        "amount_due": amount_due,
+        "tickets": tickets,
+    }
+    if not session:
+        return response_data
+
+    csrf_token = _generate_csrf_token()
+    response_data["csrf_token"] = csrf_token
+
+    remaining = int(
+        (session.exp - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+    )
+    if remaining <= 0:
+        remaining = 60
+
+    response = JSONResponse(response_data)
+    response.set_cookie(
+        _purchase_cookie_name(purchase_id),
+        session.jti,
+        max_age=remaining,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        _CSRF_COOKIE_NAME,
+        csrf_token,
+        max_age=remaining,
+        httponly=False,
+        samesite="lax",
+        path="/",
+    )
+    return response
 
 
 @actions_router.post(
