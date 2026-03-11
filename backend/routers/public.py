@@ -381,20 +381,86 @@ def _load_purchase_view(purchase_id: int, lang: str = _DEFAULT_LANG) -> Mapping[
         finally:
             cur.close()
 
-        tickets = [get_ticket_dto(tid, lang, conn) for tid in ticket_ids]
+        raw_dtos = [get_ticket_dto(tid, lang, conn) for tid in ticket_ids]
         timestamp = row[6]
+
+        purchase_status = row[1]
+        amount_due = float(row[2]) if row[2] is not None else None
+        customer = {
+            "name": row[3],
+            "email": row[4],
+            "phone": row[5],
+        }
+
+        # Transform ticket DTOs into PurchaseTicket shape expected by client
+        tickets = []
+        passengers_map: dict[int, dict] = {}
+        for dto in raw_dtos:
+            t = dto.get("ticket") or {}
+            passenger = dto.get("passenger") or {}
+            tour_info = dto.get("tour") or {}
+            route_info = dto.get("route") or {}
+            segment_info = dto.get("segment") or {}
+            pricing_info = dto.get("pricing") or {}
+
+            # Build PurchaseTicket-compatible object
+            ticket_obj = {
+                "id": t.get("id"),
+                "passenger_id": passenger.get("id"),
+                "status": purchase_status,
+                "seat_id": t.get("seat_id"),
+                "seat_num": t.get("seat_number"),
+                "extra_baggage": t.get("extra_baggage"),
+                "tour": {
+                    "id": tour_info.get("id"),
+                    "date": tour_info.get("date"),
+                    "route_id": route_info.get("id"),
+                    "route_name": route_info.get("name"),
+                },
+                "segments": [],
+                "route": {
+                    "id": route_info.get("id"),
+                    "name": route_info.get("name"),
+                    "stops": route_info.get("stops"),
+                },
+                "pricing": {
+                    "price": pricing_info.get("price"),
+                    "currency": pricing_info.get("currency_code"),
+                },
+                "segment_details": segment_info,
+            }
+            tickets.append(ticket_obj)
+
+            # Collect passengers
+            pid = passenger.get("id")
+            if pid is not None and pid not in passengers_map:
+                passengers_map[pid] = {
+                    "id": pid,
+                    "name": passenger.get("name"),
+                    "email": customer.get("email"),
+                    "phone": customer.get("phone"),
+                }
+
+        passengers = list(passengers_map.values())
+
         return {
-            "id": purchase_id,
-            "status": row[1],
-            "amount_due": float(row[2]) if row[2] is not None else None,
-            "customer": {
-                "name": row[3],
-                "email": row[4],
-                "phone": row[5],
+            "purchase": {
+                "id": purchase_id,
+                "status": purchase_status,
+                "created_at": timestamp.isoformat() if timestamp else None,
+                "amount_due": amount_due,
+                "currency": "BGN",
             },
-            "created_at": timestamp.isoformat() if timestamp else None,
-            "updated_at": timestamp.isoformat() if timestamp else None,
+            "passengers": passengers,
             "tickets": tickets,
+            "trips": [],
+            "totals": {
+                "paid": amount_due if purchase_status == "paid" else 0,
+                "due": 0 if purchase_status == "paid" else (amount_due or 0),
+                "baggage_count": 0,
+                "pax_count": len(passengers),
+            },
+            "customer": customer,
         }
     finally:
         conn.close()
@@ -1365,10 +1431,7 @@ def get_public_purchase(purchase_id: int, request: Request) -> Any:
     link_sessions.touch_session_usage(session.jti, scope="view")
 
     dto = _load_purchase_view(resolved_purchase_id, _DEFAULT_LANG)
-    payload: dict[str, Any] = {"purchase": dto}
-    if isinstance(dto, Mapping):
-        payload.update(dto)
-    return jsonable_encoder(payload)
+    return jsonable_encoder(dto)
 
 
 @router.get("/tickets/{ticket_id}/pdf")
