@@ -628,7 +628,9 @@ def _sync_purchase_paid_from_liqpay_callback(
             raise HTTPException(status_code=409, detail="Purchase cannot be paid")
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
-        cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
+        from ..services.checkbox import is_enabled as checkbox_enabled
+        fiscal_clause = ", fiscal_status='pending'" if checkbox_enabled() else ""
+        cur.execute(f"UPDATE purchase SET status='paid', update_at=NOW(){fiscal_clause} WHERE id=%s", (purchase_id,))
         _log_action(cur, purchase_id, "paid", amount_due, by="liqpay", method="online")
         try:
             tickets = issue_ticket_links(ticket_specs, None, conn=conn)
@@ -658,6 +660,11 @@ def _sync_purchase_paid_from_liqpay_callback(
 
     if background_tasks:
         _queue_ticket_emails(background_tasks, tickets, None, customer_email)
+        # Trigger CheckBox fiscalization as a non-blocking background task.
+        # Only runs for online (LiqPay) payments — admin path never calls this function.
+        from ..services.checkbox import is_enabled as checkbox_enabled, fiscalize_purchase
+        if checkbox_enabled():
+            background_tasks.add_task(fiscalize_purchase, purchase_id)
     return "paid", payment_id
 
 

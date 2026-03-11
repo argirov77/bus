@@ -170,8 +170,46 @@ def _finish_departed_tours_loop():
             conn.close()
 
 
+def _fiscalize_retry_loop():
+    """Periodically retry pending/failed CheckBox fiscalizations."""
+    while True:
+        time.sleep(120)
+        from .services.checkbox import is_enabled, fiscalize_purchase
+
+        if not is_enabled():
+            continue
+
+        from .database import get_connection
+
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT id FROM purchase
+                 WHERE fiscal_status IN ('pending', 'failed')
+                   AND COALESCE(fiscal_attempts, 0) < 10
+                 ORDER BY id
+                 LIMIT 20
+                """,
+            )
+            purchase_ids = [row[0] for row in cur.fetchall()]
+        except Exception:
+            purchase_ids = []
+        finally:
+            cur.close()
+            conn.close()
+
+        for pid in purchase_ids:
+            try:
+                fiscalize_purchase(pid)
+            except Exception:
+                pass  # errors are persisted inside fiscalize_purchase
+
+
 threading.Thread(target=_cancel_expired_loop, daemon=True).start()
 threading.Thread(target=_finish_departed_tours_loop, daemon=True).start()
+threading.Thread(target=_fiscalize_retry_loop, daemon=True).start()
 
 # Serve React static files
 # app.mount("/", StaticFiles(directory="frontend/build", html=True), name="static")
