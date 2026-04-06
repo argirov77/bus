@@ -36,7 +36,6 @@ CREATE TABLE public.available (
 );
 
 
-ALTER TABLE public.available OWNER TO postgres;
 
 --
 -- TOC entry 227 (class 1259 OID 16608)
@@ -52,7 +51,6 @@ CREATE SEQUENCE public.available_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.available_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 4903 (class 0 OID 0)
@@ -74,7 +72,6 @@ CREATE TABLE public.passenger (
 );
 
 
-ALTER TABLE public.passenger OWNER TO postgres;
 
 --
 -- TOC entry 233 (class 1259 OID 16669)
@@ -90,7 +87,6 @@ CREATE SEQUENCE public.passenger_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.passenger_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 4904 (class 0 OID 0)
@@ -113,7 +109,6 @@ CREATE TABLE public.pricelist (
 );
 
 
-ALTER TABLE public.pricelist OWNER TO postgres;
 
 --
 -- TOC entry 221 (class 1259 OID 16572)
@@ -129,7 +124,6 @@ CREATE SEQUENCE public.pricelist_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.pricelist_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 4905 (class 0 OID 0)
@@ -154,7 +148,6 @@ CREATE TABLE public.prices (
 );
 
 
-ALTER TABLE public.prices OWNER TO postgres;
 
 --
 -- TOC entry 231 (class 1259 OID 16647)
@@ -170,7 +163,6 @@ CREATE SEQUENCE public.prices_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.prices_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 4906 (class 0 OID 0)
@@ -193,7 +185,6 @@ CREATE TABLE public.route (
 );
 
 
-ALTER TABLE public.route OWNER TO postgres;
 
 --
 -- TOC entry 219 (class 1259 OID 16565)
@@ -209,7 +200,6 @@ CREATE SEQUENCE public.route_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.route_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 4907 (class 0 OID 0)
@@ -238,7 +228,6 @@ CREATE TABLE public.routestop (
 );
 
 
-ALTER TABLE public.routestop OWNER TO postgres;
 
 --
 -- TOC entry 229 (class 1259 OID 16630)
@@ -254,7 +243,6 @@ CREATE SEQUENCE public.routestop_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.routestop_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 4908 (class 0 OID 0)
@@ -278,7 +266,6 @@ CREATE TABLE public.seat (
 );
 
 
-ALTER TABLE public.seat OWNER TO postgres;
 
 --
 -- TOC entry 225 (class 1259 OID 16596)
@@ -294,7 +281,6 @@ CREATE SEQUENCE public.seat_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.seat_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 4909 (class 0 OID 0)
@@ -321,7 +307,6 @@ CREATE TABLE public.stop (
 );
 
 
-ALTER TABLE public.stop OWNER TO postgres;
 
 --
 -- TOC entry 217 (class 1259 OID 16558)
@@ -337,7 +322,6 @@ CREATE SEQUENCE public.stop_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.stop_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 4910 (class 0 OID 0)
@@ -365,7 +349,6 @@ CREATE TABLE public.ticket (
 );
 
 
-ALTER TABLE public.ticket OWNER TO postgres;
 
 --
 -- TOC entry 235 (class 1259 OID 16678)
@@ -381,7 +364,6 @@ CREATE SEQUENCE public.ticket_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.ticket_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 4911 (class 0 OID 0)
@@ -408,7 +390,6 @@ CREATE TABLE public.tour (
 );
 
 
-ALTER TABLE public.tour OWNER TO postgres;
 
 --
 -- TOC entry 223 (class 1259 OID 16579)
@@ -424,7 +405,6 @@ CREATE SEQUENCE public.tour_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.tour_id_seq OWNER TO postgres;
 
 --
 -- TOC entry 4912 (class 0 OID 0)

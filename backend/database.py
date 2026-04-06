@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 DEFAULT_DB_HOST = os.getenv("DB_HOST", "localhost")
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    f"postgresql://postgres:postgres@{DEFAULT_DB_HOST}:5432/test1",
+    f"postgresql://busapp:busapp@{DEFAULT_DB_HOST}:5432/bustickets",
 )
 
 # Derive admin connection string to the default "postgres" database
