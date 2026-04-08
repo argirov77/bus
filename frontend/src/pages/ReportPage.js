@@ -5,6 +5,7 @@ import "../styles/ReportPage.css";
 import { API } from "../config";
 
 function ReportPage() {
+  useEffect(() => { document.title = "Отчёт"; }, []);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [routeId, setRouteId] = useState("");
@@ -77,7 +78,7 @@ function ReportPage() {
   };
 
   return (
-    <div className="container report-container">
+    <div className="container--wide report-container">
       <h2>Отчёт по проданным билетам</h2>
       <form onSubmit={handleSearch} className="report-form">
         <div>
@@ -156,7 +157,7 @@ function ReportPage() {
           </select>
         </div>
 
-        <button type="submit">Найти отчёт</button>
+        <button type="submit" className="btn btn--primary">Найти отчёт</button>
       </form>
 
       {message && <p className={`report-message${isError ? " error" : ""}`}>{message}</p>}
@@ -169,7 +170,7 @@ function ReportPage() {
 
           <h3>Детали билетов</h3>
           {reportData.tickets.length > 0 ? (
-            <div className="table-wrapper">
+            <div className="table-responsive">
               <table className="report-table">
                 <thead>
                   <tr>

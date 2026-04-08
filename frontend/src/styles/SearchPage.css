@@ -1,0 +1,132 @@
+.search-form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.search-calendar-wrap {
+  margin-bottom: 20px;
+}
+
+.search-dates {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Tour result cards */
+.tour-card {
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-1);
+  transition: box-shadow 0.15s;
+}
+
+.tour-card:hover {
+  box-shadow: var(--shadow-2);
+}
+
+.tour-card__route {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.tour-card__price {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.tour-card__total {
+  font-weight: 700;
+  font-size: 15px;
+  margin: 6px 0 8px;
+}
+
+.tour-card__select {
+  margin-top: 8px;
+}
+
+/* Booking form */
+.booking-form {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 420px;
+}
+
+.booking-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.passenger-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.passenger-row .passenger-label {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--muted);
+  min-width: 90px;
+}
+
+.passenger-row input[type="text"] {
+  flex-grow: 1;
+  min-width: 120px;
+}
+
+.passenger-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.booking-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+/* Seat selection info */
+.seat-info {
+  margin: 8px 0;
+  padding: 8px 12px;
+  background: var(--primary-weak);
+  border: 1px solid var(--primary-border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--primary);
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.empty-state__icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+  opacity: 0.5;
+}

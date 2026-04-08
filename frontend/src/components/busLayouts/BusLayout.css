@@ -38,4 +38,18 @@
     height: 40px;
     margin: 4px;
   }
-  
+
+  @media (max-width: 480px) {
+    .bus-seat {
+      width: 32px;
+      height: 32px;
+      line-height: 32px;
+      font-size: 11px;
+      margin: 2px;
+    }
+    .bus-empty {
+      width: 32px;
+      height: 32px;
+      margin: 2px;
+    }
+  }

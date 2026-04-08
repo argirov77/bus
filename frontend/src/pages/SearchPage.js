@@ -10,6 +10,7 @@ import Calendar from "../components/Calendar";
 import PassengerSelector from "../components/PassengerSelector";
 
 import { API } from "../config";
+import "../styles/SearchPage.css";
 
 export default function SearchPage() {
   const supportedLangs = ["ru", "en", "bg", "ua"];
@@ -54,6 +55,8 @@ export default function SearchPage() {
   const returnMinDate = selectedDepartDate
     ? new Date(new Date(selectedDepartDate).getTime() + 86400000).toISOString().slice(0, 10)
     : today;
+
+  useEffect(() => { document.title = "Поиск рейсов"; }, []);
 
   useEffect(() => {
     setSelectedOutboundSeats([]);
@@ -347,12 +350,9 @@ export default function SearchPage() {
   };
 
   return (
-    <div className="container" style={{ padding: 20 }}>
+    <div className="container">
       <h2>Поиск рейсов</h2>
-      <form
-        onSubmit={handleSearchTours}
-        style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 20 }}
-      >
+      <form onSubmit={handleSearchTours} className="search-form">
         <select
           className="input"
           value={selectedDeparture}
@@ -411,11 +411,12 @@ export default function SearchPage() {
       </form>
 
       {showDepartCal && (
-        <div style={{ marginBottom: 20 }}>
+        <div className="search-calendar-wrap">
           <Calendar
             activeDates={departDates}
             selectedDate={selectedDepartDate}
             minDate={today}
+            lang={lang}
             onSelect={d => {
               setSelectedDepartDate(d);
               setShowDepartCal(false);
@@ -428,18 +429,21 @@ export default function SearchPage() {
       )}
 
       {showReturnCal && (
-        <div style={{ marginBottom: 20 }}>
+        <div className="search-calendar-wrap">
           <Calendar
             activeDates={returnDates}
             selectedDate={selectedReturnDate}
             minDate={returnMinDate}
+            lang={lang}
             onSelect={d => { setSelectedReturnDate(d); setShowReturnCal(false); }}
           />
         </div>
       )}
 
-      {selectedDepartDate && <p>Выбранная дата туда: {selectedDepartDate}</p>}
-      {selectedReturnDate && <p>Выбранная дата обратно: {selectedReturnDate}</p>}
+      <div className="search-dates">
+        {selectedDepartDate && <span>Дата туда: <strong>{selectedDepartDate}</strong></span>}
+        {selectedReturnDate && <span>Дата обратно: <strong>{selectedReturnDate}</strong></span>}
+      </div>
 
     {loading && <Loader />}
 
@@ -452,23 +456,23 @@ export default function SearchPage() {
           const { adultSum, discountSum, total } = calcPrice(t.price);
           const duration = getDuration(t.departure_time, t.arrival_time);
           return (
-            <div key={t.id} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
-              <div>
+            <div key={t.id} className="tour-card fade-in">
+              <div className="tour-card__route">
                 {formatDate(t.date)} {t.departure_time} {depStopName} → {t.arrival_time} {arrStopName} ({duration})
               </div>
-              <div>Цена билета: {t.price.toFixed(2)}</div>
+              <div className="tour-card__price">Цена билета: {t.price.toFixed(2)}</div>
               {adultCount > 0 && (
-                <div>
+                <div className="tour-card__price">
                   {adultCount} взрослых {t.price.toFixed(2)} x {adultCount} = {adultSum.toFixed(2)}
                 </div>
               )}
               {discountCount > 0 && (
-                <div>
+                <div className="tour-card__price">
                   {discountCount} льготный {t.price.toFixed(2)} x {discountCount} -5% = {discountSum.toFixed(2)}
                 </div>
               )}
-              <div>Итого: {total.toFixed(2)}</div>
-              <button style={{ marginTop: 8 }} onClick={() => handleOutboundTourSelect(t)}>
+              <div className="tour-card__total">Итого: {total.toFixed(2)}</div>
+              <button className="btn btn--primary tour-card__select" onClick={() => handleOutboundTourSelect(t)}>
                 Выбрать
               </button>
             </div>
@@ -484,23 +488,23 @@ export default function SearchPage() {
           const { adultSum, discountSum, total } = calcPrice(t.price);
           const duration = getDuration(t.departure_time, t.arrival_time);
           return (
-            <div key={t.id} style={{ border: '1px solid #ccc', padding: 8, marginBottom: 8 }}>
-              <div>
+            <div key={t.id} className="tour-card fade-in">
+              <div className="tour-card__route">
                 {formatDate(t.date)} {t.departure_time} {arrStopName} → {t.arrival_time} {depStopName} ({duration})
               </div>
-              <div>Цена билета: {t.price.toFixed(2)}</div>
+              <div className="tour-card__price">Цена билета: {t.price.toFixed(2)}</div>
               {adultCount > 0 && (
-                <div>
+                <div className="tour-card__price">
                   {adultCount} взрослых {t.price.toFixed(2)} x {adultCount} = {adultSum.toFixed(2)}
                 </div>
               )}
               {discountCount > 0 && (
-                <div>
+                <div className="tour-card__price">
                   {discountCount} льготный {t.price.toFixed(2)} x {discountCount} -5% = {discountSum.toFixed(2)}
                 </div>
               )}
-              <div>Итого: {total.toFixed(2)}</div>
-              <button style={{ marginTop: 8 }} onClick={() => handleReturnTourSelect(t)}>
+              <div className="tour-card__total">Итого: {total.toFixed(2)}</div>
+              <button className="btn btn--primary tour-card__select" onClick={() => handleReturnTourSelect(t)}>
                 Выбрать
               </button>
             </div>
@@ -526,7 +530,7 @@ export default function SearchPage() {
         />
 
         {selectedOutboundSeats.length > 0 && (
-          <p>Вы выбрали места: {selectedOutboundSeats.join(", ")}</p>
+          <div className="seat-info">Вы выбрали места: {selectedOutboundSeats.join(", ")}</div>
         )}
 
         {selectedReturnTour && (
@@ -544,16 +548,16 @@ export default function SearchPage() {
               onChange={setSelectedReturnSeats}
             />
             {selectedReturnSeats.length > 0 && (
-              <p>Вы выбрали места обратно: {selectedReturnSeats.join(", ")}</p>
+              <div className="seat-info">Вы выбрали места обратно: {selectedReturnSeats.join(", ")}</div>
             )}
           </>
         )}
 
-        <form onSubmit={e => e.preventDefault()}
-              style={{ marginTop:20, display:"flex", flexDirection:"column", gap:8, maxWidth:300 }}>
+        <form onSubmit={e => e.preventDefault()} className="booking-form card-row">
+          <h4>Данные пассажиров</h4>
           {[...Array(seatCount).keys()].map(idx => (
-            <div key={idx} style={{display:'flex',alignItems:'center',gap:4,flexWrap:'wrap'}}>
-              <span>Пассажир {idx + 1}</span>
+            <div key={idx} className="passenger-row">
+              <span className="passenger-label">Пассажир {idx + 1}</span>
               <input
                 type="text"
                 placeholder="Имя"
@@ -563,9 +567,8 @@ export default function SearchPage() {
                   arr[idx] = e.target.value;
                   setPassengerNames(arr);
                 }}
-                style={{flexGrow:1,minWidth:120}}
               />
-              <label style={{display:'flex',alignItems:'center',gap:2}}>
+              <label>
                 <input
                   type="checkbox"
                   checked={extraBaggageOutbound[idx]}
@@ -578,7 +581,7 @@ export default function SearchPage() {
                 Багаж туда
               </label>
               {selectedReturnTour && (
-                <label style={{display:'flex',alignItems:'center',gap:2}}>
+                <label>
                   <input
                     type="checkbox"
                     checked={extraBaggageReturn[idx]}
@@ -593,27 +596,33 @@ export default function SearchPage() {
               )}
             </div>
           ))}
-          <input
-            type="tel"
-            placeholder="Телефон"
-            required
-            value={phone}
-            onChange={e => setPhone(e.target.value)}
-          />
-          <input
-            type="email"
-            placeholder="Email"
-            required
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-          />
-          <div style={{display:'flex', gap:8}}>
-            <button type="button" onClick={() => handleAction('book')}>Бронь</button>
-            <button type="button" onClick={() => handleAction('purchase')}>Покупка</button>
+          <div className="field">
+            <label>Телефон</label>
+            <input
+              type="tel"
+              placeholder="+380..."
+              required
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Email</label>
+            <input
+              type="email"
+              placeholder="email@example.com"
+              required
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="booking-actions">
+            <button type="button" className="btn btn--primary" onClick={() => handleAction('book')}>Бронь</button>
+            <button type="button" className="btn btn--success" onClick={() => handleAction('purchase')}>Покупка</button>
             {purchaseId && (
               <>
-                <button type="button" onClick={handlePay}>Оплатить</button>
-                <button type="button" onClick={handleCancel}>Отменить</button>
+                <button type="button" className="btn btn--success" onClick={handlePay}>Оплатить</button>
+                <button type="button" className="btn btn--danger" onClick={handleCancel}>Отменить</button>
               </>
             )}
           </div>

@@ -31,6 +31,7 @@ const SCROLL_STORAGE_KEY = "purchases.scrolls.v1";
 const makeScrollKey = (orderId, section) => `${orderId}::${section}`;
 
 export default function PurchasesPage() {
+  useEffect(() => { document.title = "Заказы"; }, []);
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import "../styles/LoginPage.css";
 
@@ -8,6 +8,8 @@ export default function LoginPage({ onLogin }) {
   const [fieldErrors, setFieldErrors] = useState({});
   const [authError, setAuthError] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => { document.title = "Вход"; }, []);
 
   const validate = () => {
     const errors = {};

@@ -9,8 +9,9 @@ import ToursPage from "./pages/ToursPage";
 import ReportPage from "./pages/ReportPage";
 import LoginPage from "./pages/LoginPage";
 import PurchasesPage from "./pages/PurchasesPage";
+import { ToastProvider } from "./components/Toast";
 
-import './App.css'; 
+import './App.css';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem("token"));
@@ -42,6 +43,7 @@ function App() {
   }
 
   return (
+    <ToastProvider>
     <Router>
       <nav>
         <ul>
@@ -85,17 +87,19 @@ function App() {
           </li>
         </ul>
       </nav>
-      <Routes>
-        <Route path="/stops" element={<StopsPage />} />
-        <Route path="/routes" element={<RoutesPage />} />
-        <Route path="/pricelists" element={<PricelistsPage />} />
-        <Route path="/tours" element={<ToursPage />} />
-        <Route path="/report" element={<ReportPage />} />
-        <Route path="/search" element={<SearchPage />} />
-        <Route path="/purchases" element={<PurchasesPage />} />
-
-      </Routes>
+      <div className="fade-in">
+        <Routes>
+          <Route path="/stops" element={<StopsPage />} />
+          <Route path="/routes" element={<RoutesPage />} />
+          <Route path="/pricelists" element={<PricelistsPage />} />
+          <Route path="/tours" element={<ToursPage />} />
+          <Route path="/report" element={<ReportPage />} />
+          <Route path="/search" element={<SearchPage />} />
+          <Route path="/purchases" element={<PurchasesPage />} />
+        </Routes>
+      </div>
     </Router>
+    </ToastProvider>
   );
 }
 
