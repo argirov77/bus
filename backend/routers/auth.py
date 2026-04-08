@@ -1,3 +1,6 @@
+import os
+import hashlib
+
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
@@ -6,10 +9,12 @@ from passlib.context import CryptContext
 from ..database import get_connection
 from ..jwt_utils import create_token
 from ..auth import get_current_user
-import hashlib
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 pwd_context = CryptContext(schemes=["bcrypt"])
+
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 
 class LoginIn(BaseModel):
     username: str
@@ -43,6 +48,17 @@ def register(data: RegisterIn):
 
 @router.post("/login", response_model=TokenOut)
 def login(data: LoginIn):
+    # 1) Check env-based admin credentials first
+    if (
+        ADMIN_USERNAME
+        and ADMIN_PASSWORD
+        and data.username == ADMIN_USERNAME
+        and data.password == ADMIN_PASSWORD
+    ):
+        token = create_token({"user_id": 0, "role": "admin"})
+        return {"token": token}
+
+    # 2) Fallback: check database users
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
