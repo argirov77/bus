@@ -37,6 +37,25 @@ from .routers.ticket_admin import router as admin_tickets_router
 from .routers.purchase_admin import router as admin_purchases_router
 
 
+def _parse_cors_origins() -> list[str]:
+    """Read CORS origins from env while keeping safe production defaults."""
+    raw_origins = os.getenv("CORS_ORIGINS", "")
+    if raw_origins.strip():
+        return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+
+    return [
+        "http://localhost:4000",
+        "http://127.0.0.1:4000",
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "https://admin.maximovtours.com",
+        "https://maximovtours.com",
+        "https://www.maximovtours.com",
+    ]
+
+
 app = FastAPI()
 
 # Healthcheck endpoint
@@ -45,17 +64,7 @@ def health() -> dict[str, str]:
     """Simple health check returning API status."""
     return {"status": "ok"}
 # Configure CORS to allow requests from development front-end origins.
-origins = [
-    "http://localhost:4000",
-    "http://127.0.0.1:4000",
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:3001",
-    "https://maximovtours.com",
-    "http://38.79.154.248",
-    "http://172.18.0.4:3000",
-]
+origins = _parse_cors_origins()
 local_network_origin_regex = (
     r"^http://(localhost|127\.0\.0\.1"
     r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
