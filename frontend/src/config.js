@@ -44,5 +44,26 @@ const DEFAULT_REMOTE_API_URL = "/api";
 const guessedApiUrl = guessApiUrl();
 const fallbackApiUrl = guessedApiUrl || DEFAULT_REMOTE_API_URL;
 
-export const API_URL = process.env.REACT_APP_API_URL || fallbackApiUrl;
+const getConfiguredApiUrl = () => {
+  const configuredApiUrl = (process.env.REACT_APP_API_URL || "").trim();
+  if (!configuredApiUrl) {
+    return fallbackApiUrl;
+  }
+
+  // Keep local/dev absolute URLs, force same-origin in production.
+  if (configuredApiUrl.startsWith("/")) {
+    return configuredApiUrl;
+  }
+
+  try {
+    const parsed = new URL(configuredApiUrl);
+    const isLocalHost =
+      parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+    return isLocalHost ? configuredApiUrl : DEFAULT_REMOTE_API_URL;
+  } catch (error) {
+    return DEFAULT_REMOTE_API_URL;
+  }
+};
+
+export const API_URL = getConfiguredApiUrl();
 export const API = API_URL; // backward compatibility

@@ -46,7 +46,7 @@
 ## 4. Настройка страницы возврата
 `result_url` строится из `CLIENT_APP_BASE` (или `APP_PUBLIC_URL`) и по умолчанию ведёт на `https://<public-domain>/return?ticket=1&source=liqpay&order_id=...&purchase_id=...` (удобно для клиентского Next.js фронтенда, который восстанавливает состояние по query-параметрам).
 `server_url` строится из той же базы как `https://<public-domain>/api/public/payment/liqpay/callback`.
-LiqPay должен видеть только публичный HTTPS домен, а не внутренние IP/порты (например `38.79.154.248:8000`).
+LiqPay должен видеть только публичный HTTPS домен, а не внутренние IP/порты (например `backend:8000`).
 
 Если нужно возвращать клиента сразу на корень сайта, задайте `LIQPAY_RESULT_PATH=/` — тогда редирект будет идти на `https://<public-domain>/?...`.
 Если переменная не задана или указывает на `localhost`, API вернёт ошибку 500 и не сформирует checkout payload.

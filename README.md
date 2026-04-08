@@ -73,7 +73,7 @@ cp .env.example .env
 | `TICKET_LINK_TTL_DAYS` | Максимальный срок действия ссылки (в днях, но не позднее суток после отправления) | `7` |
 | `CLIENT_APP_BASE` | Базовый URL клиентского фронтенда для ссылок в билетах, QR и редиректов | `https://maximovtours.com` |
 | `APP_PUBLIC_URL` | Публичный URL приложения, используемый в письмах | `https://maximovtours.com` |
-| `PUBLIC_API_BASE` | Базовый URL для клиентских запросов к API/прокси | `https://maximovtours.com/api/` |
+| `PUBLIC_API_BASE` | Базовый URL для админки (same-origin API) | `/api` |
 
 Эндпоинт `/auth/login` выдаёт токен из `ADMIN_TOKEN`. Его нужно передавать в заголовке `Authorization`
 при обращении к административным маршрутам.
@@ -99,11 +99,9 @@ SMTP_FROM_EMAIL=noreply@example.com
 echo "REACT_APP_API_URL=http://localhost:${BACKEND_PORT:-8000}" > frontend/.env
 ```
 
-Если порт бэкенда изменён, обновите значение `REACT_APP_API_URL`, чтобы фронтенд обращался к корректному адресу.
-При отсутствии переменной приложение пытается связаться с API по тому же хосту,
-что и открытая страница, автоматически подставляя порт `8000`. Логику
-определения порта можно изменить с помощью опциональной переменной
-`REACT_APP_API_FALLBACK_PORT`.
+Для production админки используйте same-origin значение `REACT_APP_API_URL=/api`.
+Если переменная не задана, приложение автоматически использует `/api` на удалённых доменах.
+Для локальной разработки без reverse-proxy можно оставить `http://localhost:<порт>`.
 
 ### LiqPay
 Бэкенд умеет готовить плейлоад для оплаты через LiqPay. Добавьте ключи мерчанта в `.env`:
@@ -198,8 +196,10 @@ psql postgresql://postgres:postgres@localhost:${POSTGRES_HOST_PORT:-5433}/test1
 возвращает токен `ADMIN_TOKEN`. Его нужно передавать в заголовке `Authorization` для административных запросов.
 
 ## Настройка CORS
-Бэкенд читает переменную `CORS_ORIGINS` (список адресов через запятую). По умолчанию разрешены
-`http://localhost:3000`, `http://localhost:3001` и `http://localhost:4000`. Чтобы добавить новый домен, обновите переменную:
+Бэкенд читает переменную `CORS_ORIGINS` (список адресов через запятую). По умолчанию разрешены:
+`https://admin.maximovtours.com`, `https://maximovtours.com`, `https://www.maximovtours.com`
+и локальные dev-origin'ы (`localhost/127.0.0.1` с портами `3000/3001/4000`).
+Чтобы переопределить список доменов, обновите переменную:
 
 ```bash
 CORS_ORIGINS=http://localhost:3000,https://example.com
