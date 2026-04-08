@@ -25,7 +25,7 @@ function ReportPage() {
 
   // Загружаем маршруты
   useEffect(() => {
-    axios.get(`${API}/routes`)
+    axios.get(`${API}/routes/`)
       .then(res => setRoutes(res.data))
       .catch(err => console.error("Ошибка загрузки маршрутов:", err));
   }, []);
@@ -33,7 +33,7 @@ function ReportPage() {
   // Загружаем рейсы по маршруту
   useEffect(() => {
     if (routeId) {
-      axios.get(`${API}/tours?route_id=${routeId}`)
+      axios.get(`${API}/tours/?route_id=${routeId}`)
         .then(res => setTours(res.data))
         .catch(err => console.error("Ошибка загрузки рейсов:", err));
     } else {
@@ -44,7 +44,7 @@ function ReportPage() {
 
   // Загружаем все остановки
   useEffect(() => {
-    axios.get(`${API}/stops`)
+    axios.get(`${API}/stops/`)
       .then(res => setStops(res.data))
       .catch(err => console.error("Ошибка загрузки остановок:", err));
   }, []);

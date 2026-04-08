@@ -7,7 +7,7 @@ function PricesPage() {
   const [items, setItems] = useState([]);
 
   useEffect(() => {
-    axios.get(`${API}/prices`)
+    axios.get(`${API}/prices/`)
       .then(response => setItems(response.data))
       .catch(error => console.error("Ошибка при получении данных:", error));
   }, []);

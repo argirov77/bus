@@ -97,7 +97,7 @@ export default function PurchasesPage() {
     const params = {};
     if (status) params.status = status;
     axios
-      .get(`${API}/admin/purchases`, { params })
+      .get(`${API}/admin/purchases/`, { params })
       .then(async (r) => {
         setItems(r.data);
         const map = {};

@@ -9,13 +9,13 @@ export default function TicketsAdmin({ tourId }) {
 
   // загрузить проданные билеты
   const loadTickets = ()=>{
-    axios.get(`${API}/admin/tickets`,{params:{tour_id:tourId}})
+    axios.get(`${API}/admin/tickets/`,{params:{tour_id:tourId}})
       .then(r=>setTickets(r.data));
   };
 
   // загрузить все остановки (для маппинга id→name)
   useEffect(()=>{
-    axios.get(`${API}/stops`)
+    axios.get(`${API}/stops/`)
       .then(r=>{
         const m = {};
         r.data.forEach(s=>m[s.id]=s.stop_name);

@@ -145,8 +145,8 @@ function PricelistPage() {
       setIsMatrixLoading(true);
       try {
         const [stopsRes, pricesRes] = await Promise.all([
-          axios.get(`${API}/stops`),
-          axios.get(`${API}/prices?pricelist_id=${pricelistId}`),
+          axios.get(`${API}/stops/`),
+          axios.get(`${API}/prices/?pricelist_id=${pricelistId}`),
         ]);
         setStops(stopsRes.data);
         setPrices(pricesRes.data);
@@ -372,7 +372,7 @@ function PricelistPage() {
         let refreshedPrices = null;
         for (const cell of toCreate) {
           try {
-            await axios.post(`${API}/prices`, {
+            await axios.post(`${API}/prices/`, {
               pricelist_id: selectedPricelist.id,
               departure_stop_id: cell.depId,
               arrival_stop_id: cell.arrId,
@@ -384,7 +384,7 @@ function PricelistPage() {
             const isConflict = status === 409 || detail.toLowerCase().includes("duplicate");
             if (isConflict) {
               if (!refreshedPrices) {
-                const refreshRes = await axios.get(`${API}/prices?pricelist_id=${selectedPricelist.id}`);
+                const refreshRes = await axios.get(`${API}/prices/?pricelist_id=${selectedPricelist.id}`);
                 refreshedPrices = refreshRes.data;
               }
               const existing = refreshedPrices.find(
@@ -429,7 +429,7 @@ function PricelistPage() {
     event.preventDefault();
     if (!selectedPricelist || !newStopName.trim()) return;
     try {
-      await axios.post(`${API}/stops`, { stop_name: newStopName.trim() });
+      await axios.post(`${API}/stops/`, { stop_name: newStopName.trim() });
       setAddStopOpen(false);
       setNewStopName("");
       await fetchMatrixData(selectedPricelist.id);

@@ -43,8 +43,8 @@ export default function RoutesPage() {
   // 1. Загрузка маршрутов и остановок при первом рендере
   useEffect(() => {
     document.title = "Маршруты";
-    axios.get(`${API}/routes`).then((res) => setRoutes(res.data)).catch(() => { setMessage("Ошибка загрузки маршрутов"); setMessageType("error"); });
-    axios.get(`${API}/stops`).then((res) => setStops(res.data)).catch(() => { setMessage("Ошибка загрузки остановок"); setMessageType("error"); });
+    axios.get(`${API}/routes/`).then((res) => setRoutes(res.data)).catch(() => { setMessage("Ошибка загрузки маршрутов"); setMessageType("error"); });
+    axios.get(`${API}/stops/`).then((res) => setStops(res.data)).catch(() => { setMessage("Ошибка загрузки остановок"); setMessageType("error"); });
   }, []);
 
   // 2. Загрузка остановок выбранного маршрута
@@ -63,7 +63,7 @@ export default function RoutesPage() {
   const handleCreateRoute = () => {
     if (!newRouteName.trim()) return;
     axios
-      .post(`${API}/routes`, { name: newRouteName, is_demo: false })
+      .post(`${API}/routes/`, { name: newRouteName, is_demo: false })
       .then((res) => {
         setRoutes([...routes, res.data]);
         setNewRouteName("");
