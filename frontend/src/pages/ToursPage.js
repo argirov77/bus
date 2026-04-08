@@ -112,9 +112,9 @@ export default function ToursPage() {
   // — load reference data on mount —
   useEffect(() => {
     document.title = "Рейсы";
-    axios.get(`${API}/routes`).then(r=>setRoutes(r.data)).catch(()=>{ setMessage("Ошибка загрузки маршрутов"); setMessageType("error"); });
+    axios.get(`${API}/routes/`).then(r=>setRoutes(r.data)).catch(()=>{ setMessage("Ошибка загрузки маршрутов"); setMessageType("error"); });
     axios.get(`${API}/pricelists`).then(r=>setPricelists(r.data)).catch(()=>{ setMessage("Ошибка загрузки прайс-листов"); setMessageType("error"); });
-    axios.get(`${API}/stops`).then(r=>setStops(r.data)).catch(()=>{ setMessage("Ошибка загрузки остановок"); setMessageType("error"); });
+    axios.get(`${API}/stops/`).then(r=>setStops(r.data)).catch(()=>{ setMessage("Ошибка загрузки остановок"); setMessageType("error"); });
     fetchTours(1);
   }, []);
 
@@ -136,7 +136,7 @@ export default function ToursPage() {
   // — create tour —
   const handleCreate = e => {
     e.preventDefault();
-    axios.post(`${API}/tours`, {
+    axios.post(`${API}/tours/`, {
       route_id: +newTour.route_id,
       pricelist_id: +newTour.pricelist_id,
       date: newTour.date,
@@ -174,12 +174,12 @@ export default function ToursPage() {
     setSeatModalOpen(true);
 
     // load seat statuses
-    axios.get(`${API}/seat`, { params:{ tour_id: tour.id, adminMode:1 } })
+    axios.get(`${API}/seat/`, { params:{ tour_id: tour.id, adminMode:1 } })
       .then(r=>setInitialSeats(r.data.seats))
       .catch(console.error);
 
     // load sold tickets
-    axios.get(`${API}/admin/tickets`, { params:{ tour_id: tour.id } })
+    axios.get(`${API}/admin/tickets/`, { params:{ tour_id: tour.id } })
       .then(r=>setTickets(r.data))
       .catch(console.error);
 
@@ -248,7 +248,7 @@ export default function ToursPage() {
   const saveTicketEdit = async () => {
     try {
       await axios.put(`${API}/admin/tickets/${editingTicketId}`, editingTicketData);
-      const r = await axios.get(`${API}/admin/tickets`, { params:{ tour_id: editingId }});
+      const r = await axios.get(`${API}/admin/tickets/`, { params:{ tour_id: editingId }});
       setTickets(r.data);
       setEditingTicketId(null);
     } catch(err) {
@@ -266,7 +266,7 @@ export default function ToursPage() {
         to_seat: toSeat
       });
       setSeatReload(x=>x+1);
-      const r = await axios.get(`${API}/admin/tickets`, { params:{ tour_id: editingId }});
+      const r = await axios.get(`${API}/admin/tickets/`, { params:{ tour_id: editingId }});
       setTickets(r.data);
     } catch(err) {
       console.error("Reassign error:", err);
@@ -282,7 +282,7 @@ export default function ToursPage() {
 
       await axios.delete(`${API}/admin/tickets/${tk.ticket_id}`);
       setSeatReload(x=>x+1);
-      const r = await axios.get(`${API}/admin/tickets`, { params:{ tour_id: editingId }});
+      const r = await axios.get(`${API}/admin/tickets/`, { params:{ tour_id: editingId }});
       setTickets(r.data);
     } catch(err) {
       console.error("Remove error:", err);

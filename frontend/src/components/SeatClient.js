@@ -40,7 +40,7 @@ export default function SeatClient({
       onChange && onChange([]);
       return;
     }
-    axios.get(`${API}/seat`, {
+    axios.get(`${API}/seat/`, {
       params: {
         tour_id:           tourId,
         departure_stop_id: departureStopId,

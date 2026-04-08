@@ -33,7 +33,7 @@ export default function SeatAdmin({
 
   // 1) загрузка статусов
   useEffect(() => {
-    axios.get(`${API}/seat`, { params: { tour_id: tourId, adminMode: 1 } })
+    axios.get(`${API}/seat/`, { params: { tour_id: tourId, adminMode: 1 } })
       .then(r => setInitialSeats(r.data.seats))
       .catch(console.error);
   }, [tourId]);

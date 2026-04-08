@@ -126,12 +126,12 @@ export default function StopsPage() {
 
   useEffect(() => { document.title = "Остановки"; fetchStops(); }, []);
   const fetchStops = () =>
-    axios.get(`${API}/stops`)
+    axios.get(`${API}/stops/`)
       .then((r) => setStops(r.data))
       .catch(() => { setMessage("Ошибка при загрузке остановок"); setMessageType("error"); });
 
   const handleCreate = (payload) =>
-    axios.post(`${API}/stops`, payload)
+    axios.post(`${API}/stops/`, payload)
       .then((r) => {
         setStops((s) => [...s, r.data]);
         setCreatingOpen(false);

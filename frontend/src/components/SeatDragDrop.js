@@ -49,14 +49,14 @@ export default function SeatDragDrop({
   const [modal, setModal] = useState(null);
 
   React.useEffect(() => {
-    axios.get(`${API}/seat`, {
+    axios.get(`${API}/seat/`, {
       params: { tour_id: tourId, adminMode: true }
     }).then(r => setSeats(r.data.seats))
      .catch(console.error);
   }, [tourId]);
 
   const reload = () => {
-    axios.get(`${API}/seat`, {
+    axios.get(`${API}/seat/`, {
       params: { tour_id: tourId, adminMode: true }
     }).then(r => setSeats(r.data.seats))
      .catch(console.error);
