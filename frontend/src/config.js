@@ -66,4 +66,4 @@ const getConfiguredApiUrl = () => {
 };
 
 export const API_URL = getConfiguredApiUrl();
-export const API = API_URL; // backward compatibility
+export const API = ""; // requests already use axios.defaults.baseURL
