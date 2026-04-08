@@ -16,6 +16,8 @@ import { downloadTicketPdf } from "../utils/ticket";
 import BusLayoutNeoplan from "../components/busLayouts/BusLayoutNeoplan";
 import BusLayoutTravego  from "../components/busLayouts/BusLayoutTravego";
 import SeatAdmin         from "../components/SeatAdmin";
+import Alert from "../components/Alert";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 
 const BOOKING_OPTIONS = [
@@ -69,13 +71,16 @@ export default function ToursPage() {
 
   // — force‐reload key for SeatAdmin —
   const [seatReload, setSeatReload] = useState(0);
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("info");
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const handleTicketDownload = async (ticketId) => {
     try {
       await downloadTicketPdf(ticketId);
     } catch (err) {
-      console.error("Не удалось скачать билет", err);
-      window.alert("Не удалось скачать билет. Попробуйте ещё раз.");
+      setMessage("Не удалось скачать билет. Попробуйте ещё раз.");
+      setMessageType("error");
     }
   };
 
@@ -106,9 +111,10 @@ export default function ToursPage() {
 
   // — load reference data on mount —
   useEffect(() => {
-    axios.get(`${API}/routes`).then(r=>setRoutes(r.data)).catch(console.error);
-    axios.get(`${API}/pricelists`).then(r=>setPricelists(r.data)).catch(console.error);
-    axios.get(`${API}/stops`).then(r=>setStops(r.data)).catch(console.error);
+    document.title = "Рейсы";
+    axios.get(`${API}/routes`).then(r=>setRoutes(r.data)).catch(()=>{ setMessage("Ошибка загрузки маршрутов"); setMessageType("error"); });
+    axios.get(`${API}/pricelists`).then(r=>setPricelists(r.data)).catch(()=>{ setMessage("Ошибка загрузки прайс-листов"); setMessageType("error"); });
+    axios.get(`${API}/stops`).then(r=>setStops(r.data)).catch(()=>{ setMessage("Ошибка загрузки остановок"); setMessageType("error"); });
     fetchTours(1);
   }, []);
 
@@ -150,8 +156,8 @@ export default function ToursPage() {
   // — delete tour —
   const handleDelete = id => {
     axios.delete(`${API}/tours/${id}`)
-      .then(()=> fetchTours())
-      .catch(console.error);
+      .then(()=> { fetchTours(); setConfirmDeleteId(null); })
+      .catch(()=> { setMessage("Ошибка удаления рейса"); setMessageType("error"); setConfirmDeleteId(null); });
   };
 
   // — start editing tour (load seats + tickets) —
@@ -290,8 +296,17 @@ export default function ToursPage() {
     : "";
 
   return (
-    <div className="container">
+    <div className="container--wide">
       <h2>Рейсы</h2>
+      <Alert type={messageType} message={message} />
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Удалить рейс?"
+        message="Рейс и все связанные билеты будут удалены."
+        onConfirm={() => handleDelete(confirmDeleteId)}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
 
       <div style={{ margin: '16px 0' }}>
         <button className="btn btn--ghost btn--sm" onClick={()=>switchTab('upcoming')} disabled={tab==='upcoming'}>Предстоящие</button>
@@ -405,7 +420,7 @@ export default function ToursPage() {
                       </>
                     : <>
                         <IconButton className="btn--primary btn--sm" onClick={()=>startEdit(t)} icon={editIcon} alt="Редактировать" />
-                        <IconButton className="btn--danger btn--sm" onClick={()=>handleDelete(t.id)} icon={deleteIcon} alt="Удалить" />
+                        <IconButton className="btn--danger btn--sm" onClick={()=>setConfirmDeleteId(t.id)} icon={deleteIcon} alt="Удалить" />
                       </>
                   }
                 </td>

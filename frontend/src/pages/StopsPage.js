@@ -3,6 +3,8 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { API } from "../config";
 import IconButton from "../components/IconButton";
+import Alert from "../components/Alert";
+import ConfirmDialog from "../components/ConfirmDialog";
 import editIcon from "../assets/icons/edit.png";
 import deleteIcon from "../assets/icons/delete.png";
 import addIcon from "../assets/icons/add.png";
@@ -118,37 +120,58 @@ export default function StopsPage() {
   const [stops, setStops] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [creatingOpen, setCreatingOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("info");
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
-  useEffect(() => { fetchStops(); }, []);
+  useEffect(() => { document.title = "Остановки"; fetchStops(); }, []);
   const fetchStops = () =>
     axios.get(`${API}/stops`)
       .then((r) => setStops(r.data))
-      .catch((e) => console.error("Ошибка при загрузке остановок:", e));
+      .catch(() => { setMessage("Ошибка при загрузке остановок"); setMessageType("error"); });
 
   const handleCreate = (payload) =>
     axios.post(`${API}/stops`, payload)
       .then((r) => {
         setStops((s) => [...s, r.data]);
         setCreatingOpen(false);
+        setMessage("Остановка добавлена"); setMessageType("success");
       })
-      .catch((e) => console.error("Ошибка создания остановки:", e));
+      .catch(() => { setMessage("Ошибка создания остановки"); setMessageType("error"); });
 
   const handleUpdate = (payload) =>
     axios.put(`${API}/stops/${editingId}`, payload)
       .then((r) => {
         setStops((s) => s.map((x) => (x.id === editingId ? r.data : x)));
         setEditingId(null);
+        setMessage("Остановка обновлена"); setMessageType("success");
       })
-      .catch((e) => console.error("Ошибка обновления остановки:", e));
+      .catch(() => { setMessage("Ошибка обновления остановки"); setMessageType("error"); });
 
   const handleDelete = (id) =>
     axios.delete(`${API}/stops/${id}`)
-      .then(() => setStops((s) => s.filter((x) => x.id !== id)))
-      .catch((e) => console.error("Ошибка удаления остановки:", e));
+      .then(() => { setStops((s) => s.filter((x) => x.id !== id)); setConfirmDelete(null); })
+      .catch(() => { setMessage("Ошибка удаления остановки"); setMessageType("error"); setConfirmDelete(null); });
 
   return (
     <div className="container">
       <h2>Остановки</h2>
+      <Alert type={messageType} message={message} />
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="Удалить остановку?"
+        message="Это действие нельзя отменить."
+        onConfirm={() => handleDelete(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
+      />
+
+      {stops.length === 0 && !creatingOpen && (
+        <div className="empty-state">
+          <div className="empty-state__icon">&#128655;</div>
+          Нет остановок. Добавьте первую остановку.
+        </div>
+      )}
 
       <ul className="stop-list">
         {stops.map((stop) => (
@@ -187,7 +210,7 @@ export default function StopsPage() {
                   <IconButton
                     icon={deleteIcon}
                     alt="Удалить"
-                    onClick={() => handleDelete(stop.id)}
+                    onClick={() => setConfirmDelete(stop.id)}
                   />
                 </div>
               </>

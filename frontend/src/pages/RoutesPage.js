@@ -3,6 +3,8 @@ import axios from "axios";
 
 import { API } from "../config";
 import IconButton from "../components/IconButton";
+import Alert from "../components/Alert";
+import ConfirmDialog from "../components/ConfirmDialog";
 import addIcon from "../assets/icons/add.png";
 import editIcon from "../assets/icons/edit.png";
 import deleteIcon from "../assets/icons/delete.png";
@@ -27,7 +29,9 @@ export default function RoutesPage() {
   const [stops, setStops] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [routeStops, setRouteStops] = useState([]);
-
+  const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState("info");
+  const [confirmDelete, setConfirmDelete] = useState(null);
 
   const [newRouteName, setNewRouteName] = useState("");
   const [newStop, setNewStop] = useState({
@@ -38,8 +42,9 @@ export default function RoutesPage() {
 
   // 1. Загрузка маршрутов и остановок при первом рендере
   useEffect(() => {
-    axios.get(`${API}/routes`).then((res) => setRoutes(res.data));
-    axios.get(`${API}/stops`).then((res) => setStops(res.data));
+    document.title = "Маршруты";
+    axios.get(`${API}/routes`).then((res) => setRoutes(res.data)).catch(() => { setMessage("Ошибка загрузки маршрутов"); setMessageType("error"); });
+    axios.get(`${API}/stops`).then((res) => setStops(res.data)).catch(() => { setMessage("Ошибка загрузки остановок"); setMessageType("error"); });
   }, []);
 
   // 2. Загрузка остановок выбранного маршрута
@@ -74,7 +79,8 @@ export default function RoutesPage() {
         setSelectedRoute(null);
         setRouteStops([]);
       }
-    });
+      setConfirmDelete(null);
+    }).catch(() => { setMessage("Ошибка удаления маршрута"); setMessageType("error"); setConfirmDelete(null); });
   };
 
   const handleRenameRoute = (route) => {
@@ -94,7 +100,7 @@ export default function RoutesPage() {
   const handleToggleDemo = (route) => {
     const demoCount = routes.filter((r) => r.is_demo).length;
     if (!route.is_demo && demoCount >= 2) {
-      alert("Можно выбрать не более двух маршрутов");
+      setMessage("Можно выбрать не более двух маршрутов"); setMessageType("error");
       return;
     }
     axios
@@ -103,7 +109,7 @@ export default function RoutesPage() {
         setRoutes(routes.map((r) => (r.id === route.id ? res.data : r)));
       })
       .catch((err) => {
-        alert(err.response?.data?.detail || "Ошибка обновления демо статуса");
+        setMessage(err.response?.data?.detail || "Ошибка обновления демо статуса"); setMessageType("error");
       });
   };
 
@@ -120,7 +126,7 @@ export default function RoutesPage() {
 
     const { stop_id, arrival_time, departure_time } = newStop;
     if (!stop_id || !arrival_time || !departure_time) {
-      alert("Все поля обязательны!");
+      setMessage("Все поля обязательны!"); setMessageType("error");
       return;
     }
     const maxOrder = routeStops.length ? Math.max(...routeStops.map((rs) => rs.order)) : 0;
@@ -202,8 +208,24 @@ export default function RoutesPage() {
 
   return (
     <div className="container">
-      <h1>Маршруты</h1>
-  
+      <h2>Маршруты</h2>
+      <Alert type={messageType} message={message} />
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="Удалить маршрут?"
+        message="Маршрут и все его остановки будут удалены."
+        onConfirm={() => handleDeleteRoute(confirmDelete)}
+        onCancel={() => setConfirmDelete(null)}
+      />
+
+      {routes.length === 0 && (
+        <div className="empty-state">
+          <div className="empty-state__icon">&#128739;</div>
+          Нет маршрутов. Создайте первый маршрут.
+        </div>
+      )}
+
       <ul className="routes-wrapper" style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {routes.map((route) => (
           <li key={route.id} className="card-row" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -232,7 +254,7 @@ export default function RoutesPage() {
               <IconButton
                 icon={deleteIcon}
                 alt="Удалить маршрут"
-                onClick={() => handleDeleteRoute(route.id)}
+                onClick={() => setConfirmDelete(route.id)}
               />
             </div>
           </li>

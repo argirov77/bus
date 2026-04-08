@@ -93,6 +93,7 @@ function PricelistPage() {
   const [activePricelistId, setActivePricelistId] = useState(null);
 
   useEffect(() => {
+    document.title = "Прайс-листы";
     fetchPricelists();
     axios
       .get(`${API}/admin/selected_pricelist`)

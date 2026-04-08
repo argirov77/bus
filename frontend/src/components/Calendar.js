@@ -6,7 +6,7 @@ import '../styles/Calendar.css';
 // `selectedDate` - currently chosen date (ISO string).
 // `onSelect` - callback when user chooses a date.
 // `minDate` - ISO date string that acts as the earliest selectable day.
-export default function Calendar({ activeDates = [], selectedDate = '', onSelect, minDate }) {
+export default function Calendar({ activeDates = [], selectedDate = '', onSelect, minDate, lang = 'ru' }) {
   // initial month/year based on selected date or first active date
   const initial = selectedDate
     ? new Date(selectedDate)
@@ -48,11 +48,22 @@ export default function Calendar({ activeDates = [], selectedDate = '', onSelect
     });
   };
 
-  const months = [
-    'Январь','Февраль','Март','Апрель','Май','Июнь',
-    'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'
-  ];
-  const weekdays = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+  const langMap = {
+    ru: 'ru-RU',
+    en: 'en-US',
+    bg: 'bg-BG',
+    ua: 'uk-UA'
+  };
+  const locale = langMap[lang] || langMap.ru;
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(2024, i, 1);
+    const name = d.toLocaleDateString(locale, { month: 'long' });
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  });
+  const weekdays = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(2024, 0, i + 1); // 2024-01-01 is Monday
+    return d.toLocaleDateString(locale, { weekday: 'short' });
+  });
 
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
