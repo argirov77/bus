@@ -111,9 +111,7 @@ def _ensure_schema(connection) -> None:
 def _ensure_secret() -> str:
     secret = os.getenv("TICKET_LINK_SECRET")
     if not secret:
-        # Для дев-окружения можно оставить дефолт, в проде лучше кидать ошибку
-        secret = "dev-ticket-secret"
-        # или: raise SecretNotConfigured("TICKET_LINK_SECRET is not set")
+        raise ValueError("TICKET_LINK_SECRET environment variable is not set")
     return secret
 
 
