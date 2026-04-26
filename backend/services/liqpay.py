@@ -13,13 +13,20 @@ from ..utils.client_app import build_liqpay_result_url, build_liqpay_server_url
 LIQPAY_CHECKOUT_URL = "https://www.liqpay.ua/api/3/checkout"
 
 
-def _env(key: str, default: str) -> str:
+_MISSING = object()
+
+
+def _env(key: str, default: object = _MISSING) -> str:
     value = os.getenv(key)
-    return value if value else default
+    if value:
+        return value
+    if default is _MISSING:
+        raise ValueError(f"{key} environment variable is not set")
+    return default  # type: ignore[return-value]
 
 
 def sign(data: str, private_key: str | None = None) -> str:
-    key = private_key or _env("LIQPAY_PRIVATE_KEY", "sandbox")
+    key = private_key or _env("LIQPAY_PRIVATE_KEY")
     signature_raw = f"{key}{data}{key}".encode("utf-8")
     return base64.b64encode(hashlib.sha1(signature_raw).digest()).decode("utf-8")
 
@@ -46,7 +53,7 @@ def build_payment_payload(
     server_url: str,
     order_id: str,
 ) -> dict[str, Any]:
-    public_key = _env("LIQPAY_PUBLIC_KEY", "sandbox")
+    public_key = _env("LIQPAY_PUBLIC_KEY")
     currency = _env("LIQPAY_CURRENCY", "UAH")
 
     description_value = description or (
@@ -153,7 +160,7 @@ def verify_order(order_id: str) -> Mapping[str, Any]:
 
     payload = {
         "version": "3",
-        "public_key": _env("LIQPAY_PUBLIC_KEY", "sandbox"),
+        "public_key": _env("LIQPAY_PUBLIC_KEY"),
         "action": "status",
         "order_id": order_value,
     }

@@ -2,7 +2,7 @@ import os
 import datetime
 import jwt
 
-JWT_SECRET = os.getenv("JWT_SECRET", "secret")
+JWT_SECRET = os.environ["JWT_SECRET"]
 
 
 def create_token(data: dict, expires_seconds: int = 3600) -> str:

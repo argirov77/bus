@@ -52,7 +52,6 @@ def _get_token() -> str:
 
     login = _env("CHECKBOX_CASHIER_LOGIN")
     password = _env("CHECKBOX_CASHIER_PASSWORD")
-    access_key = _env("CHECKBOX_ACCESS_KEY")
 
     if not login or not password:
         raise RuntimeError("CHECKBOX_CASHIER_LOGIN and CHECKBOX_CASHIER_PASSWORD are required")
@@ -60,7 +59,6 @@ def _get_token() -> str:
     resp = httpx.post(
         f"{_api_url()}/api/v1/cashier/signin",
         json={"login": login, "password": password},
-        headers={"X-Access-Key": access_key} if access_key else {},
         timeout=15.0,
     )
     resp.raise_for_status()
