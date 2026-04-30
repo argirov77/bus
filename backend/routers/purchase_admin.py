@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional
 from ..database import get_connection
@@ -30,6 +30,10 @@ class PurchaseRow(BaseModel):
     status: str
     deadline: Optional[str]
     payment_method: str
+    payment_status: Optional[str] = None
+    liqpay_order_id: Optional[str] = None
+    liqpay_payment_id: Optional[str] = None
+    liqpay_status: Optional[str] = None
     fiscal_status: Optional[str] = None
     fiscal_last_error: Optional[str] = None
     checkbox_receipt_id: Optional[str] = None
@@ -71,6 +75,10 @@ def list_purchases(
               pu.status,
               pu.deadline,
               pu.payment_method,
+              pu.status AS payment_status,
+              pu.liqpay_order_id,
+              pu.liqpay_payment_id,
+              pu.liqpay_status,
               pu.fiscal_status,
               pu.fiscal_last_error,
               pu.checkbox_receipt_id,
@@ -95,10 +103,14 @@ def list_purchases(
                     "status": r[6],
                     "deadline": r[7].isoformat() if r[7] else None,
                     "payment_method": r[8],
-                    "fiscal_status": r[9],
-                    "fiscal_last_error": r[10],
-                    "checkbox_receipt_id": r[11],
-                    "fiscal_receipt_url": r[12],
+                    "payment_status": r[9],
+                    "liqpay_order_id": r[10],
+                    "liqpay_payment_id": r[11],
+                    "liqpay_status": r[12],
+                    "fiscal_status": r[13],
+                    "fiscal_last_error": r[14],
+                    "checkbox_receipt_id": r[15],
+                    "fiscal_receipt_url": r[16],
                 }
             )
         return purchases
@@ -126,6 +138,10 @@ class TicketInfo(BaseModel):
 class PurchaseInfo(BaseModel):
     tickets: List[TicketInfo]
     logs: List[PurchaseLog]
+    payment_status: Optional[str] = None
+    liqpay_order_id: Optional[str] = None
+    liqpay_payment_id: Optional[str] = None
+    liqpay_status: Optional[str] = None
     fiscal_status: Optional[str] = None
     fiscal_last_error: Optional[str] = None
     checkbox_receipt_id: Optional[str] = None
@@ -196,7 +212,8 @@ def purchase_info(purchase_id: int):
 
         cur.execute(
             """
-            SELECT fiscal_status, fiscal_last_error, checkbox_receipt_id, fiscal_receipt_url, fiscal_payload
+            SELECT status, liqpay_order_id, liqpay_payment_id, liqpay_status,
+                   fiscal_status, fiscal_last_error, checkbox_receipt_id, fiscal_receipt_url, fiscal_payload
             FROM purchase
             WHERE id=%s
             """,
@@ -207,11 +224,71 @@ def purchase_info(purchase_id: int):
         return {
             "tickets": tickets,
             "logs": logs,
-            "fiscal_status": p_row[0] if p_row else None,
-            "fiscal_last_error": p_row[1] if p_row else None,
-            "checkbox_receipt_id": p_row[2] if p_row else None,
-            "fiscal_receipt_url": p_row[3] if p_row else None,
-            "fiscal_payload": p_row[4] if p_row else None,
+            "payment_status": p_row[0] if p_row else None,
+            "liqpay_order_id": p_row[1] if p_row else None,
+            "liqpay_payment_id": p_row[2] if p_row else None,
+            "liqpay_status": p_row[3] if p_row else None,
+            "fiscal_status": p_row[4] if p_row else None,
+            "fiscal_last_error": p_row[5] if p_row else None,
+            "checkbox_receipt_id": p_row[6] if p_row else None,
+            "fiscal_receipt_url": p_row[7] if p_row else None,
+            "fiscal_payload": p_row[8] if p_row else None,
+        }
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.post("/{purchase_id}/retry-fiscalization")
+def retry_fiscalization(purchase_id: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT id, status, fiscal_status, checkbox_receipt_id
+            FROM purchase
+            WHERE id = %s
+            """,
+            (purchase_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Purchase not found")
+        _, status, fiscal_status, receipt_id = row
+        if status != "paid":
+            raise HTTPException(status_code=409, detail=f"Purchase must be paid (current status: {status})")
+        if receipt_id:
+            raise HTTPException(status_code=409, detail=f"Purchase already has receipt id: {receipt_id}")
+        if fiscal_status not in ("pending", "failed"):
+            raise HTTPException(status_code=409, detail=f"Fiscal status does not allow retry: {fiscal_status}")
+    finally:
+        cur.close()
+        conn.close()
+
+    from ..services.checkbox import fiscalize_purchase
+
+    fiscalize_purchase(purchase_id)
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT status, fiscal_status, checkbox_receipt_id, fiscal_receipt_url, fiscal_last_error
+            FROM purchase
+            WHERE id = %s
+            """,
+            (purchase_id,),
+        )
+        status, fiscal_status, receipt_id, receipt_url, fiscal_last_error = cur.fetchone()
+        return {
+            "purchase_id": purchase_id,
+            "payment_status": status,
+            "fiscal_status": fiscal_status,
+            "checkbox_receipt_id": receipt_id,
+            "fiscal_receipt_url": receipt_url,
+            "fiscal_last_error": fiscal_last_error,
         }
     finally:
         cur.close()
