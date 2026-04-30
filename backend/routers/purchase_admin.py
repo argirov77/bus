@@ -30,6 +30,10 @@ class PurchaseRow(BaseModel):
     status: str
     deadline: Optional[str]
     payment_method: str
+    fiscal_status: Optional[str] = None
+    fiscal_last_error: Optional[str] = None
+    checkbox_receipt_id: Optional[str] = None
+    fiscal_receipt_url: Optional[str] = None
 
 @router.get("/", response_model=List[PurchaseRow])
 def list_purchases(
@@ -66,7 +70,11 @@ def list_purchases(
               pu.amount_due,
               pu.status,
               pu.deadline,
-              pu.payment_method
+              pu.payment_method,
+              pu.fiscal_status,
+              pu.fiscal_last_error,
+              pu.checkbox_receipt_id,
+              pu.fiscal_receipt_url
             FROM purchase pu
             {where_clause}
             ORDER BY pu.id DESC
@@ -87,6 +95,10 @@ def list_purchases(
                     "status": r[6],
                     "deadline": r[7].isoformat() if r[7] else None,
                     "payment_method": r[8],
+                    "fiscal_status": r[9],
+                    "fiscal_last_error": r[10],
+                    "checkbox_receipt_id": r[11],
+                    "fiscal_receipt_url": r[12],
                 }
             )
         return purchases
@@ -114,6 +126,11 @@ class TicketInfo(BaseModel):
 class PurchaseInfo(BaseModel):
     tickets: List[TicketInfo]
     logs: List[PurchaseLog]
+    fiscal_status: Optional[str] = None
+    fiscal_last_error: Optional[str] = None
+    checkbox_receipt_id: Optional[str] = None
+    fiscal_receipt_url: Optional[str] = None
+    fiscal_payload: Optional[dict] = None
 
 
 @router.get("/{purchase_id}", response_model=PurchaseInfo)
@@ -177,7 +194,25 @@ def purchase_info(purchase_id: int):
             for r in s_rows
         ]
 
-        return {"tickets": tickets, "logs": logs}
+        cur.execute(
+            """
+            SELECT fiscal_status, fiscal_last_error, checkbox_receipt_id, fiscal_receipt_url, fiscal_payload
+            FROM purchase
+            WHERE id=%s
+            """,
+            (purchase_id,),
+        )
+        p_row = cur.fetchone()
+
+        return {
+            "tickets": tickets,
+            "logs": logs,
+            "fiscal_status": p_row[0] if p_row else None,
+            "fiscal_last_error": p_row[1] if p_row else None,
+            "checkbox_receipt_id": p_row[2] if p_row else None,
+            "fiscal_receipt_url": p_row[3] if p_row else None,
+            "fiscal_payload": p_row[4] if p_row else None,
+        }
     finally:
         cur.close()
         conn.close()
