@@ -35,6 +35,7 @@ from .routers import (
 )
 from .routers.ticket_admin import router as admin_tickets_router
 from .routers.purchase_admin import router as admin_purchases_router
+from .routers.ops_admin import router as admin_ops_router
 
 
 def _parse_cors_origins() -> list[str]:
@@ -103,6 +104,7 @@ app.include_router(public.session_router)
 app.include_router(public.router)
 app.include_router(admin_tickets_router)
 app.include_router(admin_purchases_router)
+app.include_router(admin_ops_router)
 app.include_router(auth.router)
 
 
