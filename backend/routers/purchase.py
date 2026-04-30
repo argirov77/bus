@@ -501,15 +501,7 @@ def create_purchase(data: PurchaseCreate, background_tasks: BackgroundTasks):
         tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
         tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
         conn.commit()
-        first_ticket_id = ticket_specs[0]["ticket_id"] if ticket_specs else None
-        logger.info(
-            "purchase_created purchase_id=%s ticket_id=%s amount=%s email=%s liqpay_order_id=%s",
-            purchase_id,
-            first_ticket_id,
-            amount_due,
-            data.passenger_email,
-            None,
-        )
+        logger.info("purchase_created purchase_id=%s order_id=%s payment_id=%s amount=%s status=%s", purchase_id, None, None, amount_due, "reserved")
         record_event(provider="purchase", event_type="create_purchase", purchase_id=purchase_id, status="success", payload={"tickets": len(ticket_specs), "amount_due": amount_due})
     except HTTPException:
         conn.rollback()
@@ -803,14 +795,6 @@ def public_purchase_and_pay(
         order_id = payload.get("order_id") if isinstance(payload, dict) else None
         if order_id:
             _save_liqpay_order_id(cur, purchase_id, str(order_id))
-            logger.info(
-                "purchase_created purchase_id=%s ticket_id=%s amount=%s email=%s liqpay_order_id=%s",
-                purchase_id,
-                (ticket_specs[0]["ticket_id"] if ticket_specs else None),
-                amount_due,
-                data.passenger_email,
-                order_id,
-            )
 
         conn.commit()
     except HTTPException:
@@ -938,14 +922,6 @@ def pay_booking(
         order_id = payload.get("order_id") if isinstance(payload, dict) else None
         if order_id:
             _save_liqpay_order_id(cur, data.purchase_id, str(order_id))
-            logger.info(
-                "purchase_created purchase_id=%s ticket_id=%s amount=%s email=%s liqpay_order_id=%s",
-                data.purchase_id,
-                None,
-                amount_due,
-                row[2] if row else None,
-                order_id,
-            )
         conn.commit()
         return checkout
     except HTTPException:
