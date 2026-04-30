@@ -637,25 +637,53 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, status, amount_due, customer_email, customer_name,
-                       liqpay_order_id, liqpay_status
-                  FROM purchase
-                 WHERE id=%s
-                """,
-                (purchase_id,),
+                SELECT column_name
+                  FROM information_schema.columns
+                 WHERE table_schema='public'
+                   AND table_name='purchase'
+                   AND column_name IN ('liqpay_order_id','liqpay_status')
+                """
             )
+            liqpay_columns = {r[0] for r in (cur.fetchall() or [])}
+            has_liqpay_tracking = {'liqpay_order_id', 'liqpay_status'}.issubset(liqpay_columns)
+
+            if has_liqpay_tracking:
+                cur.execute(
+                    """
+                    SELECT id, status, amount_due, customer_email, customer_name,
+                           liqpay_order_id, liqpay_status
+                      FROM purchase
+                     WHERE id=%s
+                    """,
+                    (purchase_id,),
+                )
+            else:
+                logger.error(
+                    "liqpay_tracking_schema_missing purchase_id=%s columns=%s action=run_migrations_018_019_021",
+                    purchase_id,
+                    sorted(liqpay_columns),
+                )
+                cur.execute(
+                    """
+                    SELECT id, status, amount_due, customer_email, customer_name
+                      FROM purchase
+                     WHERE id=%s
+                    """,
+                    (purchase_id,),
+                )
+
             row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Purchase not found")
     finally:
         conn.close()
 
-    stored_order_id = row[5]
+    stored_order_id = row[5] if has_liqpay_tracking else None
     if stored_order_id and stored_order_id != order_id:
         raise HTTPException(status_code=404, detail="order_id does not match purchase")
 
     purchase_status = str(row[1] or "")
-    liqpay_status = row[6]
+    liqpay_status = row[6] if has_liqpay_tracking else None
 
     resolved_status = "pending"
     if purchase_status == "paid":
