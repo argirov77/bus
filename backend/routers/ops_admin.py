@@ -84,50 +84,6 @@ def ops_health() -> dict[str, Any]:
         conn.close()
 
 
-@router.get("/health/liqpay")
-def liqpay_health() -> dict[str, Any]:
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            """
-            SELECT COUNT(*),
-                   COUNT(*) FILTER (WHERE status IN ('success', 'paid', 'ok')),
-                   COUNT(*) FILTER (WHERE status IN ('failed', 'error')),
-                   MAX(created_at)
-            FROM integration_events
-            WHERE provider = 'liqpay'
-            """
-        )
-        total, success, failed, last_event_at = cur.fetchone()
-        return {"provider": "liqpay", "total_events": int(total or 0), "success_events": int(success or 0), "failed_events": int(failed or 0), "last_event_at": last_event_at.isoformat() if last_event_at else None}
-    finally:
-        cur.close()
-        conn.close()
-
-
-@router.get("/health/checkbox")
-def checkbox_health() -> dict[str, Any]:
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            """
-            SELECT COUNT(*),
-                   COUNT(*) FILTER (WHERE status IN ('success', 'done', 'ok')),
-                   COUNT(*) FILTER (WHERE status IN ('failed', 'error')),
-                   MAX(created_at)
-            FROM integration_events
-            WHERE provider = 'checkbox'
-            """
-        )
-        total, success, failed, last_event_at = cur.fetchone()
-        return {"provider": "checkbox", "total_events": int(total or 0), "success_events": int(success or 0), "failed_events": int(failed or 0), "last_event_at": last_event_at.isoformat() if last_event_at else None}
-    finally:
-        cur.close()
-        conn.close()
-
-
 @router.get("/events")
 def list_events(
     provider: Optional[str] = Query(None, description="Filter by integration provider (liqpay/checkbox/email/...)"),
