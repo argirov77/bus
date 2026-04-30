@@ -290,7 +290,8 @@ def fiscalize_purchase(purchase_id: int) -> None:
     if not is_enabled():
         return
 
-    record_event(provider="checkbox", event_type="fiscalize_start", purchase_id=purchase_id, status="start")
+    logger.info("checkbox_fiscalize_start purchase_id=%s status=start", purchase_id)
+    record_event(provider="checkbox", event_type="fiscalize_start", purchase_id=purchase_id, status="start", payload={"purchase_id": purchase_id})
 
     from ..database import get_connection
 
@@ -311,7 +312,7 @@ def fiscalize_purchase(purchase_id: int) -> None:
 
         # Idempotency: skip if already done
         if fiscal_status == "done":
-            logger.info("Purchase %s already fiscalized, skipping", purchase_id)
+            logger.info("fiscalization_skipped_existing_receipt purchase_id=%s status=%s receipt_id=%s", purchase_id, fiscal_status, existing_receipt_id)
             conn.commit()
             return
 
@@ -367,12 +368,12 @@ def fiscalize_purchase(purchase_id: int) -> None:
             "Purchase %s fiscalized successfully: receipt=%s fiscal_code=%s",
             purchase_id, receipt_id, fiscal_code,
         )
-        record_event(provider="checkbox", event_type="fiscalize_success", purchase_id=purchase_id, external_id=str(receipt_id), status="success", payload={"fiscal_code": fiscal_code})
+        record_event(provider="checkbox", event_type="fiscalize_success", purchase_id=purchase_id, external_id=str(receipt_id), status="success", payload={"purchase_id": purchase_id, "receipt_id": receipt_id, "status": "done", "fiscal_code": fiscal_code})
 
     except Exception as exc:
         conn.rollback()
         error_msg = str(exc)[:500]
-        record_event(provider="checkbox", event_type="fiscalize_error", purchase_id=purchase_id, status="error", error_message=error_msg)
+        record_event(provider="checkbox", event_type="fiscalize_error", purchase_id=purchase_id, status="error", error_message=error_msg, payload={"purchase_id": purchase_id, "status": "failed"})
         logger.exception("Fiscalization failed for purchase %s", purchase_id)
 
         # If auth-related, invalidate cached token for next attempt
