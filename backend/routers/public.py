@@ -28,6 +28,7 @@ from ._ticket_link_helpers import (
     combine_departure_datetime,
 )
 from ..utils.client_app import get_client_app_base
+from ..services.integration_events import record_event
 
 session_router = APIRouter(tags=["public"])
 router = APIRouter(prefix="/public", tags=["public"])
@@ -552,6 +553,7 @@ def _sync_purchase_paid_from_liqpay_callback(
         )
         if normalized != "paid":
             conn.commit()
+            record_event(provider="liqpay", event_type="payment_status_transition", purchase_id=purchase_id, external_id=payment_id, status="failed" if normalized=="failed" else "pending", payload={"from": purchase_status, "to": purchase_status, "liqpay_status": liqpay_status})
             return normalized, payment_id
 
         if purchase_status == "paid":
@@ -571,6 +573,7 @@ def _sync_purchase_paid_from_liqpay_callback(
         from ..services.checkbox import is_enabled as checkbox_enabled
         fiscal_clause = ", fiscal_status='pending'" if checkbox_enabled() else ""
         cur.execute(f"UPDATE purchase SET status='paid', update_at=NOW(){fiscal_clause} WHERE id=%s", (purchase_id,))
+        record_event(provider="liqpay", event_type="payment_status_transition", purchase_id=purchase_id, external_id=payment_id, status="success", payload={"from": purchase_status, "to": "paid", "liqpay_status": liqpay_status})
         _log_action(cur, purchase_id, "paid", amount_due, by="liqpay", method="online")
         try:
             tickets = issue_ticket_links(ticket_specs, None, conn=conn)
@@ -772,6 +775,7 @@ async def liqpay_callback(request: Request, background_tasks: BackgroundTasks) -
         raise HTTPException(status_code=400, detail="Invalid LiqPay signature")
 
     payload = liqpay.decode_payload(data)
+    record_event(provider="liqpay", event_type="callback_received", status="success", payload=payload)
     order_id = str(payload.get("order_id") or "")
     purchase_id = _extract_purchase_id_from_order(order_id)
     if purchase_id is None:
