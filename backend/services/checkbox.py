@@ -9,6 +9,7 @@ import logging
 import os
 import time
 import threading
+import json
 from typing import Any
 
 import httpx
@@ -213,6 +214,25 @@ def get_receipt_png_url(receipt_id: str) -> str:
     return f"{_api_url()}/api/v1/receipts/{receipt_id}/png"
 
 
+def _sanitize_receipt_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Keep only operator-safe subset of CheckBox receipt payload."""
+    keep_fields = {
+        "id",
+        "status",
+        "serial",
+        "fiscal_code",
+        "created_at",
+        "updated_at",
+        "total_sum",
+        "payments",
+    }
+    sanitized: dict[str, Any] = {}
+    for key in keep_fields:
+        if key in payload:
+            sanitized[key] = payload[key]
+    return sanitized
+
+
 # ---------------------------------------------------------------------------
 # Data loading for receipt items
 # ---------------------------------------------------------------------------
@@ -348,6 +368,8 @@ def fiscalize_purchase(purchase_id: int) -> None:
         # Poll until DONE
         receipt_data = _poll_receipt(receipt_id)
         fiscal_code = receipt_data.get("fiscal_code", "")
+        receipt_url = get_receipt_png_url(receipt_id)
+        sanitized_payload = _sanitize_receipt_payload(receipt_data)
 
         # Success — persist final state
         cur.execute(
@@ -356,12 +378,14 @@ def fiscalize_purchase(purchase_id: int) -> None:
                SET fiscal_status = 'done',
                    checkbox_receipt_id = %s,
                    checkbox_fiscal_code = %s,
+                   fiscal_receipt_url = %s,
+                   fiscal_payload = %s::jsonb,
                    fiscal_last_error = NULL,
                    fiscalized_at = NOW(),
                    update_at = NOW()
              WHERE id = %s
             """,
-            (receipt_id, fiscal_code, purchase_id),
+            (receipt_id, fiscal_code, receipt_url, json.dumps(sanitized_payload), purchase_id),
         )
         conn.commit()
         logger.info(
