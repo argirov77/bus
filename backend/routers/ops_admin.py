@@ -1,9 +1,11 @@
+import threading
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ..auth import require_admin_token
 from ..database import get_connection
+from ..services.integration_events import record_event
 
 router = APIRouter(
     prefix="/admin/ops",
@@ -236,3 +238,115 @@ def paid_without_receipt(
     finally:
         cur.close()
         conn.close()
+
+
+@router.post("/purchases/{purchase_id}/retry-fiscalization")
+def retry_fiscalization(
+    purchase_id: int,
+    run_async: bool = Query(False, description="Run fiscalization in background and return immediately"),
+) -> dict[str, Any]:
+    """Manually trigger CheckBox fiscalization retry for a paid purchase."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT id, status, fiscal_status, checkbox_receipt_id,
+                   checkbox_fiscal_code, fiscal_last_error, fiscal_attempts
+            FROM purchase
+            WHERE id = %s
+            """,
+            (purchase_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Purchase not found")
+
+        _id, status, fiscal_status, receipt_id, fiscal_code, fiscal_error, fiscal_attempts = row
+
+        if status != "paid":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Purchase must be paid before fiscalization retry (current status: {status})",
+            )
+        if receipt_id:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Purchase already has CheckBox receipt id: {receipt_id}",
+            )
+        if fiscal_status not in ("pending", "failed"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Fiscal status does not allow retry: {fiscal_status}",
+            )
+    finally:
+        cur.close()
+        conn.close()
+
+    from ..services.checkbox import fiscalize_purchase
+
+    record_event(
+        provider="checkbox",
+        event_type="checkbox_started",
+        purchase_id=purchase_id,
+        status="start",
+        payload={"trigger": "admin_manual_retry", "run_async": run_async},
+    )
+
+    if run_async:
+        threading.Thread(target=fiscalize_purchase, args=(purchase_id,), daemon=True).start()
+        return {
+            "purchase_id": purchase_id,
+            "message": "Fiscalization retry started in background",
+            "status": "started",
+        }
+
+    fiscalize_purchase(purchase_id)
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT status, fiscal_status, checkbox_receipt_id, checkbox_fiscal_code, fiscal_last_error, fiscal_attempts
+            FROM purchase
+            WHERE id = %s
+            """,
+            (purchase_id,),
+        )
+        status, fiscal_status, receipt_id, fiscal_code, fiscal_error, fiscal_attempts = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    if receipt_id and fiscal_status == "done":
+        record_event(
+            provider="checkbox",
+            event_type="checkbox_receipt_created",
+            purchase_id=purchase_id,
+            external_id=str(receipt_id),
+            status="success",
+            payload={"fiscal_status": fiscal_status, "fiscal_code": fiscal_code},
+        )
+        message = "CheckBox receipt successfully created"
+    else:
+        record_event(
+            provider="checkbox",
+            event_type="checkbox_receipt_failed",
+            purchase_id=purchase_id,
+            status="failed",
+            error_message=fiscal_error or "Fiscalization attempt did not produce a receipt",
+            payload={"fiscal_status": fiscal_status},
+        )
+        message = "CheckBox fiscalization failed"
+
+    return {
+        "purchase_id": purchase_id,
+        "message": message,
+        "status": status,
+        "fiscal_status": fiscal_status,
+        "checkbox_receipt_id": receipt_id,
+        "checkbox_fiscal_code": fiscal_code,
+        "fiscal_last_error": fiscal_error,
+        "fiscal_attempts": fiscal_attempts,
+    }
