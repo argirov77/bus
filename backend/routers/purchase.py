@@ -174,28 +174,7 @@ def _validate_purchase_payable(amount_due: float, status: str) -> None:
         raise HTTPException(409, f"Purchase is {normalized_status}")
 
 
-def _purchase_has_column(cur, column_name: str) -> bool:
-    cur.execute(
-        """
-        SELECT 1
-          FROM information_schema.columns
-         WHERE table_schema = 'public'
-           AND table_name = 'purchase'
-           AND column_name = %s
-         LIMIT 1
-        """,
-        (column_name,),
-    )
-    return cur.fetchone() is not None
-
-
 def _save_liqpay_order_id(cur, purchase_id: int, order_id: str) -> None:
-    if not _purchase_has_column(cur, "liqpay_order_id"):
-        logger.warning(
-            "Skipping LiqPay order_id persistence for purchase=%s because column liqpay_order_id is missing",
-            purchase_id,
-        )
-        return
     cur.execute(
         "UPDATE purchase SET liqpay_order_id=%s, update_at=NOW() WHERE id=%s",
         (order_id, purchase_id),

@@ -30,6 +30,9 @@ class ResolveCursor:
             return self._row
         return None
 
+    def fetchall(self):
+        return []
+
     def close(self):
         pass
 
@@ -129,116 +132,6 @@ def test_payments_resolve_rejects_unknown_order_format(client):
     resp = cli.get("/public/payments/resolve", params={"order_id": "bad.order"})
 
     assert resp.status_code == 422
-
-
-def test_payments_resolve_handles_missing_liqpay_columns(client):
-    cli, state = client
-    state["row"] = [1, "reserved", 15.0, "a@b.com", "Alice", None, None]
-    state["has_liqpay_column"] = False
-
-    resp = cli.get("/public/payments/resolve", params={"order_id": "purchase-1"})
-
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["status"] == "paid"
-    assert state["verify_called"] == 1
-    assert state["synced"] == 1
-
-
-def test_payments_resolve_handles_desynced_liqpay_schema(client):
-    cli, state = client
-    state["row"] = [1, "reserved", 15.0, "a@b.com", "Alice", None, None]
-
-    class UndefinedColumnError(Exception):
-        pass
-
-    from backend.routers import public as public_module
-
-    public_module.psycopg2.errors.UndefinedColumn = UndefinedColumnError
-
-    conn = public_module.get_connection()
-    original_execute = conn.cursor_obj.execute
-
-    calls = {"purchase_select": 0}
-
-    def flaky_execute(query, params=None):
-        q = query.lower()
-        if "from purchase" in q and "liqpay_order_id" in q:
-            calls["purchase_select"] += 1
-            if calls["purchase_select"] == 1:
-                raise UndefinedColumnError()
-        return original_execute(query, params)
-
-    conn.cursor_obj.execute = flaky_execute
-
-    public_module.get_connection = lambda: conn
-
-    resp = cli.get("/public/payments/resolve", params={"order_id": "purchase-1"})
-
-    assert resp.status_code == 200
-    assert resp.json()["purchaseId"] == 1
-    assert state["verify_called"] == 1
-
-
-def test_sync_purchase_paid_handles_desynced_liqpay_columns(monkeypatch):
-    from backend.routers import public as public_module
-    import psycopg2
-
-    class Cursor:
-        def __init__(self):
-            self.last_query = ""
-            self.update_attempts = 0
-
-        def execute(self, query, params=None):
-            self.last_query = query
-            q = query.lower()
-            if "from information_schema.columns" in q:
-                return
-            if "update purchase" in q and "liqpay_order_id" in q:
-                self.update_attempts += 1
-                if self.update_attempts == 1:
-                    raise psycopg2.ProgrammingError('column "liqpay_order_id" does not exist')
-
-        def fetchone(self):
-            q = self.last_query.lower()
-            if "from information_schema.columns" in q:
-                return [1]
-            if "from purchase" in q:
-                return [15.0, "paid", "a@b.com"]
-            return None
-
-        def close(self):
-            pass
-
-    class Conn:
-        def __init__(self):
-            self.cursor_obj = Cursor()
-            self.rollbacks = 0
-
-        def cursor(self):
-            return self.cursor_obj
-
-        def commit(self):
-            pass
-
-        def rollback(self):
-            self.rollbacks += 1
-
-        def close(self):
-            pass
-
-    conn = Conn()
-    monkeypatch.setattr(public_module, "get_connection", lambda: conn)
-
-    status, payment_id = public_module._sync_purchase_paid_from_liqpay_callback(
-        1,
-        "purchase-1",
-        {"status": "success", "payment_id": "p-1"},
-    )
-
-    assert status == "paid"
-    assert payment_id == "p-1"
-    assert conn.rollbacks == 1
 
 
 def test_liqpay_callback_parses_urlencoded_body_without_python_multipart(client, monkeypatch):
