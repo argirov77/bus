@@ -501,6 +501,7 @@ def create_purchase(data: PurchaseCreate, background_tasks: BackgroundTasks):
         tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
         tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
         conn.commit()
+        logger.info("purchase_created purchase_id=%s order_id=%s payment_id=%s amount=%s status=%s", purchase_id, None, None, amount_due, "reserved")
         record_event(provider="purchase", event_type="create_purchase", purchase_id=purchase_id, status="success", payload={"tickets": len(ticket_specs), "amount_due": amount_due})
     except HTTPException:
         conn.rollback()
@@ -552,6 +553,7 @@ def pay_purchase(
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
 
         cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
+        logger.info("purchase_paid purchase_id=%s order_id=%s payment_id=%s amount=%s status=%s", purchase_id, None, None, amount_due, "paid")
         record_event(provider="purchase", event_type="payment_status_transition", purchase_id=purchase_id, status="success", payload={"from": purchase_status, "to": "paid", "method": "offline"})
         _log_action(cur, purchase_id, "paid", amount_due, by=actor, method=ADMIN_PAY_METHOD)
         tickets = issue_ticket_links(ticket_specs, None, conn=conn)

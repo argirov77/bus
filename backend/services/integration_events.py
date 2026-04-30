@@ -11,6 +11,15 @@ _SENSITIVE_KEYS = {
     "token", "access_token", "refresh_token", "secret", "password", "signature",
     "authorization", "auth", "api_key", "private_key", "card", "pan", "cvv", "cvc",
 }
+_SENSITIVE_VALUE_PATTERNS = ("card", "pan", "token", "secret", "password", "private_key")
+
+
+def _mask_card_like(value: str) -> str:
+    digits = "".join(ch for ch in value if ch.isdigit())
+    if len(digits) < 12:
+        return value
+    tail = digits[-4:]
+    return f"***{tail}"
 
 
 def _sanitize(value: Any) -> Any:
@@ -29,7 +38,16 @@ def _sanitize(value: Any) -> Any:
         return [_sanitize(v) for v in value]
     if isinstance(value, (datetime, Decimal)):
         return str(value)
+    if isinstance(value, str):
+        lowered = value.lower()
+        if any(pattern in lowered for pattern in _SENSITIVE_VALUE_PATTERNS):
+            return "***"
+        return _mask_card_like(value)
     return value
+
+
+def sanitize_payload(payload: Any) -> Any:
+    return _sanitize(payload)
 
 
 def record_event(
@@ -43,7 +61,7 @@ def record_event(
     payload: Any | None = None,
     error_message: str | None = None,
 ) -> None:
-    payload_json = json.dumps(_sanitize(payload), ensure_ascii=False) if payload is not None else None
+    payload_json = json.dumps(sanitize_payload(payload), ensure_ascii=False) if payload is not None else None
     conn = None
     cur = None
     try:
