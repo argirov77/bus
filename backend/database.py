@@ -102,6 +102,44 @@ def run_migrations() -> None:
     conn.close()
 
 
+
+
+def _purchase_has_liqpay_tracking_columns(conn) -> bool:
+    required_columns = (
+        "liqpay_order_id",
+        "liqpay_status",
+        "liqpay_payment_id",
+        "liqpay_payload",
+    )
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'purchase'
+              AND column_name = ANY(%s)
+            """,
+            (list(required_columns),),
+        )
+        existing = {row[0] for row in cur.fetchall()}
+    return all(name in existing for name in required_columns)
+
+
+def _mark_migrations_as_applied(conn, filenames) -> None:
+    with conn.cursor() as cur:
+        for filename in filenames:
+            cur.execute(
+                """
+                INSERT INTO schema_migrations (filename)
+                VALUES (%s)
+                ON CONFLICT (filename) DO NOTHING
+                """,
+                (filename,),
+            )
+    conn.commit()
+
+
 REQUIRED_MIGRATIONS = (
     "018_add_liqpay_tracking.sql",
     "019_liqpay_payment_method_and_tracking.sql",
@@ -124,16 +162,24 @@ def validate_required_migrations() -> None:
     )
     applied = {row[0] for row in cur.fetchall()}
     cur.close()
-    conn.close()
 
     missing = [name for name in REQUIRED_MIGRATIONS if name not in applied]
-    if missing:
-        required_revision = REQUIRED_MIGRATIONS[-1]
-        raise RuntimeError(
-            "Database schema is outdated: required migration revision "
-            f"{required_revision} is missing dependencies {missing}. "
-            "Run project migrations in the backend runtime environment."
-        )
+    if not missing:
+        conn.close()
+        return
+
+    if _purchase_has_liqpay_tracking_columns(conn):
+        _mark_migrations_as_applied(conn, missing)
+        conn.close()
+        return
+
+    conn.close()
+    required_revision = REQUIRED_MIGRATIONS[-1]
+    raise RuntimeError(
+        "Database schema is outdated: required migration revision "
+        f"{required_revision} is missing dependencies {missing}. "
+        "Run project migrations in the backend runtime environment."
+    )
 
 
 run_migrations()
