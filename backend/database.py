@@ -94,38 +94,4 @@ def run_migrations() -> None:
     conn.close()
 
 
-REQUIRED_MIGRATIONS = (
-    "018_add_liqpay_tracking.sql",
-    "019_liqpay_payment_method_and_tracking.sql",
-    "021_guard_liqpay_tracking_columns.sql",
-)
-
-
-def validate_required_migrations() -> None:
-    """Fail fast when critical schema revisions are missing."""
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT filename
-        FROM schema_migrations
-        WHERE filename = ANY(%s)
-        """,
-        (list(REQUIRED_MIGRATIONS),),
-    )
-    applied = {row[0] for row in cur.fetchall()}
-    cur.close()
-    conn.close()
-
-    missing = [name for name in REQUIRED_MIGRATIONS if name not in applied]
-    if missing:
-        required_revision = REQUIRED_MIGRATIONS[-1]
-        raise RuntimeError(
-            "Database schema is outdated: required migration revision "
-            f"{required_revision} is missing dependencies {missing}. "
-            "Run project migrations in the backend runtime environment."
-        )
-
-
 run_migrations()
-validate_required_migrations()
