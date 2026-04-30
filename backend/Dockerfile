@@ -25,6 +25,7 @@ RUN python -m venv /opt/venv \
 
 # copy your package as a subdirectory
 COPY backend ./backend
+COPY db ./db
 
 # --- STAGE 2: final image ---
 FROM python:3.12-slim
@@ -47,6 +48,7 @@ RUN apt-get update \
 # bring in the venv & code
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /app/backend /app/backend
+COPY --from=builder /app/db /app/db
 
 ENV PATH="/opt/venv/bin:$PATH"
 
