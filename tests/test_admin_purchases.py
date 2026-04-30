@@ -12,6 +12,18 @@ class DummyCursor:
         self.query = query
         self.queries.append((query, params))
     def fetchone(self):
+        if "FROM purchase" in self.query:
+            return (
+                "paid",
+                "order-1",
+                "payment-1",
+                "success",
+                "pending",
+                None,
+                None,
+                None,
+                None,
+            )
         return None
     def fetchall(self):
         if "FROM purchase" in self.query:
@@ -27,6 +39,14 @@ class DummyCursor:
                 "reserved",
                 datetime(2025, 8, 9, 12, 0, 0),
                 "online",
+                "reserved",
+                "order-1",
+                "payment-1",
+                "success",
+                "pending",
+                None,
+                None,
+                None,
             )]
         if "FROM ticket" in self.query:
             return [(
