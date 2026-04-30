@@ -24,6 +24,7 @@ from ..services.access_guard import guard_public_request
 from ..services.email import render_ticket_email, send_ticket_email
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
+from ..services.integration_events import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -255,8 +256,9 @@ def _send_ticket_email_task(
         subject, html_body = render_ticket_email(dto, deep_link, lang_value)
         send_ticket_email(recipient, subject, html_body, pdf_bytes)
         logger.info("Sent ticket email for ticket %s to %s", ticket_id, recipient)
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to send ticket email for ticket %s", ticket_id)
+        record_event(provider="email", event_type="ticket_email_send", status="error", ticket_id=ticket_id, payload={"recipient": recipient}, error_message=str(exc))
 
 
 def _create_purchase(
@@ -499,11 +501,13 @@ def create_purchase(data: PurchaseCreate, background_tasks: BackgroundTasks):
         tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
         tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
         conn.commit()
+        record_event(provider="purchase", event_type="create_purchase", purchase_id=purchase_id, status="success", payload={"tickets": len(ticket_specs), "amount_due": amount_due})
     except HTTPException:
         conn.rollback()
         raise
     except Exception as exc:
         conn.rollback()
+        record_event(provider="purchase", event_type="create_purchase", status="error", payload={"tour_id": data.tour_id, "seats": data.seat_nums}, error_message=str(exc))
         raise HTTPException(500, str(exc))
     finally:
         cur.close()
@@ -548,6 +552,7 @@ def pay_purchase(
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
 
         cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
+        record_event(provider="purchase", event_type="payment_status_transition", purchase_id=purchase_id, status="success", payload={"from": purchase_status, "to": "paid", "method": "offline"})
         _log_action(cur, purchase_id, "paid", amount_due, by=actor, method=ADMIN_PAY_METHOD)
         tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         conn.commit()
@@ -558,6 +563,7 @@ def pay_purchase(
         raise
     except Exception as exc:
         conn.rollback()
+        record_event(provider="purchase", event_type="payment_status_transition", purchase_id=purchase_id, status="error", payload={"to": "paid", "method": "offline"}, error_message=str(exc))
         raise HTTPException(500, str(exc))
     finally:
         cur.close()
@@ -654,6 +660,7 @@ def book_seat(data: PurchaseCreate, request: Request, background_tasks: Backgrou
         tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
         tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
         conn.commit()
+        record_event(provider="purchase", event_type="create_purchase", purchase_id=purchase_id, status="success", payload={"tickets": len(ticket_specs), "amount_due": amount_due, "flow": "book"})
     except HTTPException:
         conn.rollback()
         raise
