@@ -532,29 +532,39 @@ def _sync_purchase_paid_from_liqpay_callback(
         amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
         cur.execute(
             """
-            UPDATE purchase
-               SET liqpay_order_id=%s,
-                   liqpay_status=%s,
-                   liqpay_payment_id=%s,
-                   liqpay_payload=%s,
-                   update_at=NOW()
-             WHERE id=%s
-            """,
-            (order_id, liqpay_status or None, payment_id, json.dumps(sanitized_payload), purchase_id),
+            SELECT column_name
+              FROM information_schema.columns
+             WHERE table_schema='public'
+               AND table_name='purchase'
+               AND column_name IN ('liqpay_order_id','liqpay_status','liqpay_payment_id','liqpay_payload')
+            """
         )
+        liqpay_columns = {r[0] for r in (cur.fetchall() or [])}
+        if len(liqpay_columns) == 4:
+            cur.execute(
+                """
+                UPDATE purchase
+                   SET liqpay_order_id=%s,
+                       liqpay_status=%s,
+                       liqpay_payment_id=%s,
+                       liqpay_payload=%s,
+                       update_at=NOW()
+                 WHERE id=%s
+                """,
+                (order_id, liqpay_status or None, payment_id, json.dumps(sanitized_payload), purchase_id),
+            )
+        else:
+            logger.error(
+                "liqpay_tracking_schema_missing purchase_id=%s columns=%s action=run_migrations_018_019_021",
+                purchase_id,
+                sorted(liqpay_columns),
+            )
 
         normalized = _normalize_liqpay_result_status(liqpay_status)
-        logger.info(
-            "LiqPay callback processed for purchase=%s order_id=%s payment_id=%s liqpay_status=%s normalized=%s",
-            purchase_id,
-            order_id,
-            payment_id,
-            liqpay_status or None,
-            normalized,
-        )
+        logger.info("liqpay_payment_saved purchase_id=%s status=%s payment_id=%s", purchase_id, normalized, payment_id)
         if normalized != "paid":
             conn.commit()
-            record_event(provider="liqpay", event_type="payment_status_transition", purchase_id=purchase_id, external_id=payment_id, status="failed" if normalized=="failed" else "pending", payload={"purchase_id": purchase_id, "order_id": order_id, "payment_id": payment_id, "amount": amount_due, "from": purchase_status, "to": purchase_status, "liqpay_status": liqpay_status})
+            record_event(provider="liqpay", event_type="liqpay_payment_failed" if normalized=="failed" else "liqpay_payment_pending", purchase_id=purchase_id, external_id=payment_id, status="failed" if normalized=="failed" else "pending", payload={"purchase_id": purchase_id, "order_id": order_id, "payment_id": payment_id, "amount": amount_due, "from": purchase_status, "to": purchase_status, "liqpay_status": liqpay_status})
             return normalized, payment_id
 
         if purchase_status == "paid":
@@ -578,7 +588,7 @@ def _sync_purchase_paid_from_liqpay_callback(
         from ..services.checkbox import is_enabled as checkbox_enabled
         fiscal_clause = ", fiscal_status='pending'" if checkbox_enabled() else ""
         cur.execute(f"UPDATE purchase SET status='paid', update_at=NOW(){fiscal_clause} WHERE id=%s", (purchase_id,))
-        record_event(provider="liqpay", event_type="payment_status_transition", purchase_id=purchase_id, external_id=payment_id, status="success", payload={"purchase_id": purchase_id, "order_id": order_id, "payment_id": payment_id, "amount": amount_due, "from": purchase_status, "to": "paid", "liqpay_status": liqpay_status})
+        record_event(provider="liqpay", event_type="liqpay_payment_success", purchase_id=purchase_id, external_id=payment_id, status="success", payload={"purchase_id": purchase_id, "order_id": order_id, "payment_id": payment_id, "amount": amount_due, "from": purchase_status, "to": "paid", "liqpay_status": liqpay_status})
         _log_action(cur, purchase_id, "paid", amount_due, by="liqpay", method="online")
         try:
             tickets = issue_ticket_links(ticket_specs, None, conn=conn)
@@ -779,11 +789,17 @@ async def liqpay_callback(request: Request, background_tasks: BackgroundTasks) -
     if not liqpay.verify_signature(data, signature):
         logger.warning("liqpay_signature_invalid purchase_id=%s order_id=%s status=invalid", None, None)
         raise HTTPException(status_code=400, detail="Invalid LiqPay signature")
-    logger.info("liqpay_signature_valid status=valid")
+    logger.info("liqpay_signature_valid")
 
     payload = liqpay.decode_payload(data)
     payload = sanitize_payload(payload)
-    record_event(provider="liqpay", event_type="callback_received", status="success", payload=payload)
+    logger.info(
+        "liqpay_callback_received order_id=%s raw_status=%s payment_id=%s",
+        payload.get("order_id"),
+        payload.get("status"),
+        payload.get("payment_id"),
+    )
+    record_event(provider="liqpay", event_type="liqpay_callback_received", status="success", payload=payload)
     order_id = str(payload.get("order_id") or "")
     purchase_id = _extract_purchase_id_from_order(order_id)
     if purchase_id is None:

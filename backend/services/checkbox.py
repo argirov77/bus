@@ -310,8 +310,8 @@ def fiscalize_purchase(purchase_id: int) -> None:
     if not is_enabled():
         return
 
-    logger.info("checkbox_fiscalize_start purchase_id=%s status=start", purchase_id)
-    record_event(provider="checkbox", event_type="fiscalize_start", purchase_id=purchase_id, status="start", payload={"purchase_id": purchase_id})
+    logger.info("checkbox_fiscalization_started purchase_id=%s amount=%s", purchase_id, None)
+    record_event(provider="checkbox", event_type="checkbox_started", purchase_id=purchase_id, status="start", payload={"purchase_id": purchase_id})
 
     from ..database import get_connection
 
@@ -332,7 +332,7 @@ def fiscalize_purchase(purchase_id: int) -> None:
 
         # Idempotency: skip if already done
         if fiscal_status == "done":
-            logger.info("fiscalization_skipped_existing_receipt purchase_id=%s status=%s receipt_id=%s", purchase_id, fiscal_status, existing_receipt_id)
+            logger.info("fiscalization_skipped_existing_receipt purchase_id=%s fiscal_receipt_id=%s", purchase_id, existing_receipt_id)
             conn.commit()
             return
 
@@ -356,7 +356,19 @@ def fiscalize_purchase(purchase_id: int) -> None:
         # instead of creating a duplicate
         receipt_id = existing_receipt_id
         if not receipt_id:
-            _ensure_shift()
+            try:
+                _get_token()
+                logger.info("checkbox_auth_success purchase_id=%s", purchase_id)
+            except Exception:
+                logger.exception("checkbox_auth_failed purchase_id=%s", purchase_id)
+                raise
+            try:
+                _ensure_shift()
+                logger.info("checkbox_shift_checked purchase_id=%s", purchase_id)
+            except Exception:
+                logger.exception("checkbox_shift_error purchase_id=%s", purchase_id)
+                raise
+            logger.info("checkbox_receipt_create_started purchase_id=%s receipt_uuid=%s amount=%s", purchase_id, None, total_kopecks)
             receipt_id = _create_receipt(items, total_kopecks)
             # Persist receipt_id immediately so we don't create duplicates on retry
             cur.execute(
@@ -388,17 +400,14 @@ def fiscalize_purchase(purchase_id: int) -> None:
             (receipt_id, fiscal_code, receipt_url, json.dumps(sanitized_payload), purchase_id),
         )
         conn.commit()
-        logger.info(
-            "Purchase %s fiscalized successfully: receipt=%s fiscal_code=%s",
-            purchase_id, receipt_id, fiscal_code,
-        )
-        record_event(provider="checkbox", event_type="fiscalize_success", purchase_id=purchase_id, external_id=str(receipt_id), status="success", payload={"purchase_id": purchase_id, "receipt_id": receipt_id, "status": "done", "fiscal_code": fiscal_code})
+        logger.info("checkbox_receipt_created purchase_id=%s fiscal_receipt_id=%s fiscal_status=%s fiscal_receipt_url=%s", purchase_id, receipt_id, "done", receipt_url)
+        record_event(provider="checkbox", event_type="checkbox_receipt_created", purchase_id=purchase_id, external_id=str(receipt_id), status="success", payload={"purchase_id": purchase_id, "receipt_id": receipt_id, "status": "done", "fiscal_code": fiscal_code})
 
     except Exception as exc:
         conn.rollback()
         error_msg = str(exc)[:500]
-        record_event(provider="checkbox", event_type="fiscalize_error", purchase_id=purchase_id, status="error", error_message=error_msg, payload={"purchase_id": purchase_id, "status": "failed"})
-        logger.exception("Fiscalization failed for purchase %s", purchase_id)
+        record_event(provider="checkbox", event_type="checkbox_receipt_failed", purchase_id=purchase_id, status="error", error_message=error_msg, payload={"purchase_id": purchase_id, "status": "failed"})
+        logger.exception("checkbox_receipt_failed purchase_id=%s error=%s", purchase_id, error_msg)
 
         # If auth-related, invalidate cached token for next attempt
         if "401" in error_msg or "403" in error_msg or "Unauthorized" in error_msg:
