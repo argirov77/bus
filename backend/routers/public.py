@@ -84,6 +84,9 @@ class PaymentResolvePurchase(BaseModel):
     amount_due: float
     customer_email: str | None = None
     customer_name: str | None = None
+    fiscal_status: str | None = None
+    fiscal_receipt_url: str | None = None
+    checkbox_fiscal_code: str | None = None
     tickets: list[PaymentResolveTicket] = []
 
 
@@ -641,22 +644,41 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
                   FROM information_schema.columns
                  WHERE table_schema='public'
                    AND table_name='purchase'
-                   AND column_name IN ('liqpay_order_id','liqpay_status')
+                   AND column_name IN (
+                       'liqpay_order_id',
+                       'liqpay_status',
+                       'fiscal_status',
+                       'fiscal_receipt_url',
+                       'checkbox_fiscal_code'
+                   )
                 """
             )
             liqpay_columns = {r[0] for r in (cur.fetchall() or [])}
             has_liqpay_tracking = {'liqpay_order_id', 'liqpay_status'}.issubset(liqpay_columns)
+            has_fiscal_columns = {'fiscal_status', 'fiscal_receipt_url', 'checkbox_fiscal_code'}.issubset(liqpay_columns)
 
             if has_liqpay_tracking:
-                cur.execute(
-                    """
-                    SELECT id, status, amount_due, customer_email, customer_name,
-                           liqpay_order_id, liqpay_status
-                      FROM purchase
-                     WHERE id=%s
-                    """,
-                    (purchase_id,),
-                )
+                if has_fiscal_columns:
+                    cur.execute(
+                        """
+                        SELECT id, status, amount_due, customer_email, customer_name,
+                               liqpay_order_id, liqpay_status,
+                               fiscal_status, fiscal_receipt_url, checkbox_fiscal_code
+                          FROM purchase
+                         WHERE id=%s
+                        """,
+                        (purchase_id,),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT id, status, amount_due, customer_email, customer_name,
+                               liqpay_order_id, liqpay_status
+                          FROM purchase
+                         WHERE id=%s
+                        """,
+                        (purchase_id,),
+                    )
             else:
                 logger.error(
                     "liqpay_tracking_schema_missing purchase_id=%s columns=%s action=run_migrations_018_019_021",
@@ -723,6 +745,9 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
         "amount_due": _round_currency(float(row[2] or 0.0)),
         "customer_email": row[3],
         "customer_name": row[4],
+        "fiscal_status": row[7] if len(row) > 7 else None,
+        "fiscal_receipt_url": row[8] if len(row) > 8 else None,
+        "checkbox_fiscal_code": row[9] if len(row) > 9 else None,
         "tickets": [],
     }
 
