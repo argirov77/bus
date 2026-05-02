@@ -30,6 +30,9 @@ class ResolveCursor:
             return self._row
         return None
 
+    def fetchall(self):
+        return []
+
     def close(self):
         pass
 
@@ -57,7 +60,7 @@ def client(monkeypatch):
     monkeypatch.setenv("CLIENT_APP_BASE", "https://example.test")
 
     state = {
-        "row": [1, "reserved", 15.0, "a@b.com", "Alice", "purchase-1", None],
+        "row": [1, "reserved", 15.0, "a@b.com", "Alice", "purchase-1", None, None, None, None],
         "has_liqpay_column": True,
         "verify_called": 0,
         "synced": 0,
@@ -97,7 +100,7 @@ def client(monkeypatch):
 
 def test_payments_resolve_returns_paid_from_db(client):
     cli, state = client
-    state["row"] = [1, "paid", 15.0, "a@b.com", "Alice", "purchase-1", "success"]
+    state["row"] = [1, "paid", 15.0, "a@b.com", "Alice", "purchase-1", "success", "done", "rcpt-1", "CBX-1"]
 
     resp = cli.get("/public/payments/resolve", params={"order_id": "purchase-1"})
 
@@ -105,13 +108,16 @@ def test_payments_resolve_returns_paid_from_db(client):
     body = resp.json()
     assert body["status"] == "paid"
     assert body["purchaseId"] == 1
+    assert body["fiscal_status"] == "done"
+    assert body["fiscal_receipt_url"].endswith("/api/v1/receipts/rcpt-1/png")
+    assert body["checkbox_fiscal_code"] == "CBX-1"
     assert body["purchase"]["id"] == 1
     assert state["verify_called"] == 0
 
 
 def test_payments_resolve_verifies_and_syncs_pending_purchase(client):
     cli, state = client
-    state["row"] = [1, "reserved", 15.0, "a@b.com", "Alice", "purchase-1", None]
+    state["row"] = [1, "reserved", 15.0, "a@b.com", "Alice", "purchase-1", None, "pending", None, None]
 
     resp = cli.get("/public/payments/resolve", params={"order_id": "purchase-1"})
 
@@ -119,6 +125,7 @@ def test_payments_resolve_verifies_and_syncs_pending_purchase(client):
     body = resp.json()
     assert body["status"] == "paid"
     assert body["purchase"]["status"] == "paid"
+    assert body["fiscal_status"] == "pending"
     assert state["verify_called"] == 1
     assert state["synced"] == 1
 
@@ -133,7 +140,7 @@ def test_payments_resolve_rejects_unknown_order_format(client):
 
 def test_payments_resolve_handles_missing_liqpay_columns(client):
     cli, state = client
-    state["row"] = [1, "reserved", 15.0, "a@b.com", "Alice", None, None]
+    state["row"] = [1, "reserved", 15.0, "a@b.com", "Alice", None, None, None, None, None]
     state["has_liqpay_column"] = False
 
     resp = cli.get("/public/payments/resolve", params={"order_id": "purchase-1"})
@@ -147,7 +154,7 @@ def test_payments_resolve_handles_missing_liqpay_columns(client):
 
 def test_payments_resolve_handles_desynced_liqpay_schema(client):
     cli, state = client
-    state["row"] = [1, "reserved", 15.0, "a@b.com", "Alice", None, None]
+    state["row"] = [1, "reserved", 15.0, "a@b.com", "Alice", None, None, None, None, None]
 
     class UndefinedColumnError(Exception):
         pass

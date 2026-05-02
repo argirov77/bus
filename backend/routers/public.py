@@ -90,6 +90,11 @@ class PaymentResolvePurchase(BaseModel):
 class PaymentResolveOut(BaseModel):
     status: Literal["paid", "pending", "failed"]
     purchaseId: int
+    amount_due: float
+    tickets: list[PaymentResolveTicket] = []
+    fiscal_status: Literal["pending", "processing", "done", "failed"] | None = None
+    fiscal_receipt_url: str | None = None
+    checkbox_fiscal_code: str | None = None
     purchase: PaymentResolvePurchase | None = None
 
 
@@ -629,8 +634,20 @@ def _sync_purchase_paid_from_liqpay_callback(
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
         from ..services.checkbox import is_enabled as checkbox_enabled
-        fiscal_clause = ", fiscal_status='pending'" if checkbox_enabled() else ""
-        cur.execute(f"UPDATE purchase SET status='paid', update_at=NOW(){fiscal_clause} WHERE id=%s", (purchase_id,))
+        if checkbox_enabled():
+            fiscal_sql = (
+                "UPDATE purchase "
+                "SET status='paid', fiscal_status='pending', update_at=NOW() "
+                "WHERE id=%s"
+            )
+        else:
+            fiscal_sql = (
+                "UPDATE purchase "
+                "SET status='paid', fiscal_status=NULL, checkbox_receipt_id=NULL, "
+                "checkbox_fiscal_code=NULL, update_at=NOW() "
+                "WHERE id=%s"
+            )
+        cur.execute(fiscal_sql, (purchase_id,))
         _log_action(cur, purchase_id, "paid", amount_due, by="liqpay", method="online")
         try:
             tickets = issue_ticket_links(ticket_specs, None, conn=conn)
@@ -683,7 +700,8 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
                     cur.execute(
                         """
                         SELECT id, status, amount_due, customer_email, customer_name,
-                               liqpay_order_id, liqpay_status
+                               liqpay_order_id, liqpay_status,
+                               fiscal_status, checkbox_receipt_id, checkbox_fiscal_code
                           FROM purchase
                          WHERE id=%s
                         """,
@@ -697,7 +715,10 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
                         """
                         SELECT id, status, amount_due, customer_email, customer_name,
                                NULL::TEXT AS liqpay_order_id,
-                               NULL::TEXT AS liqpay_status
+                               NULL::TEXT AS liqpay_status,
+                               NULL::TEXT AS fiscal_status,
+                               NULL::TEXT AS checkbox_receipt_id,
+                               NULL::TEXT AS checkbox_fiscal_code
                           FROM purchase
                          WHERE id=%s
                         """,
@@ -708,7 +729,10 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
                     """
                     SELECT id, status, amount_due, customer_email, customer_name,
                            NULL::TEXT AS liqpay_order_id,
-                           NULL::TEXT AS liqpay_status
+                           NULL::TEXT AS liqpay_status,
+                           NULL::TEXT AS fiscal_status,
+                           NULL::TEXT AS checkbox_receipt_id,
+                           NULL::TEXT AS checkbox_fiscal_code
                       FROM purchase
                      WHERE id=%s
                     """,
@@ -759,6 +783,11 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
                 else:
                     resolved_status = verified_status
 
+    from ..services.checkbox import get_receipt_png_url
+
+    receipt_id = str(row[8]) if row[8] else None
+    fiscal_receipt_url = get_receipt_png_url(receipt_id) if receipt_id else None
+
     purchase = {
         "id": int(row[0]),
         "status": resolved_status,
@@ -803,6 +832,11 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
     return {
         "status": resolved_status,
         "purchaseId": int(row[0]),
+        "amount_due": _round_currency(float(row[2] or 0.0)),
+        "tickets": purchase["tickets"],
+        "fiscal_status": row[7],
+        "fiscal_receipt_url": fiscal_receipt_url,
+        "checkbox_fiscal_code": row[9],
         "purchase": purchase,
     }
 
