@@ -215,12 +215,15 @@ def send_ticket_email(
         smtp_cls = smtplib.SMTP
         smtp_kwargs = {}
 
-    with smtp_cls(host, port, timeout=30, **smtp_kwargs) as server:
-        if not use_ssl:
-            server.starttls(context=context)
-        if username and password:
-            server.login(username, password)
-        server.send_message(message)
+    try:
+        with smtp_cls(host, port, timeout=30, **smtp_kwargs) as server:
+            if not use_ssl:
+                server.starttls(context=context)
+            if username and password:
+                server.login(username, password)
+            server.send_message(message)
+    except (smtplib.SMTPException, OSError) as exc:
+        logger.warning("Failed to send ticket email to %s: %s", to, exc)
 
 
 def send_otp_email(to: str, code: str, lang: str | None = None) -> None:
