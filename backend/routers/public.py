@@ -84,6 +84,9 @@ class PaymentResolvePurchase(BaseModel):
     amount_due: float
     customer_email: str | None = None
     customer_name: str | None = None
+    fiscal_status: str | None = None
+    fiscal_receipt_url: str | None = None
+    checkbox_fiscal_code: str | None = None
     tickets: list[PaymentResolveTicket] = []
 
 
@@ -641,36 +644,42 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
                   FROM information_schema.columns
                  WHERE table_schema='public'
                    AND table_name='purchase'
-                   AND column_name IN ('liqpay_order_id','liqpay_status')
+                   AND column_name IN (
+                       'liqpay_order_id',
+                       'liqpay_status',
+                       'fiscal_status',
+                       'fiscal_receipt_url',
+                       'checkbox_fiscal_code'
+                   )
                 """
             )
-            liqpay_columns = {r[0] for r in (cur.fetchall() or [])}
-            has_liqpay_tracking = {'liqpay_order_id', 'liqpay_status'}.issubset(liqpay_columns)
+            present_columns = {r[0] for r in (cur.fetchall() or [])}
+            has_liqpay_tracking = {"liqpay_order_id", "liqpay_status"}.issubset(present_columns)
+            has_fiscal_columns = {"fiscal_status", "fiscal_receipt_url", "checkbox_fiscal_code"}.issubset(present_columns)
 
+            select_fields = [
+                "id",
+                "status",
+                "amount_due",
+                "customer_email",
+                "customer_name",
+            ]
             if has_liqpay_tracking:
-                cur.execute(
-                    """
-                    SELECT id, status, amount_due, customer_email, customer_name,
-                           liqpay_order_id, liqpay_status
-                      FROM purchase
-                     WHERE id=%s
-                    """,
-                    (purchase_id,),
-                )
-            else:
+                select_fields.extend(["liqpay_order_id", "liqpay_status"])
+            if has_fiscal_columns:
+                select_fields.extend(["fiscal_status", "fiscal_receipt_url", "checkbox_fiscal_code"])
+
+            if not has_liqpay_tracking:
                 logger.error(
                     "liqpay_tracking_schema_missing purchase_id=%s columns=%s action=run_migrations_018_019_021",
                     purchase_id,
-                    sorted(liqpay_columns),
+                    sorted(present_columns),
                 )
-                cur.execute(
-                    """
-                    SELECT id, status, amount_due, customer_email, customer_name
-                      FROM purchase
-                     WHERE id=%s
-                    """,
-                    (purchase_id,),
-                )
+
+            cur.execute(
+                f"SELECT {', '.join(select_fields)} FROM purchase WHERE id=%s",
+                (purchase_id,),
+            )
 
             row = cur.fetchone()
         if not row:
@@ -678,12 +687,14 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
     finally:
         conn.close()
 
-    stored_order_id = row[5] if has_liqpay_tracking else None
+    field_index = {name: idx for idx, name in enumerate(select_fields)}
+
+    stored_order_id = row[field_index["liqpay_order_id"]] if has_liqpay_tracking else None
     if stored_order_id and stored_order_id != order_id:
         raise HTTPException(status_code=404, detail="order_id does not match purchase")
 
-    purchase_status = str(row[1] or "")
-    liqpay_status = row[6] if has_liqpay_tracking else None
+    purchase_status = str(row[field_index["status"]] or "")
+    liqpay_status = row[field_index["liqpay_status"]] if has_liqpay_tracking else None
 
     resolved_status = "pending"
     if purchase_status == "paid":
@@ -718,11 +729,14 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
                     resolved_status = verified_status
 
     purchase = {
-        "id": int(row[0]),
+        "id": int(row[field_index["id"]]),
         "status": resolved_status,
-        "amount_due": _round_currency(float(row[2] or 0.0)),
-        "customer_email": row[3],
-        "customer_name": row[4],
+        "amount_due": _round_currency(float(row[field_index["amount_due"]] or 0.0)),
+        "customer_email": row[field_index["customer_email"]],
+        "customer_name": row[field_index["customer_name"]],
+        "fiscal_status": row[field_index["fiscal_status"]] if has_fiscal_columns else None,
+        "fiscal_receipt_url": row[field_index["fiscal_receipt_url"]] if has_fiscal_columns else None,
+        "checkbox_fiscal_code": row[field_index["checkbox_fiscal_code"]] if has_fiscal_columns else None,
         "tickets": [],
     }
 
