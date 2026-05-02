@@ -87,6 +87,34 @@ def _auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {_get_token()}"}
 
 
+
+def _purchase_has_column(cur, column_name: str) -> bool:
+    cur.execute(
+        """
+        SELECT 1
+          FROM information_schema.columns
+         WHERE table_schema = current_schema()
+           AND table_name = 'purchase'
+           AND column_name = %s
+         LIMIT 1
+        """,
+        (column_name,),
+    )
+    return cur.fetchone() is not None
+
+
+def _has_required_fiscal_columns(cur) -> tuple[bool, list[str]]:
+    required = (
+        "fiscal_status",
+        "checkbox_receipt_id",
+        "checkbox_fiscal_code",
+        "fiscal_last_error",
+        "fiscal_attempts",
+        "fiscalized_at",
+    )
+    missing = [name for name in required if not _purchase_has_column(cur, name)]
+    return (len(missing) == 0, missing)
+
 # ---------------------------------------------------------------------------
 # Shift management
 # ---------------------------------------------------------------------------
@@ -295,6 +323,15 @@ def fiscalize_purchase(purchase_id: int) -> None:
     conn = get_connection()
     cur = conn.cursor()
     try:
+        has_columns, missing_columns = _has_required_fiscal_columns(cur)
+        if not has_columns:
+            logger.warning(
+                "Skipping fiscalization for purchase=%s; missing columns: %s",
+                purchase_id,
+                ", ".join(missing_columns),
+            )
+            return
+
         # Lock the row and check current fiscal status
         cur.execute(
             "SELECT fiscal_status, checkbox_receipt_id FROM purchase WHERE id = %s FOR UPDATE",
