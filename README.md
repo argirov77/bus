@@ -264,3 +264,31 @@ pytest
 - `docker compose exec backend alembic upgrade head` — пример миграции БД (если вы добавите Alembic).
 - `docker compose exec db psql -U postgres test1` — подключение к базе из контейнера.
 - `npm run build --prefix frontend` — сборка фронтенда для продакшена.
+
+## CheckBox integration health-check (Admin)
+
+- Endpoint: `GET /admin/integrations/checkbox/health` (admin token required).
+- Admin UI: button **"Проверить CheckBox"** on the main admin page.
+
+Required env vars:
+- `CHECKBOX_ENABLED=true`
+- `CHECKBOX_CASHIER_LOGIN`
+- `CHECKBOX_CASHIER_PASSWORD`
+
+Optional env vars (recommended):
+- `CHECKBOX_ACCESS_KEY` не задается вручную в этой интеграции (получается сервисом при авторизации), поэтому в health-check не валидируется как обязательный env.
+
+- `CHECKBOX_LICENSE_KEY`
+- `CHECKBOX_API_URL` (default `https://api.checkbox.ua`)
+
+Status interpretation:
+- `ok`: auth and shift check passed.
+- `warning`: integration works but optional config is missing.
+- `disabled`: integration disabled by env.
+- `error`: integration failed (credentials, HTTP error, or network issue).
+
+Common diagnostics:
+- `401/403`: verify cashier login/password/keys.
+- `network`/timeout/DNS: verify internet access and `CHECKBOX_API_URL`.
+
+For support, use **"Скопировать детали"** in admin UI (secrets are never returned).
