@@ -32,7 +32,6 @@ from .routers import (
     auth,
     bundle,
     public,
-    integrations_admin,
 )
 from .routers.ticket_admin import router as admin_tickets_router
 from .routers.purchase_admin import router as admin_purchases_router
@@ -104,7 +103,6 @@ app.include_router(public.session_router)
 app.include_router(public.router)
 app.include_router(admin_tickets_router)
 app.include_router(admin_purchases_router)
-app.include_router(integrations_admin.router)
 app.include_router(auth.router)
 
 
