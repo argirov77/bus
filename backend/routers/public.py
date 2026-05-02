@@ -635,7 +635,14 @@ def _sync_purchase_paid_from_liqpay_callback(
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
         from ..services.checkbox import is_enabled as checkbox_enabled
 
-        fiscal_columns = ("fiscal_status", "checkbox_receipt_id", "checkbox_fiscal_code")
+        fiscal_columns = (
+            "fiscal_status",
+            "checkbox_receipt_id",
+            "checkbox_fiscal_code",
+            "fiscal_last_error",
+            "fiscal_attempts",
+            "fiscalized_at",
+        )
         missing_fiscal_columns = _missing_purchase_columns(cur, fiscal_columns)
         if missing_fiscal_columns:
             logger.warning(
