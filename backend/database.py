@@ -63,6 +63,40 @@ def get_connection():
 from pathlib import Path
 
 
+def _ensure_purchase_schema_compatibility(cur) -> None:
+    """Backfill critical purchase columns when historical migrations were marked but not applied."""
+    cur.execute("ALTER TYPE public.payment_method_type ADD VALUE IF NOT EXISTS 'liqpay'")
+    cur.execute(
+        """
+        ALTER TABLE public.purchase
+            ADD COLUMN IF NOT EXISTS liqpay_order_id TEXT,
+            ADD COLUMN IF NOT EXISTS liqpay_status TEXT,
+            ADD COLUMN IF NOT EXISTS liqpay_payment_id TEXT,
+            ADD COLUMN IF NOT EXISTS liqpay_payload JSONB,
+            ADD COLUMN IF NOT EXISTS fiscal_status TEXT DEFAULT NULL,
+            ADD COLUMN IF NOT EXISTS checkbox_receipt_id TEXT,
+            ADD COLUMN IF NOT EXISTS checkbox_fiscal_code TEXT,
+            ADD COLUMN IF NOT EXISTS fiscal_last_error TEXT,
+            ADD COLUMN IF NOT EXISTS fiscal_attempts INTEGER DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS fiscalized_at TIMESTAMP
+        """
+    )
+    cur.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS purchase_liqpay_order_id_uidx
+            ON public.purchase (liqpay_order_id)
+            WHERE liqpay_order_id IS NOT NULL
+        """
+    )
+    cur.execute(
+        """
+        CREATE INDEX IF NOT EXISTS purchase_fiscal_status_pending_idx
+            ON public.purchase (id)
+            WHERE fiscal_status IN ('pending', 'failed')
+        """
+    )
+
+
 def run_migrations() -> None:
     """Apply SQL migrations found in db/migrations."""
     migrations_dir = Path(__file__).resolve().parents[1] / "db" / "migrations"
@@ -90,6 +124,9 @@ def run_migrations() -> None:
             "INSERT INTO schema_migrations (filename) VALUES (%s)", (path.name,)
         )
         conn.commit()
+
+    _ensure_purchase_schema_compatibility(cur)
+    conn.commit()
     cur.close()
     conn.close()
 
