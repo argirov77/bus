@@ -128,6 +128,9 @@ export default function PurchasesPage() {
   const handleRefund = (id) => {
     axios.post(`${API}/purchase/${id}/refund`).then(load).catch(console.error);
   };
+  const handleRetryFiscalization = (id) => {
+    axios.post(`${API}/admin/purchases/${id}/retry-fiscalization`).then(load).catch(console.error);
+  };
 
   const handleTicketDownload = async (ticketId) => {
     try {
@@ -235,6 +238,10 @@ export default function PurchasesPage() {
   };
 
   const modalPurchaseInfo = modalState.open ? info[modalState.orderId] : null;
+  const canRetryFiscalization = (purchase, purchaseInfo) =>
+    (purchaseInfo?.payment_status || purchase?.payment_status || purchase?.status) === "paid"
+    && ["pending", "failed"].includes(purchaseInfo?.fiscal_status || purchase?.fiscal_status)
+    && !(purchaseInfo?.checkbox_receipt_id || purchase?.checkbox_receipt_id);
 
   const renderTicketsTable = (purchaseInfo) => {
     const tickets = purchaseInfo?.tickets ?? [];
@@ -537,6 +544,22 @@ export default function PurchasesPage() {
 
                             <div className="purchases-card">
                               <div className="purchases-card__header">
+                                <span>Оплата и фискализация</span>
+                              </div>
+                              <div className="purchases-card__body">
+                                <div><b>payment_status:</b> {info[p.id]?.payment_status || p.payment_status || "—"}</div>
+                                <div><b>liqpay_order_id:</b> {info[p.id]?.liqpay_order_id || p.liqpay_order_id || "—"}</div>
+                                <div><b>liqpay_payment_id:</b> {info[p.id]?.liqpay_payment_id || p.liqpay_payment_id || "—"}</div>
+                                <div><b>liqpay_status:</b> {info[p.id]?.liqpay_status || p.liqpay_status || "—"}</div>
+                                <div><b>fiscal_status:</b> {info[p.id]?.fiscal_status || p.fiscal_status || "—"}</div>
+                                <div><b>checkbox_receipt_id:</b> {info[p.id]?.checkbox_receipt_id || p.checkbox_receipt_id || "—"}</div>
+                                <div><b>fiscal_receipt_url:</b> {(info[p.id]?.fiscal_receipt_url || p.fiscal_receipt_url) ? <a href={info[p.id]?.fiscal_receipt_url || p.fiscal_receipt_url} target="_blank" rel="noreferrer">Открыть</a> : "—"}</div>
+                                <div><b>fiscal_last_error:</b> {info[p.id]?.fiscal_last_error || p.fiscal_last_error || "—"}</div>
+                              </div>
+                            </div>
+
+                            <div className="purchases-card">
+                              <div className="purchases-card__header">
                                 <span>Действия</span>
                               </div>
                               <div className="purchases-actions-card">
@@ -586,6 +609,18 @@ export default function PurchasesPage() {
                                     Оформить возврат
                                   </button>
                                 )}
+                                {canRetryFiscalization(p, info[p.id]) && (
+                                  <button
+                                    type="button"
+                                    className="purchases-btn purchases-btn--primary"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRetryFiscalization(p.id);
+                                    }}
+                                  >
+                                    Retry fiscalization
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -626,6 +661,16 @@ export default function PurchasesPage() {
                 className={`purchases-modal__scroll${modalScrolled ? " purchases-scroll--scrolled" : ""}`}
                 ref={modalScrollRef}
               >
+                <div className="purchases-card__body">
+                  <div><b>payment_status:</b> {modalPurchaseInfo?.payment_status || "—"}</div>
+                  <div><b>liqpay_order_id:</b> {modalPurchaseInfo?.liqpay_order_id || "—"}</div>
+                  <div><b>liqpay_payment_id:</b> {modalPurchaseInfo?.liqpay_payment_id || "—"}</div>
+                  <div><b>liqpay_status:</b> {modalPurchaseInfo?.liqpay_status || "—"}</div>
+                  <div><b>fiscal_status:</b> {modalPurchaseInfo?.fiscal_status || "—"}</div>
+                  <div><b>checkbox_receipt_id:</b> {modalPurchaseInfo?.checkbox_receipt_id || "—"}</div>
+                  <div><b>fiscal_receipt_url:</b> {modalPurchaseInfo?.fiscal_receipt_url ? <a href={modalPurchaseInfo.fiscal_receipt_url} target="_blank" rel="noreferrer">Открыть</a> : "—"}</div>
+                  <div><b>fiscal_last_error:</b> {modalPurchaseInfo?.fiscal_last_error || "—"}</div>
+                </div>
                 {modalState.section === "tickets" && renderTicketsTable(modalPurchaseInfo)}
                 {modalState.section === "logs" && renderLogsTable(modalPurchaseInfo)}
                 <button type="button" className="purchases-to-top" onClick={handleModalToTop}>

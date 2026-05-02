@@ -9,9 +9,12 @@ import logging
 import os
 import time
 import threading
+import json
 from typing import Any
 
 import httpx
+
+from .integration_events import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +55,6 @@ def _get_token() -> str:
 
     login = _env("CHECKBOX_CASHIER_LOGIN")
     password = _env("CHECKBOX_CASHIER_PASSWORD")
-    access_key = _env("CHECKBOX_ACCESS_KEY")
 
     if not login or not password:
         raise RuntimeError("CHECKBOX_CASHIER_LOGIN and CHECKBOX_CASHIER_PASSWORD are required")
@@ -60,7 +62,6 @@ def _get_token() -> str:
     resp = httpx.post(
         f"{_api_url()}/api/v1/cashier/signin",
         json={"login": login, "password": password},
-        headers={"X-Access-Key": access_key} if access_key else {},
         timeout=15.0,
     )
     resp.raise_for_status()
@@ -213,6 +214,25 @@ def get_receipt_png_url(receipt_id: str) -> str:
     return f"{_api_url()}/api/v1/receipts/{receipt_id}/png"
 
 
+def _sanitize_receipt_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Keep only operator-safe subset of CheckBox receipt payload."""
+    keep_fields = {
+        "id",
+        "status",
+        "serial",
+        "fiscal_code",
+        "created_at",
+        "updated_at",
+        "total_sum",
+        "payments",
+    }
+    sanitized: dict[str, Any] = {}
+    for key in keep_fields:
+        if key in payload:
+            sanitized[key] = payload[key]
+    return sanitized
+
+
 # ---------------------------------------------------------------------------
 # Data loading for receipt items
 # ---------------------------------------------------------------------------
@@ -290,6 +310,9 @@ def fiscalize_purchase(purchase_id: int) -> None:
     if not is_enabled():
         return
 
+    logger.info("checkbox_fiscalization_started purchase_id=%s amount=%s", purchase_id, None)
+    record_event(provider="checkbox", event_type="checkbox_started", purchase_id=purchase_id, status="start", payload={"purchase_id": purchase_id})
+
     from ..database import get_connection
 
     conn = get_connection()
@@ -309,7 +332,7 @@ def fiscalize_purchase(purchase_id: int) -> None:
 
         # Idempotency: skip if already done
         if fiscal_status == "done":
-            logger.info("Purchase %s already fiscalized, skipping", purchase_id)
+            logger.info("fiscalization_skipped_existing_receipt purchase_id=%s fiscal_receipt_id=%s", purchase_id, existing_receipt_id)
             conn.commit()
             return
 
@@ -333,7 +356,19 @@ def fiscalize_purchase(purchase_id: int) -> None:
         # instead of creating a duplicate
         receipt_id = existing_receipt_id
         if not receipt_id:
-            _ensure_shift()
+            try:
+                _get_token()
+                logger.info("checkbox_auth_success purchase_id=%s", purchase_id)
+            except Exception:
+                logger.exception("checkbox_auth_failed purchase_id=%s", purchase_id)
+                raise
+            try:
+                _ensure_shift()
+                logger.info("checkbox_shift_checked purchase_id=%s", purchase_id)
+            except Exception:
+                logger.exception("checkbox_shift_error purchase_id=%s", purchase_id)
+                raise
+            logger.info("checkbox_receipt_create_started purchase_id=%s receipt_uuid=%s amount=%s", purchase_id, None, total_kopecks)
             receipt_id = _create_receipt(items, total_kopecks)
             # Persist receipt_id immediately so we don't create duplicates on retry
             cur.execute(
@@ -345,6 +380,8 @@ def fiscalize_purchase(purchase_id: int) -> None:
         # Poll until DONE
         receipt_data = _poll_receipt(receipt_id)
         fiscal_code = receipt_data.get("fiscal_code", "")
+        receipt_url = get_receipt_png_url(receipt_id)
+        sanitized_payload = _sanitize_receipt_payload(receipt_data)
 
         # Success — persist final state
         cur.execute(
@@ -353,23 +390,24 @@ def fiscalize_purchase(purchase_id: int) -> None:
                SET fiscal_status = 'done',
                    checkbox_receipt_id = %s,
                    checkbox_fiscal_code = %s,
+                   fiscal_receipt_url = %s,
+                   fiscal_payload = %s::jsonb,
                    fiscal_last_error = NULL,
                    fiscalized_at = NOW(),
                    update_at = NOW()
              WHERE id = %s
             """,
-            (receipt_id, fiscal_code, purchase_id),
+            (receipt_id, fiscal_code, receipt_url, json.dumps(sanitized_payload), purchase_id),
         )
         conn.commit()
-        logger.info(
-            "Purchase %s fiscalized successfully: receipt=%s fiscal_code=%s",
-            purchase_id, receipt_id, fiscal_code,
-        )
+        logger.info("checkbox_receipt_created purchase_id=%s fiscal_receipt_id=%s fiscal_status=%s fiscal_receipt_url=%s", purchase_id, receipt_id, "done", receipt_url)
+        record_event(provider="checkbox", event_type="checkbox_receipt_created", purchase_id=purchase_id, external_id=str(receipt_id), status="success", payload={"purchase_id": purchase_id, "receipt_id": receipt_id, "status": "done", "fiscal_code": fiscal_code})
 
     except Exception as exc:
         conn.rollback()
         error_msg = str(exc)[:500]
-        logger.exception("Fiscalization failed for purchase %s", purchase_id)
+        record_event(provider="checkbox", event_type="checkbox_receipt_failed", purchase_id=purchase_id, status="error", error_message=error_msg, payload={"purchase_id": purchase_id, "status": "failed"})
+        logger.exception("checkbox_receipt_failed purchase_id=%s error=%s", purchase_id, error_msg)
 
         # If auth-related, invalidate cached token for next attempt
         if "401" in error_msg or "403" in error_msg or "Unauthorized" in error_msg:

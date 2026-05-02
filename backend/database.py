@@ -63,22 +63,30 @@ def get_connection():
 from pathlib import Path
 
 
+def _ensure_schema_migrations_table(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                filename VARCHAR(255) PRIMARY KEY,
+                applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+    conn.commit()
+
+
 def run_migrations() -> None:
     """Apply SQL migrations found in db/migrations."""
     migrations_dir = Path(__file__).resolve().parents[1] / "db" / "migrations"
-    if not migrations_dir.exists():
-        return
     conn = psycopg2.connect(DATABASE_URL)
+    _ensure_schema_migrations_table(conn)
+
+    if not migrations_dir.exists():
+        conn.close()
+        return
+
     cur = conn.cursor()
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS schema_migrations (
-            filename VARCHAR(255) PRIMARY KEY,
-            applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    conn.commit()
     for path in sorted(migrations_dir.glob("*.sql")):
         cur.execute("SELECT 1 FROM schema_migrations WHERE filename=%s", (path.name,))
         if cur.fetchone():
@@ -94,4 +102,39 @@ def run_migrations() -> None:
     conn.close()
 
 
+REQUIRED_MIGRATIONS = (
+    "018_add_liqpay_tracking.sql",
+    "019_liqpay_payment_method_and_tracking.sql",
+    "021_guard_liqpay_tracking_columns.sql",
+)
+
+
+def validate_required_migrations() -> None:
+    """Fail fast when critical schema revisions are missing."""
+    conn = psycopg2.connect(DATABASE_URL)
+    _ensure_schema_migrations_table(conn)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT filename
+        FROM schema_migrations
+        WHERE filename = ANY(%s)
+        """,
+        (list(REQUIRED_MIGRATIONS),),
+    )
+    applied = {row[0] for row in cur.fetchall()}
+    cur.close()
+    conn.close()
+
+    missing = [name for name in REQUIRED_MIGRATIONS if name not in applied]
+    if missing:
+        required_revision = REQUIRED_MIGRATIONS[-1]
+        raise RuntimeError(
+            "Database schema is outdated: required migration revision "
+            f"{required_revision} is missing dependencies {missing}. "
+            "Run project migrations in the backend runtime environment."
+        )
+
+
 run_migrations()
+validate_required_migrations()
