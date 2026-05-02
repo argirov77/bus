@@ -87,6 +87,27 @@ def _auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {_get_token()}"}
 
 
+def get_token_for_healthcheck() -> str:
+    """Public wrapper for token retrieval used by health checks."""
+    return _get_token()
+
+
+def get_cashier_shift_status(token: str) -> tuple[int, dict[str, Any] | None]:
+    """Fetch current cashier shift status for diagnostics."""
+    license_key = _env("CHECKBOX_LICENSE_KEY")
+    headers = {"Authorization": f"Bearer {token}"}
+    if license_key:
+        headers["X-License-Key"] = license_key
+
+    resp = httpx.get(
+        f"{_api_url()}/api/v1/cashier/shift",
+        headers=headers,
+        timeout=10.0,
+    )
+    resp.raise_for_status()
+    return resp.status_code, resp.json()
+
+
 
 def _purchase_has_column(cur, column_name: str) -> bool:
     cur.execute(
