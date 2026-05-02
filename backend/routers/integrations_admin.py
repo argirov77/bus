@@ -31,7 +31,7 @@ def checkbox_health() -> CheckBoxHealthResponse:
         )
 
     missing_required: list[str] = []
-    for key in ("CHECKBOX_CASHIER_LOGIN", "CHECKBOX_CASHIER_PASSWORD"):
+    for key in ("CHECKBOX_CASHIER_PIN",):
         if not checkbox._env(key):
             missing_required.append(key)
 
