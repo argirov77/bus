@@ -394,7 +394,7 @@ def test_public_pay_missing_session_reports_available_purchase_sessions(client):
     assert "available purchase sessions: [83, 84]" in detail
     assert "/q/{opaque}" in detail
 
-def test_public_pay_skips_liqpay_order_persistence_when_column_missing(client, monkeypatch):
+def test_public_pay_persists_liqpay_order_id(client, monkeypatch):
     cli, _store = client
 
     from backend.routers import public as public_module
@@ -402,19 +402,10 @@ def test_public_pay_skips_liqpay_order_persistence_when_column_missing(client, m
     def fake_require_purchase_context(request, purchase_id, scope):
         return object(), 77, purchase_id, "purchase_session"
 
-    class MissingLiqpayCursor(DummyCursor):
-        has_liqpay_column = False
-
-    class MissingLiqpayConn(DummyConn):
-        def __init__(self):
-            self.cursor_obj = MissingLiqpayCursor()
-            self.was_committed = False
-            self.was_rolled_back = False
-
     queries: list[tuple[str, object]] = []
 
-    def fake_get_connection_missing_columns():
-        conn = MissingLiqpayConn()
+    def fake_get_connection_capture_queries():
+        conn = DummyConn()
         orig_execute = conn.cursor_obj.execute
 
         def capture_execute(query, params=None):
@@ -425,12 +416,14 @@ def test_public_pay_skips_liqpay_order_persistence_when_column_missing(client, m
         return conn
 
     monkeypatch.setattr(public_module, "_require_purchase_context", fake_require_purchase_context)
-    monkeypatch.setattr(public_module, "get_connection", fake_get_connection_missing_columns)
+    monkeypatch.setattr(public_module, "get_connection", fake_get_connection_capture_queries)
+    monkeypatch.setenv("LIQPAY_PUBLIC_KEY", "pub")
+    monkeypatch.setenv("LIQPAY_PRIVATE_KEY", "priv")
 
     resp = cli.post('/public/purchase/1/pay')
 
     assert resp.status_code == 200
-    assert not any(
+    assert any(
         "update purchase set liqpay_order_id" in q.lower()
         for q, _ in queries
     )

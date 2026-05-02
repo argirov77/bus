@@ -24,6 +24,7 @@ from ..services.access_guard import guard_public_request
 from ..services.email import render_ticket_email, send_ticket_email
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
+from ..services.integration_events import record_event
 
 logger = logging.getLogger(__name__)
 
@@ -174,25 +175,17 @@ def _validate_purchase_payable(amount_due: float, status: str) -> None:
         raise HTTPException(409, f"Purchase is {normalized_status}")
 
 
-def _purchase_has_column(cur, column_name: str) -> bool:
+def _save_liqpay_order_id(cur, purchase_id: int, order_id: str) -> None:
     cur.execute(
         """
         SELECT 1
           FROM information_schema.columns
-         WHERE table_schema = 'public'
-           AND table_name = 'purchase'
-           AND column_name = %s
-         LIMIT 1
-        """,
-        (column_name,),
+         WHERE table_schema='public' AND table_name='purchase' AND column_name='liqpay_order_id'
+        """
     )
-    return cur.fetchone() is not None
-
-
-def _save_liqpay_order_id(cur, purchase_id: int, order_id: str) -> None:
-    if not _purchase_has_column(cur, "liqpay_order_id"):
-        logger.warning(
-            "Skipping LiqPay order_id persistence for purchase=%s because column liqpay_order_id is missing",
+    if not cur.fetchone():
+        logger.error(
+            "liqpay_tracking_schema_missing purchase_id=%s missing_column=liqpay_order_id action=run_migrations_018_019_021",
             purchase_id,
         )
         return
@@ -276,8 +269,9 @@ def _send_ticket_email_task(
         subject, html_body = render_ticket_email(dto, deep_link, lang_value)
         send_ticket_email(recipient, subject, html_body, pdf_bytes)
         logger.info("Sent ticket email for ticket %s to %s", ticket_id, recipient)
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to send ticket email for ticket %s", ticket_id)
+        record_event(provider="email", event_type="ticket_email_send", status="error", ticket_id=ticket_id, payload={"recipient": recipient}, error_message=str(exc))
 
 
 def _create_purchase(
@@ -520,11 +514,22 @@ def create_purchase(data: PurchaseCreate, background_tasks: BackgroundTasks):
         tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
         tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
         conn.commit()
+        first_ticket_id = ticket_specs[0]["ticket_id"] if ticket_specs else None
+        logger.info(
+            "purchase_created purchase_id=%s ticket_id=%s amount=%s email=%s liqpay_order_id=%s",
+            purchase_id,
+            first_ticket_id,
+            amount_due,
+            data.passenger_email,
+            None,
+        )
+        record_event(provider="purchase", event_type="create_purchase", purchase_id=purchase_id, status="success", payload={"tickets": len(ticket_specs), "amount_due": amount_due})
     except HTTPException:
         conn.rollback()
         raise
     except Exception as exc:
         conn.rollback()
+        record_event(provider="purchase", event_type="create_purchase", status="error", payload={"tour_id": data.tour_id, "seats": data.seat_nums}, error_message=str(exc))
         raise HTTPException(500, str(exc))
     finally:
         cur.close()
@@ -569,6 +574,8 @@ def pay_purchase(
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
 
         cur.execute("UPDATE purchase SET status='paid', update_at=NOW() WHERE id=%s", (purchase_id,))
+        logger.info("purchase_paid purchase_id=%s order_id=%s payment_id=%s amount=%s status=%s", purchase_id, None, None, amount_due, "paid")
+        record_event(provider="purchase", event_type="payment_status_transition", purchase_id=purchase_id, status="success", payload={"from": purchase_status, "to": "paid", "method": "offline"})
         _log_action(cur, purchase_id, "paid", amount_due, by=actor, method=ADMIN_PAY_METHOD)
         tickets = issue_ticket_links(ticket_specs, None, conn=conn)
         conn.commit()
@@ -579,6 +586,7 @@ def pay_purchase(
         raise
     except Exception as exc:
         conn.rollback()
+        record_event(provider="purchase", event_type="payment_status_transition", purchase_id=purchase_id, status="error", payload={"to": "paid", "method": "offline"}, error_message=str(exc))
         raise HTTPException(500, str(exc))
     finally:
         cur.close()
@@ -675,6 +683,7 @@ def book_seat(data: PurchaseCreate, request: Request, background_tasks: Backgrou
         tickets = issue_ticket_links(ticket_specs, data.lang, conn=conn)
         tickets = enrich_ticket_link_results(tickets, data.lang, conn=conn)
         conn.commit()
+        record_event(provider="purchase", event_type="create_purchase", purchase_id=purchase_id, status="success", payload={"tickets": len(ticket_specs), "amount_due": amount_due, "flow": "book"})
     except HTTPException:
         conn.rollback()
         raise
@@ -807,6 +816,14 @@ def public_purchase_and_pay(
         order_id = payload.get("order_id") if isinstance(payload, dict) else None
         if order_id:
             _save_liqpay_order_id(cur, purchase_id, str(order_id))
+            logger.info(
+                "purchase_created purchase_id=%s ticket_id=%s amount=%s email=%s liqpay_order_id=%s",
+                purchase_id,
+                (ticket_specs[0]["ticket_id"] if ticket_specs else None),
+                amount_due,
+                data.passenger_email,
+                order_id,
+            )
 
         conn.commit()
     except HTTPException:
@@ -934,6 +951,14 @@ def pay_booking(
         order_id = payload.get("order_id") if isinstance(payload, dict) else None
         if order_id:
             _save_liqpay_order_id(cur, data.purchase_id, str(order_id))
+            logger.info(
+                "purchase_created purchase_id=%s ticket_id=%s amount=%s email=%s liqpay_order_id=%s",
+                data.purchase_id,
+                None,
+                amount_due,
+                row[2] if row else None,
+                order_id,
+            )
         conn.commit()
         return checkout
     except HTTPException:

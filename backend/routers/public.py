@@ -13,7 +13,6 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
-import psycopg2
 
 from ..database import get_connection
 from ..services import link_sessions
@@ -29,6 +28,7 @@ from ._ticket_link_helpers import (
     combine_departure_datetime,
 )
 from ..utils.client_app import get_client_app_base
+from ..services.integration_events import record_event, sanitize_payload
 
 session_router = APIRouter(tags=["public"])
 router = APIRouter(prefix="/public", tags=["public"])
@@ -117,28 +117,6 @@ def _log_sale(cur, purchase_id: int, category: str, amount: float, *, actor: str
 def _round_currency(value: float | None) -> float:
     return round(float(value or 0.0), 2)
 
-
-def _purchase_has_column(cur, column_name: str) -> bool:
-    cur.execute(
-        """
-        SELECT 1
-          FROM information_schema.columns
-         WHERE table_schema = 'public'
-           AND table_name = 'purchase'
-           AND column_name = %s
-         LIMIT 1
-        """,
-        (column_name,),
-    )
-    return cur.fetchone() is not None
-
-
-def _missing_purchase_columns(cur, column_names: Sequence[str]) -> list[str]:
-    missing: list[str] = []
-    for column_name in column_names:
-        if not _purchase_has_column(cur, column_name):
-            missing.append(column_name)
-    return missing
 
 
 def _redirect_base_url(purchase_id: int) -> str:
@@ -514,14 +492,6 @@ def _extract_purchase_id_from_order(order_id: str) -> int | None:
 
 
 
-def _is_undefined_column_error(exc: Exception) -> bool:
-    if isinstance(exc, psycopg2.errors.UndefinedColumn):
-        return True
-    if isinstance(exc, psycopg2.ProgrammingError):
-        message = str(exc).lower()
-        return "does not exist" in message and "column" in message
-    return False
-
 
 def _normalize_liqpay_result_status(value: str | None) -> Literal["paid", "pending", "failed"]:
     status = (value or "").strip().lower()
@@ -550,6 +520,7 @@ def _sync_purchase_paid_from_liqpay_callback(
     tickets: list[dict[str, Any]] = []
     customer_email: str | None = None
     try:
+        sanitized_payload = sanitize_payload(payload)
         cur.execute(
             "SELECT amount_due, status, customer_email FROM purchase WHERE id=%s FOR UPDATE",
             (purchase_id,),
@@ -559,59 +530,41 @@ def _sync_purchase_paid_from_liqpay_callback(
             raise HTTPException(status_code=404, detail="Purchase not found")
 
         amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
-        liqpay_columns = ("liqpay_order_id", "liqpay_status", "liqpay_payment_id", "liqpay_payload")
-        missing_liqpay_columns = _missing_purchase_columns(cur, liqpay_columns)
-        if not missing_liqpay_columns:
-            try:
-                cur.execute(
-                    """
-                    UPDATE purchase
-                       SET liqpay_order_id=%s,
-                           liqpay_status=%s,
-                           liqpay_payment_id=%s,
-                           liqpay_payload=%s,
-                           update_at=NOW()
-                     WHERE id=%s
-                    """,
-                    (order_id, liqpay_status or None, payment_id, json.dumps(payload), purchase_id),
-                )
-            except Exception as exc:
-                if not _is_undefined_column_error(exc):
-                    raise
-                conn.rollback()
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT amount_due, status, customer_email FROM purchase WHERE id=%s FOR UPDATE",
-                    (purchase_id,),
-                )
-                row = cur.fetchone()
-                if not row:
-                    raise HTTPException(status_code=404, detail="Purchase not found")
-                amount_due, purchase_status, customer_email = float(row[0]), row[1], row[2]
-                missing_liqpay_columns = _missing_purchase_columns(cur, liqpay_columns)
-                logger.warning(
-                    "Skipping LiqPay tracking persistence for purchase=%s; missing columns: %s",
-                    purchase_id,
-                    ", ".join(missing_liqpay_columns) or "unknown",
-                )
+        cur.execute(
+            """
+            SELECT column_name
+              FROM information_schema.columns
+             WHERE table_schema='public'
+               AND table_name='purchase'
+               AND column_name IN ('liqpay_order_id','liqpay_status','liqpay_payment_id','liqpay_payload')
+            """
+        )
+        liqpay_columns = {r[0] for r in (cur.fetchall() or [])}
+        if len(liqpay_columns) == 4:
+            cur.execute(
+                """
+                UPDATE purchase
+                   SET liqpay_order_id=%s,
+                       liqpay_status=%s,
+                       liqpay_payment_id=%s,
+                       liqpay_payload=%s,
+                       update_at=NOW()
+                 WHERE id=%s
+                """,
+                (order_id, liqpay_status or None, payment_id, json.dumps(sanitized_payload), purchase_id),
+            )
         else:
-            logger.warning(
-                "Skipping LiqPay tracking persistence for purchase=%s; missing columns: %s",
+            logger.error(
+                "liqpay_tracking_schema_missing purchase_id=%s columns=%s action=run_migrations_018_019_021",
                 purchase_id,
-                ", ".join(missing_liqpay_columns),
+                sorted(liqpay_columns),
             )
 
         normalized = _normalize_liqpay_result_status(liqpay_status)
-        logger.info(
-            "LiqPay callback processed for purchase=%s order_id=%s payment_id=%s liqpay_status=%s normalized=%s",
-            purchase_id,
-            order_id,
-            payment_id,
-            liqpay_status or None,
-            normalized,
-        )
+        logger.info("liqpay_payment_saved purchase_id=%s status=%s payment_id=%s", purchase_id, normalized, payment_id)
         if normalized != "paid":
             conn.commit()
+            record_event(provider="liqpay", event_type="liqpay_payment_failed" if normalized=="failed" else "liqpay_payment_pending", purchase_id=purchase_id, external_id=payment_id, status="failed" if normalized=="failed" else "pending", payload={"purchase_id": purchase_id, "order_id": order_id, "payment_id": payment_id, "amount": amount_due, "from": purchase_status, "to": purchase_status, "liqpay_status": liqpay_status})
             return normalized, payment_id
 
         if purchase_status == "paid":
@@ -622,6 +575,10 @@ def _sync_purchase_paid_from_liqpay_callback(
                 payment_id,
             )
             conn.commit()
+            logger.info(
+                "fiscalization_skipped_existing_receipt purchase_id=%s order_id=%s payment_id=%s amount=%s status=%s",
+                purchase_id, order_id, payment_id, amount_due, purchase_status,
+            )
             return "paid", payment_id
 
         if purchase_status != "reserved":
@@ -631,6 +588,7 @@ def _sync_purchase_paid_from_liqpay_callback(
         from ..services.checkbox import is_enabled as checkbox_enabled
         fiscal_clause = ", fiscal_status='pending'" if checkbox_enabled() else ""
         cur.execute(f"UPDATE purchase SET status='paid', update_at=NOW(){fiscal_clause} WHERE id=%s", (purchase_id,))
+        record_event(provider="liqpay", event_type="liqpay_payment_success", purchase_id=purchase_id, external_id=payment_id, status="success", payload={"purchase_id": purchase_id, "order_id": order_id, "payment_id": payment_id, "amount": amount_due, "from": purchase_status, "to": "paid", "liqpay_status": liqpay_status})
         _log_action(cur, purchase_id, "paid", amount_due, by="liqpay", method="online")
         try:
             tickets = issue_ticket_links(ticket_specs, None, conn=conn)
@@ -677,55 +635,55 @@ def resolve_payment(order_id: str = Query(..., min_length=3, max_length=128, pat
     conn = get_connection()
     try:
         with conn.cursor() as cur:
-            has_liqpay_tracking = _purchase_has_column(cur, "liqpay_order_id")
+            cur.execute(
+                """
+                SELECT column_name
+                  FROM information_schema.columns
+                 WHERE table_schema='public'
+                   AND table_name='purchase'
+                   AND column_name IN ('liqpay_order_id','liqpay_status')
+                """
+            )
+            liqpay_columns = {r[0] for r in (cur.fetchall() or [])}
+            has_liqpay_tracking = {'liqpay_order_id', 'liqpay_status'}.issubset(liqpay_columns)
+
             if has_liqpay_tracking:
-                try:
-                    cur.execute(
-                        """
-                        SELECT id, status, amount_due, customer_email, customer_name,
-                               liqpay_order_id, liqpay_status
-                          FROM purchase
-                         WHERE id=%s
-                        """,
-                        (purchase_id,),
-                    )
-                except Exception as exc:
-                    if not _is_undefined_column_error(exc):
-                        raise
-                    conn.rollback()
-                    cur.execute(
-                        """
-                        SELECT id, status, amount_due, customer_email, customer_name,
-                               NULL::TEXT AS liqpay_order_id,
-                               NULL::TEXT AS liqpay_status
-                          FROM purchase
-                         WHERE id=%s
-                        """,
-                        (purchase_id,),
-                    )
-            else:
                 cur.execute(
                     """
                     SELECT id, status, amount_due, customer_email, customer_name,
-                           NULL::TEXT AS liqpay_order_id,
-                           NULL::TEXT AS liqpay_status
+                           liqpay_order_id, liqpay_status
                       FROM purchase
                      WHERE id=%s
                     """,
                     (purchase_id,),
                 )
+            else:
+                logger.error(
+                    "liqpay_tracking_schema_missing purchase_id=%s columns=%s action=run_migrations_018_019_021",
+                    purchase_id,
+                    sorted(liqpay_columns),
+                )
+                cur.execute(
+                    """
+                    SELECT id, status, amount_due, customer_email, customer_name
+                      FROM purchase
+                     WHERE id=%s
+                    """,
+                    (purchase_id,),
+                )
+
             row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Purchase not found")
     finally:
         conn.close()
 
-    stored_order_id = row[5]
+    stored_order_id = row[5] if has_liqpay_tracking else None
     if stored_order_id and stored_order_id != order_id:
         raise HTTPException(status_code=404, detail="order_id does not match purchase")
 
     purchase_status = str(row[1] or "")
-    liqpay_status = row[6]
+    liqpay_status = row[6] if has_liqpay_tracking else None
 
     resolved_status = "pending"
     if purchase_status == "paid":
@@ -857,9 +815,19 @@ async def liqpay_callback(request: Request, background_tasks: BackgroundTasks) -
         raise HTTPException(status_code=400, detail="Missing LiqPay data")
 
     if not liqpay.verify_signature(data, signature):
+        logger.warning("liqpay_signature_invalid purchase_id=%s order_id=%s status=invalid", None, None)
         raise HTTPException(status_code=400, detail="Invalid LiqPay signature")
+    logger.info("liqpay_signature_valid")
 
     payload = liqpay.decode_payload(data)
+    payload = sanitize_payload(payload)
+    logger.info(
+        "liqpay_callback_received order_id=%s raw_status=%s payment_id=%s",
+        payload.get("order_id"),
+        payload.get("status"),
+        payload.get("payment_id"),
+    )
+    record_event(provider="liqpay", event_type="liqpay_callback_received", status="success", payload=payload)
     order_id = str(payload.get("order_id") or "")
     purchase_id = _extract_purchase_id_from_order(order_id)
     if purchase_id is None:
@@ -1598,16 +1566,10 @@ def public_pay(purchase_id: int, request: Request) -> Mapping[str, Any]:
         conn = get_connection()
         try:
             with conn.cursor() as cur:
-                if _purchase_has_column(cur, "liqpay_order_id"):
-                    cur.execute(
-                        "UPDATE purchase SET liqpay_order_id=%s, update_at=NOW() WHERE id=%s",
-                        (str(order_id), resolved_purchase_id),
-                    )
-                else:
-                    logger.warning(
-                        "Skipping LiqPay order_id persistence for purchase=%s because column liqpay_order_id is missing",
-                        resolved_purchase_id,
-                    )
+                cur.execute(
+                    "UPDATE purchase SET liqpay_order_id=%s, update_at=NOW() WHERE id=%s",
+                    (str(order_id), resolved_purchase_id),
+                )
             conn.commit()
         finally:
             conn.close()

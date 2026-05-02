@@ -171,6 +171,7 @@ def send_ticket_email(
 ) -> None:
     """Send a ticket email with the provided HTML body and PDF attachment."""
 
+    logger.info("ticket_email_send_started purchase_id=%s ticket=%s status=started recipient=%s", None, subject, to)
     try:
         host = _get_env("SMTP_HOST")
         port_raw = _get_env("SMTP_PORT")
@@ -179,7 +180,7 @@ def send_ticket_email(
         from_email = _get_env("SMTP_FROM")
         from_name = _get_env("SMTP_FROM_NAME", required=False)
     except EmailConfigurationError:
-        logger.info("Skipping ticket email delivery because SMTP is not configured")
+        logger.info("ticket_email_skipped_smtp_not_configured status=skipped recipient=%s", to)
         return
 
     port = int(port_raw) if port_raw else 587
@@ -221,6 +222,7 @@ def send_ticket_email(
         if username and password:
             server.login(username, password)
         server.send_message(message)
+    logger.info("ticket_email_send_finished status=success recipient=%s", to)
 
 
 def send_otp_email(to: str, code: str, lang: str | None = None) -> None:
