@@ -616,11 +616,6 @@ def _sync_purchase_paid_from_liqpay_callback(
             normalized,
         )
         if normalized != "paid":
-            logger.info(
-                "Skipping fiscalization flow for purchase=%s because LiqPay status is not paid (normalized=%s)",
-                purchase_id,
-                normalized,
-            )
             conn.commit()
             return normalized, payment_id
 
@@ -635,11 +630,6 @@ def _sync_purchase_paid_from_liqpay_callback(
             return "paid", payment_id
 
         if purchase_status != "reserved":
-            logger.warning(
-                "Skipping fiscalization flow for purchase=%s because purchase status is %s (expected reserved)",
-                purchase_id,
-                purchase_status,
-            )
             raise HTTPException(status_code=409, detail="Purchase cannot be paid")
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
