@@ -340,7 +340,13 @@ def fiscalize_purchase(purchase_id: int) -> None:
     are caught and persisted to the purchase row for later retry.
     """
     if not is_enabled():
+        logger.info(
+            "Skipping fiscalize_purchase for purchase=%s because CHECKBOX_ENABLED=false",
+            purchase_id,
+        )
         return
+
+    logger.info("Starting CheckBox fiscalization for purchase=%s", purchase_id)
 
     from ..database import get_connection
 
