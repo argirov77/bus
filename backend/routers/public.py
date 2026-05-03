@@ -699,6 +699,17 @@ def _sync_purchase_paid_from_liqpay_callback(
         from ..services.checkbox import is_enabled as checkbox_enabled, fiscalize_purchase
         if checkbox_enabled():
             background_tasks.add_task(fiscalize_purchase, purchase_id)
+            logger.info("Queued CheckBox fiscalization task for purchase=%s", purchase_id)
+        else:
+            logger.info(
+                "CheckBox fiscalization is disabled (CHECKBOX_ENABLED=false); skipping purchase=%s",
+                purchase_id,
+            )
+    else:
+        logger.warning(
+            "BackgroundTasks is unavailable for LiqPay callback; fiscalization queue skipped for purchase=%s",
+            purchase_id,
+        )
     return "paid", payment_id
 
 
