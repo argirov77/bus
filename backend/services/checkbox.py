@@ -14,6 +14,12 @@ from typing import Any
 import httpx
 
 logger = logging.getLogger(__name__)
+_uvicorn_error_logger = logging.getLogger("uvicorn.error")
+
+
+def _emit_fiscal_log(message: str, *args: Any) -> None:
+    logger.warning(message, *args)
+    _uvicorn_error_logger.warning(message, *args)
 
 # ---------------------------------------------------------------------------
 # Configuration helpers
@@ -340,7 +346,12 @@ def fiscalize_purchase(purchase_id: int) -> None:
     are caught and persisted to the purchase row for later retry.
     """
     if not is_enabled():
+        _emit_fiscal_log(
+            "Skipping fiscalization for purchase=%s: CHECKBOX_ENABLED=false",
+            purchase_id,
+        )
         return
+    _emit_fiscal_log("Starting fiscalization for purchase=%s", purchase_id)
 
     from ..database import get_connection
 
@@ -394,7 +405,9 @@ def fiscalize_purchase(purchase_id: int) -> None:
         # instead of creating a duplicate
         receipt_id = existing_receipt_id
         if not receipt_id:
+            _emit_fiscal_log("Opening/ensuring CheckBox shift for purchase=%s", purchase_id)
             _ensure_shift()
+            _emit_fiscal_log("Creating CheckBox receipt for purchase=%s amount_kopecks=%s", purchase_id, total_kopecks)
             receipt_id = _create_receipt(items, total_kopecks)
             # Persist receipt_id immediately so we don't create duplicates on retry
             cur.execute(
@@ -426,11 +439,22 @@ def fiscalize_purchase(purchase_id: int) -> None:
             "Purchase %s fiscalized successfully: receipt=%s fiscal_code=%s",
             purchase_id, receipt_id, fiscal_code,
         )
+        _emit_fiscal_log(
+            "Fiscalization completed for purchase=%s receipt=%s fiscal_code=%s",
+            purchase_id,
+            receipt_id,
+            fiscal_code,
+        )
 
     except Exception as exc:
         conn.rollback()
         error_msg = str(exc)[:500]
         logger.exception("Fiscalization failed for purchase %s", purchase_id)
+        _emit_fiscal_log(
+            "Fiscalization failed for purchase=%s reason=%s",
+            purchase_id,
+            error_msg,
+        )
 
         # If auth-related, invalidate cached token for next attempt
         if "401" in error_msg or "403" in error_msg or "Unauthorized" in error_msg:
