@@ -14,6 +14,14 @@ from typing import Any
 import httpx
 
 logger = logging.getLogger(__name__)
+ops_logger = logging.getLogger("uvicorn.error")
+
+
+def _emit_fiscal_log(level: str, message: str, *args: object) -> None:
+    log_fn = getattr(logger, level, logger.info)
+    ops_fn = getattr(ops_logger, level, ops_logger.info)
+    log_fn(message, *args)
+    ops_fn(message, *args)
 
 # ---------------------------------------------------------------------------
 # Configuration helpers
@@ -340,7 +348,14 @@ def fiscalize_purchase(purchase_id: int) -> None:
     are caught and persisted to the purchase row for later retry.
     """
     if not is_enabled():
+        _emit_fiscal_log(
+            "warning",
+            "Skipping fiscalize_purchase for purchase=%s because CHECKBOX_ENABLED=false",
+            purchase_id,
+        )
         return
+
+    _emit_fiscal_log("warning", "Starting CheckBox fiscalization for purchase=%s", purchase_id)
 
     from ..database import get_connection
 

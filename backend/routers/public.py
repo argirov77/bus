@@ -39,6 +39,14 @@ _CSRF_COOKIE_NAME = "mc_csrf"
 _DEFAULT_LANG = "bg"
 
 logger = logging.getLogger(__name__)
+ops_logger = logging.getLogger("uvicorn.error")
+
+
+def _emit_fiscal_log(level: str, message: str, *args: object) -> None:
+    log_fn = getattr(logger, level, logger.info)
+    ops_fn = getattr(ops_logger, level, ops_logger.info)
+    log_fn(message, *args)
+    ops_fn(message, *args)
 
 
 class RescheduleTicketSpec(BaseModel):
@@ -616,6 +624,12 @@ def _sync_purchase_paid_from_liqpay_callback(
             normalized,
         )
         if normalized != "paid":
+            _emit_fiscal_log(
+                "warning",
+                "Skipping fiscalization flow for purchase=%s because LiqPay status is not paid (normalized=%s)",
+                purchase_id,
+                normalized,
+            )
             conn.commit()
             return normalized, payment_id
 
@@ -630,6 +644,12 @@ def _sync_purchase_paid_from_liqpay_callback(
             return "paid", payment_id
 
         if purchase_status != "reserved":
+            _emit_fiscal_log(
+                "warning",
+                "Skipping fiscalization flow for purchase=%s because purchase status is %s (expected reserved)",
+                purchase_id,
+                purchase_status,
+            )
             raise HTTPException(status_code=409, detail="Purchase cannot be paid")
 
         ticket_specs = _collect_ticket_specs_for_purchase(cur, purchase_id)
@@ -699,6 +719,19 @@ def _sync_purchase_paid_from_liqpay_callback(
         from ..services.checkbox import is_enabled as checkbox_enabled, fiscalize_purchase
         if checkbox_enabled():
             background_tasks.add_task(fiscalize_purchase, purchase_id)
+            _emit_fiscal_log("warning", "Queued CheckBox fiscalization task for purchase=%s", purchase_id)
+        else:
+            _emit_fiscal_log(
+                "warning",
+                "CheckBox fiscalization is disabled (CHECKBOX_ENABLED=false); skipping purchase=%s",
+                purchase_id,
+            )
+    else:
+        _emit_fiscal_log(
+            "warning",
+            "BackgroundTasks is unavailable for LiqPay callback; fiscalization queue skipped for purchase=%s",
+            purchase_id,
+        )
     return "paid", payment_id
 
 
