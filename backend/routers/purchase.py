@@ -20,6 +20,7 @@ from ._ticket_link_helpers import (
 )
 from ..services import ticket_links
 from ..services import liqpay
+from ..services import telegram
 from ..services.access_guard import guard_public_request
 from ..services.email import render_ticket_email, send_ticket_email
 from ..services.ticket_dto import get_ticket_dto
@@ -280,6 +281,304 @@ def _send_ticket_email_task(
         logger.exception("Failed to send ticket email for ticket %s", ticket_id)
 
 
+_TELEGRAM_EVENT_ICONS = {
+    "reserved": "\U0001F195",   # NEW button
+    "paid": "✅",            # white heavy check
+    "cancelled": "❌",       # cross mark
+    "refunded": "\U0001F4B8",    # money with wings
+}
+
+_TELEGRAM_EVENT_TITLES = {
+    "reserved": "Бронь",
+    "paid": "Оплата",
+    "cancelled": "Отмена",
+    "refunded": "Возврат",
+}
+
+
+def _escape_html(value) -> str:
+    if value is None:
+        return ""
+    text = str(value)
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def _build_telegram_message(
+    conn,
+    purchase_id: int,
+    event_type: str,
+    snapshot: dict | None = None,
+) -> str | None:
+    """Render an HTML-formatted Telegram message for a purchase event.
+
+    For events where ticket rows no longer exist (e.g. refund), ``snapshot``
+    must carry the data fields needed for formatting.
+    """
+
+    icon = _TELEGRAM_EVENT_ICONS.get(event_type, "ℹ️")
+    title = _TELEGRAM_EVENT_TITLES.get(event_type, event_type)
+
+    data: dict = dict(snapshot) if snapshot else {}
+
+    if not data:
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT id FROM ticket WHERE purchase_id=%s ORDER BY id", (purchase_id,))
+            ticket_rows = [row[0] for row in cur.fetchall()]
+        finally:
+            cur.close()
+
+        if ticket_rows:
+            try:
+                dto = get_ticket_dto(ticket_rows[0], "bg", conn)
+            except Exception:
+                logger.exception("Failed to build ticket DTO for telegram notification purchase=%s", purchase_id)
+                dto = None
+            if dto:
+                passenger = dto.get("passenger") or {}
+                purchase = dto.get("purchase") or {}
+                customer = (purchase.get("customer") or {}) if purchase else {}
+                tour = dto.get("tour") or {}
+                route = dto.get("route") or {}
+                segment = dto.get("segment") or {}
+                pricing = dto.get("pricing") or {}
+                dep = segment.get("departure") or {}
+                arr = segment.get("arrival") or {}
+
+                data.setdefault("passenger_name", customer.get("name") or passenger.get("name"))
+                data.setdefault("passenger_phone", customer.get("phone"))
+                data.setdefault("route_name", route.get("name"))
+                data.setdefault("from_stop", dep.get("name"))
+                data.setdefault("to_stop", arr.get("name"))
+                data.setdefault("tour_date", tour.get("date"))
+                data.setdefault("departure_time", dep.get("time"))
+                data.setdefault("arrival_time", arr.get("time"))
+                data.setdefault("amount_due", purchase.get("amount_due"))
+                data.setdefault("currency", pricing.get("currency_code"))
+
+                # Collect all seat numbers for the purchase
+                seats: list[str] = []
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        """
+                        SELECT s.seat_num
+                          FROM ticket t
+                          LEFT JOIN seat s ON s.id = t.seat_id
+                         WHERE t.purchase_id=%s
+                         ORDER BY s.seat_num
+                        """,
+                        (purchase_id,),
+                    )
+                    for row in cur.fetchall():
+                        if row and row[0] is not None:
+                            seats.append(str(row[0]))
+                finally:
+                    cur.close()
+                if seats:
+                    data.setdefault("seats", ", ".join(seats))
+
+        # Fallback to purchase-only row if no DTO data was captured.
+        if "passenger_name" not in data or "amount_due" not in data:
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    """
+                    SELECT customer_name, customer_email, customer_phone,
+                           amount_due, status
+                      FROM purchase WHERE id=%s
+                    """,
+                    (purchase_id,),
+                )
+                row = cur.fetchone()
+            finally:
+                cur.close()
+            if row:
+                data.setdefault("passenger_name", row[0])
+                data.setdefault("passenger_email", row[1])
+                data.setdefault("passenger_phone", row[2])
+                data.setdefault("amount_due", float(row[3]) if row[3] is not None else None)
+
+    lines = [f"{icon} <b>{_escape_html(title)} #{purchase_id}</b>"]
+
+    name = data.get("passenger_name")
+    phone = data.get("passenger_phone")
+    if name or phone:
+        parts = []
+        if name:
+            parts.append(_escape_html(name))
+        if phone:
+            parts.append(f"({_escape_html(phone)})")
+        lines.append(f"\U0001F464 {' '.join(parts)}")
+
+    route_name = data.get("route_name")
+    if route_name:
+        lines.append(f"\U0001F68C {_escape_html(route_name)}")
+
+    from_stop = data.get("from_stop")
+    to_stop = data.get("to_stop")
+    if from_stop or to_stop:
+        lines.append(
+            f"\U0001F4CD {_escape_html(from_stop or '?')} → {_escape_html(to_stop or '?')}"
+        )
+
+    date_part = data.get("tour_date")
+    dep_time = data.get("departure_time")
+    arr_time = data.get("arrival_time")
+    if date_part or dep_time or arr_time:
+        time_bits = []
+        if dep_time:
+            time_bits.append(_escape_html(dep_time))
+        if arr_time:
+            time_bits.append(_escape_html(arr_time))
+        time_str = " → ".join(time_bits)
+        lines.append(
+            f"\U0001F4C5 {_escape_html(date_part or '')} {time_str}".strip()
+        )
+
+    seats = data.get("seats")
+    if seats:
+        lines.append(f"\U0001F4BA Места: {_escape_html(seats)}")
+
+    amount = data.get("amount_due")
+    if amount is not None:
+        currency = data.get("currency") or ""
+        lines.append(f"\U0001F4B0 {_escape_html(amount)} {_escape_html(currency)}".rstrip())
+
+    return "\n".join(lines)
+
+
+def _capture_purchase_snapshot(conn, purchase_id: int) -> dict | None:
+    """Capture purchase + ticket data into a serializable dict.
+
+    Used before destructive operations (cancel/refund) so the Telegram
+    notification can still show passenger / route / seats after deletion.
+    """
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT id FROM ticket WHERE purchase_id=%s ORDER BY id LIMIT 1", (purchase_id,))
+            row = cur.fetchone()
+        finally:
+            cur.close()
+    except Exception:
+        logger.exception("Failed to read tickets for telegram snapshot purchase=%s", purchase_id)
+        return None
+
+    if not row:
+        return None
+
+    first_ticket_id = row[0]
+    try:
+        dto = get_ticket_dto(first_ticket_id, "bg", conn)
+    except Exception:
+        logger.exception("Failed to build snapshot DTO for purchase=%s", purchase_id)
+        return None
+
+    passenger = dto.get("passenger") or {}
+    purchase = dto.get("purchase") or {}
+    customer = (purchase.get("customer") or {}) if purchase else {}
+    tour = dto.get("tour") or {}
+    route = dto.get("route") or {}
+    segment = dto.get("segment") or {}
+    pricing = dto.get("pricing") or {}
+    dep = segment.get("departure") or {}
+    arr = segment.get("arrival") or {}
+
+    snapshot: dict = {
+        "passenger_name": customer.get("name") or passenger.get("name"),
+        "passenger_phone": customer.get("phone"),
+        "passenger_email": customer.get("email"),
+        "route_name": route.get("name"),
+        "from_stop": dep.get("name"),
+        "to_stop": arr.get("name"),
+        "tour_date": tour.get("date"),
+        "departure_time": dep.get("time"),
+        "arrival_time": arr.get("time"),
+        "amount_due": purchase.get("amount_due"),
+        "currency": pricing.get("currency_code"),
+    }
+
+    seats: list[str] = []
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT s.seat_num
+                  FROM ticket t
+                  LEFT JOIN seat s ON s.id = t.seat_id
+                 WHERE t.purchase_id=%s
+                 ORDER BY s.seat_num
+                """,
+                (purchase_id,),
+            )
+            for srow in cur.fetchall():
+                if srow and srow[0] is not None:
+                    seats.append(str(srow[0]))
+        finally:
+            cur.close()
+    except Exception:
+        logger.exception("Failed to collect seats for telegram snapshot purchase=%s", purchase_id)
+    if seats:
+        snapshot["seats"] = ", ".join(seats)
+
+    return snapshot
+
+
+def _send_telegram_event_task(
+    purchase_id: int,
+    event_type: str,
+    snapshot: dict | None = None,
+) -> None:
+    """Background task: build and send a Telegram notification for an event."""
+    if not telegram.is_enabled():
+        return
+
+    conn = None
+    try:
+        try:
+            conn = get_connection()
+        except Exception:
+            logger.exception("Failed to acquire DB connection for telegram event purchase=%s", purchase_id)
+            return
+
+        try:
+            message = _build_telegram_message(conn, purchase_id, event_type, snapshot)
+        except Exception:
+            logger.exception("Failed to build telegram message for purchase=%s event=%s", purchase_id, event_type)
+            return
+
+        if not message:
+            return
+
+        telegram.send_message(message)
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def _queue_telegram_event(
+    background_tasks: BackgroundTasks | None,
+    purchase_id: int,
+    event_type: str,
+    snapshot: dict | None = None,
+) -> None:
+    """Schedule a Telegram notification background task for an event."""
+    if not background_tasks or not purchase_id:
+        return
+    if not telegram.is_enabled():
+        return
+    background_tasks.add_task(_send_telegram_event_task, purchase_id, event_type, snapshot)
+
+
 def _create_purchase(
     cur,
     data: PurchaseCreate,
@@ -531,6 +830,7 @@ def create_purchase(data: PurchaseCreate, background_tasks: BackgroundTasks):
         conn.close()
 
     _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
+    _queue_telegram_event(background_tasks, purchase_id, "reserved")
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 
@@ -585,16 +885,19 @@ def pay_purchase(
         conn.close()
 
     _queue_ticket_emails(background_tasks, tickets, None, customer_email)
+    _queue_telegram_event(background_tasks, purchase_id, "paid")
 
 
 @router.post("/{purchase_id}/cancel", status_code=204)
 def cancel_purchase(
     purchase_id: int,
     request: Request,
+    background_tasks: BackgroundTasks,
     context=Depends(require_scope("cancel")),
 ):
     conn = get_connection()
     cur = conn.cursor()
+    telegram_snapshot: dict | None = None
     try:
         actor, jti = _resolve_actor(request)
         guard_public_request(
@@ -607,6 +910,9 @@ def cancel_purchase(
         tickets = [row[0] for row in cur.fetchall()]
         if not tickets:
             raise HTTPException(404, "Purchase not found")
+
+        if telegram.is_enabled():
+            telegram_snapshot = _capture_purchase_snapshot(conn, purchase_id)
 
         for t_id in tickets:
             free_ticket(cur, t_id)
@@ -625,6 +931,8 @@ def cancel_purchase(
     finally:
         cur.close()
         conn.close()
+
+    _queue_telegram_event(background_tasks, purchase_id, "cancelled", telegram_snapshot)
 
 
 # --- Public endpoints without /purchase prefix ---
@@ -686,6 +994,7 @@ def book_seat(data: PurchaseCreate, request: Request, background_tasks: Backgrou
         conn.close()
 
     _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
+    _queue_telegram_event(background_tasks, purchase_id, "reserved")
     from starlette.responses import JSONResponse
 
     from .public import _CSRF_COOKIE_NAME, _generate_csrf_token, _purchase_cookie_name
@@ -769,6 +1078,7 @@ def purchase_and_pay(
         conn.close()
 
     _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
+    _queue_telegram_event(background_tasks, purchase_id, "paid")
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
 
 
@@ -820,6 +1130,7 @@ def public_purchase_and_pay(
         conn.close()
 
     _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
+    _queue_telegram_event(background_tasks, purchase_id, "reserved")
 
     from starlette.responses import JSONResponse
 
@@ -951,10 +1262,12 @@ def pay_booking(
 def cancel_booking(
     purchase_id: int,
     request: Request,
+    background_tasks: BackgroundTasks,
     context=Depends(optional_scope("cancel")),
 ):
     conn = get_connection()
     cur = conn.cursor()
+    telegram_snapshot: dict | None = None
     try:
         actor, jti = _resolve_actor(request)
         guard_public_request(request, "cancel", purchase_id=purchase_id, context=context)
@@ -962,6 +1275,9 @@ def cancel_booking(
         tickets = [row[0] for row in cur.fetchall()]
         if not tickets:
             raise HTTPException(404, "Purchase not found")
+
+        if telegram.is_enabled():
+            telegram_snapshot = _capture_purchase_snapshot(conn, purchase_id)
 
         for t_id in tickets:
             free_ticket(cur, t_id)
@@ -981,15 +1297,19 @@ def cancel_booking(
         cur.close()
         conn.close()
 
+    _queue_telegram_event(background_tasks, purchase_id, "cancelled", telegram_snapshot)
+
 
 @actions_router.post("/refund/{purchase_id}", status_code=204)
 def refund_purchase(
     purchase_id: int,
     request: Request,
+    background_tasks: BackgroundTasks,
     context=Depends(optional_scope("cancel")),
 ):
     conn = get_connection()
     cur = conn.cursor()
+    telegram_snapshot: dict | None = None
     try:
         actor, jti = _resolve_actor(request)
         guard_public_request(request, "refund", purchase_id=purchase_id, context=context)
@@ -997,6 +1317,8 @@ def refund_purchase(
         t = cur.fetchone()
         revoked_jtis: List[str] = []
         if t:
+            if telegram.is_enabled():
+                telegram_snapshot = _capture_purchase_snapshot(conn, purchase_id)
             ticket_id = t[0]
             cur.execute(
                 "SELECT jti FROM ticket_link_tokens WHERE ticket_id = %s AND revoked_at IS NULL",
@@ -1021,3 +1343,5 @@ def refund_purchase(
     finally:
         cur.close()
         conn.close()
+
+    _queue_telegram_event(background_tasks, purchase_id, "refunded", telegram_snapshot)

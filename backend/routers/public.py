@@ -555,7 +555,12 @@ def _sync_purchase_paid_from_liqpay_callback(
     liqpay_status = status.lower()
 
     from ._ticket_link_helpers import issue_ticket_links
-    from .purchase import _collect_ticket_specs_for_purchase, _log_action, _queue_ticket_emails
+    from .purchase import (
+        _collect_ticket_specs_for_purchase,
+        _log_action,
+        _queue_telegram_event,
+        _queue_ticket_emails,
+    )
 
     conn = get_connection()
     cur = conn.cursor()
@@ -716,6 +721,7 @@ def _sync_purchase_paid_from_liqpay_callback(
 
     if background_tasks:
         _queue_ticket_emails(background_tasks, tickets, None, customer_email)
+        _queue_telegram_event(background_tasks, purchase_id, "paid")
         # Trigger CheckBox fiscalization as a non-blocking background task.
         # Only runs for online (LiqPay) payments — admin path never calls this function.
         from ..services.checkbox import is_enabled as checkbox_enabled, fiscalize_purchase
