@@ -9,6 +9,7 @@ import ToursPage from "./pages/ToursPage";
 import ReportPage from "./pages/ReportPage";
 import LoginPage from "./pages/LoginPage";
 import PurchasesPage from "./pages/PurchasesPage";
+import SystemPage from "./pages/SystemPage";
 import { ToastProvider } from "./components/Toast";
 import { useToast } from "./components/Toast";
 
@@ -85,6 +86,11 @@ function App() {
             </NavLink>
           </li>
           <li>
+            <NavLink to="/system" className={({ isActive }) => (isActive ? "active" : undefined)}>
+              System
+            </NavLink>
+          </li>
+          <li>
             <button className="btn btn--ghost btn--sm" onClick={handleLogout}>Logout</button>
           </li>
         </ul>
@@ -98,6 +104,7 @@ function App() {
           <Route path="/report" element={<ReportPage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/purchases" element={<PurchasesPage />} />
+          <Route path="/system" element={<SystemPage />} />
         </Routes>
       </div>
     </Router>
