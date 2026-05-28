@@ -727,22 +727,13 @@ def _create_purchase(
         roundtrip=roundtrip,
     )
 
-    # Prepaid open-date return: reverse-direction fare (same pricelist) minus 15%.
+    # Prepaid open-date return fare, minus 15%. The return tour isn't chosen yet,
+    # so it's priced off the outbound segment price from the same pricelist rather
+    # than a reverse-direction row the outbound pricelist doesn't contain.
     open_return_unit: tuple[float, float] | None = None
     if data.open_return:
-        cur.execute(
-            """
-            SELECT price FROM prices
-             WHERE pricelist_id=%s AND departure_stop_id=%s AND arrival_stop_id=%s
-            """,
-            (pricelist_id, data.arrival_stop_id, data.departure_stop_id),
-        )
-        reverse_row = cur.fetchone()
-        if not reverse_row:
-            raise HTTPException(404, "Return price not found")
-        reverse_base = float(reverse_row[0])
-        adult_open_fare = round(reverse_base * _passenger_multiplier(False, True), 2)
-        discount_open_fare = round(reverse_base * _passenger_multiplier(True, True), 2)
+        adult_open_fare = round(base_price * _passenger_multiplier(False, True), 2)
+        discount_open_fare = round(base_price * _passenger_multiplier(True, True), 2)
         open_return_unit = (adult_open_fare, discount_open_fare)
         total_price = round(
             total_price
@@ -1237,21 +1228,12 @@ def quote_purchase(data: PurchaseQuote, request: Request):
         )
 
         if data.open_return:
-            cur.execute(
-                """
-                SELECT price FROM prices
-                 WHERE pricelist_id=%s AND departure_stop_id=%s AND arrival_stop_id=%s
-                """,
-                (pricelist_id, data.arrival_stop_id, data.departure_stop_id),
-            )
-            reverse_row = cur.fetchone()
-            if not reverse_row:
-                raise HTTPException(404, "Return price not found")
-            reverse_base = float(reverse_row[0])
+            # Open-date return: priced off the outbound segment price from the
+            # same pricelist (the return tour isn't selected yet).
             amount_due = round(
                 amount_due
-                + data.adult_count * round(reverse_base * _passenger_multiplier(False, True), 2)
-                + data.discount_count * round(reverse_base * _passenger_multiplier(True, True), 2),
+                + data.adult_count * round(base_price * _passenger_multiplier(False, True), 2)
+                + data.discount_count * round(base_price * _passenger_multiplier(True, True), 2),
                 2,
             )
 
