@@ -97,6 +97,43 @@ def _ensure_purchase_schema_compatibility(cur) -> None:
     )
 
 
+def _ensure_open_ticket_schema(cur) -> None:
+    """Create the open-date return ticket schema when migration 024 was marked but not applied."""
+    cur.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'open_ticket_status') THEN
+                CREATE TYPE open_ticket_status AS ENUM ('open','redeemed','cancelled','expired');
+            END IF;
+        END$$;
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS public.open_ticket (
+            id                 SERIAL PRIMARY KEY,
+            purchase_id        INTEGER NOT NULL REFERENCES public.purchase(id),
+            passenger_id       INTEGER NOT NULL REFERENCES public.passenger(id),
+            pricelist_id       INTEGER NOT NULL REFERENCES public.pricelist(id),
+            departure_stop_id  INTEGER NOT NULL REFERENCES public.stop(id),
+            arrival_stop_id    INTEGER NOT NULL REFERENCES public.stop(id),
+            is_discount        BOOLEAN NOT NULL DEFAULT FALSE,
+            extra_baggage      INTEGER NOT NULL DEFAULT 0,
+            amount_paid        NUMERIC(10,2) NOT NULL,
+            status             open_ticket_status NOT NULL DEFAULT 'open',
+            expires_at         TIMESTAMP NOT NULL,
+            created_at         TIMESTAMP NOT NULL DEFAULT now(),
+            redeemed_ticket_id INTEGER REFERENCES public.ticket(id),
+            redeemed_at        TIMESTAMP
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_open_ticket_purchase ON public.open_ticket(purchase_id)"
+    )
+
+
 def run_migrations() -> None:
     """Apply SQL migrations found in db/migrations."""
     migrations_dir = Path(__file__).resolve().parents[1] / "db" / "migrations"
@@ -126,6 +163,7 @@ def run_migrations() -> None:
         conn.commit()
 
     _ensure_purchase_schema_compatibility(cur)
+    _ensure_open_ticket_schema(cur)
     conn.commit()
     cur.close()
     conn.close()
