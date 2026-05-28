@@ -54,6 +54,35 @@ router = APIRouter(prefix="/purchase", tags=["purchase"])
 actions_router = APIRouter(tags=["purchase"])
 
 
+DISCOUNT_MULTIPLIER = 0.95
+ROUNDTRIP_MULTIPLIER = 0.85
+BAGGAGE_MULTIPLIER = 0.10
+OPEN_RETURN_VALID_INTERVAL = "3 months"
+
+
+def _passenger_multiplier(is_discount: bool, roundtrip: bool) -> float:
+    multiplier = DISCOUNT_MULTIPLIER if is_discount else 1.0
+    if roundtrip:
+        multiplier *= ROUNDTRIP_MULTIPLIER
+    return multiplier
+
+
+def _fare(
+    base_price: float,
+    *,
+    adult_count: int,
+    discount_count: int,
+    baggage_count: int,
+    roundtrip: bool = False,
+) -> float:
+    """Total fare. Round-trip discount applies to passenger fares, not baggage."""
+    passengers = (
+        adult_count * _passenger_multiplier(False, roundtrip)
+        + discount_count * _passenger_multiplier(True, roundtrip)
+    )
+    return round(base_price * (passengers + BAGGAGE_MULTIPLIER * baggage_count), 2)
+
+
 class PurchaseCreate(BaseModel):
     tour_id: int
     seat_nums: list[int]
@@ -66,6 +95,8 @@ class PurchaseCreate(BaseModel):
     discount_count: int
     extra_baggage: list[bool] | None = None
     purchase_id: int | None = None
+    is_return_leg: bool = False
+    open_return: bool = False
     lang: str | None = None
 
 
@@ -657,10 +688,40 @@ def _create_purchase(
         raise HTTPException(404, "Price not found")
     base_price = float(price_row[0])
     baggage_count = sum(1 for b in baggage_list if b)
-    total_price = base_price * (
-        data.adult_count + data.discount_count * 0.95 + 0.1 * baggage_count
+    # The return leg of a round trip is the append call carrying purchase_id (current
+    # SearchPage flow), or any leg explicitly flagged as the return.
+    roundtrip = bool(data.is_return_leg) or data.purchase_id is not None
+    total_price = _fare(
+        base_price,
+        adult_count=data.adult_count,
+        discount_count=data.discount_count,
+        baggage_count=baggage_count,
+        roundtrip=roundtrip,
     )
-    total_price = round(total_price, 2)
+
+    # Prepaid open-date return: reverse-direction fare (same pricelist) minus 15%.
+    open_return_unit: tuple[float, float] | None = None
+    if data.open_return:
+        cur.execute(
+            """
+            SELECT price FROM prices
+             WHERE pricelist_id=%s AND departure_stop_id=%s AND arrival_stop_id=%s
+            """,
+            (pricelist_id, data.arrival_stop_id, data.departure_stop_id),
+        )
+        reverse_row = cur.fetchone()
+        if not reverse_row:
+            raise HTTPException(404, "Return price not found")
+        reverse_base = float(reverse_row[0])
+        adult_open_fare = round(reverse_base * _passenger_multiplier(False, True), 2)
+        discount_open_fare = round(reverse_base * _passenger_multiplier(True, True), 2)
+        open_return_unit = (adult_open_fare, discount_open_fare)
+        total_price = round(
+            total_price
+            + data.adult_count * adult_open_fare
+            + data.discount_count * discount_open_fare,
+            2,
+        )
 
     purchase_id = data.purchase_id
     new_amount = total_price
@@ -711,10 +772,12 @@ def _create_purchase(
 
     # 2) create passenger and ticket for each seat
     ticket_specs: List[TicketIssueSpec] = []
+    passenger_ids: List[int] = []
 
     for seat_num, name, bag in zip(data.seat_nums, data.passenger_names, baggage_list):
         cur.execute("INSERT INTO passenger (name) VALUES (%s) RETURNING id", (name,))
         passenger_id = cur.fetchone()[0]
+        passenger_ids.append(passenger_id)
 
         cur.execute(
             "SELECT id, available FROM seat WHERE tour_id=%s AND seat_num=%s",
@@ -796,6 +859,31 @@ def _create_purchase(
                 data.departure_stop_id,
             ),
         )
+
+    # 3) issue prepaid open-date return vouchers (reverse direction, already paid)
+    if open_return_unit is not None:
+        adult_open_fare, discount_open_fare = open_return_unit
+        for index, passenger_id in enumerate(passenger_ids):
+            is_discount = index >= data.adult_count
+            amount_paid = discount_open_fare if is_discount else adult_open_fare
+            cur.execute(
+                """
+                INSERT INTO open_ticket
+                  (purchase_id, passenger_id, pricelist_id, departure_stop_id,
+                   arrival_stop_id, is_discount, amount_paid, status, expires_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,'open',NOW() + CAST(%s AS INTERVAL))
+                """,
+                (
+                    purchase_id,
+                    passenger_id,
+                    pricelist_id,
+                    data.arrival_stop_id,
+                    data.departure_stop_id,
+                    is_discount,
+                    amount_paid,
+                    OPEN_RETURN_VALID_INTERVAL,
+                ),
+            )
 
     _log_action(
         cur,

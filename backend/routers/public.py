@@ -63,6 +63,11 @@ class TicketRescheduleRequest(BaseModel):
     seat_num: int = Field(..., gt=0)
 
 
+class OpenReturnActivateRequest(BaseModel):
+    tour_id: int = Field(..., gt=0)
+    seat_num: int = Field(..., gt=0)
+
+
 class BaggageTicketSpec(BaseModel):
     ticket_id: int = Field(..., gt=0)
     extra_baggage: int = Field(..., ge=0)
@@ -1538,6 +1543,304 @@ def get_public_purchase(purchase_id: int, request: Request) -> Any:
 
     dto = _load_purchase_view(resolved_purchase_id, _DEFAULT_LANG)
     return jsonable_encoder(dto)
+
+
+_OPEN_TICKET_COLUMNS = (
+    "id, purchase_id, passenger_id, pricelist_id, departure_stop_id, "
+    "arrival_stop_id, is_discount, extra_baggage, amount_paid, status, "
+    "expires_at, redeemed_ticket_id, redeemed_at"
+)
+
+
+def _open_ticket_to_dict(row: Sequence[Any]) -> dict[str, Any]:
+    keys = [
+        "id",
+        "purchase_id",
+        "passenger_id",
+        "pricelist_id",
+        "departure_stop_id",
+        "arrival_stop_id",
+        "is_discount",
+        "extra_baggage",
+        "amount_paid",
+        "status",
+        "expires_at",
+        "redeemed_ticket_id",
+        "redeemed_at",
+    ]
+    return dict(zip(keys, row))
+
+
+def _load_open_ticket(cur, open_ticket_id: int, *, for_update: bool = False) -> dict[str, Any]:
+    query = f"SELECT {_OPEN_TICKET_COLUMNS} FROM open_ticket WHERE id = %s"
+    if for_update:
+        query += " FOR UPDATE"
+    cur.execute(query, (open_ticket_id,))
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Open ticket not found")
+    return _open_ticket_to_dict(row)
+
+
+def _open_ticket_is_active(open_ticket: Mapping[str, Any]) -> bool:
+    if open_ticket.get("status") != "open":
+        return False
+    expires_at = open_ticket.get("expires_at")
+    if expires_at is None:
+        return True
+    return datetime.now() < expires_at
+
+
+def _stop_name(cur, stop_id: int) -> str | None:
+    cur.execute("SELECT stop_name FROM stop WHERE id = %s", (stop_id,))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+@router.get("/purchase/{purchase_id}/open-returns")
+def list_open_returns(purchase_id: int, request: Request) -> Any:
+    session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
+        request, purchase_id=purchase_id
+    )
+    guard_public_request(
+        request,
+        "open_returns_list",
+        ticket_id=resolved_ticket_id,
+        purchase_id=resolved_purchase_id,
+    )
+    link_sessions.touch_session_usage(session.jti, scope="view")
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"SELECT {_OPEN_TICKET_COLUMNS} FROM open_ticket "
+            "WHERE purchase_id = %s ORDER BY id",
+            (resolved_purchase_id,),
+        )
+        rows = [_open_ticket_to_dict(row) for row in cur.fetchall()]
+        currency = None
+        result = []
+        for item in rows:
+            if currency is None:
+                cur.execute(
+                    "SELECT currency FROM pricelist WHERE id = %s", (item["pricelist_id"],)
+                )
+                currency_row = cur.fetchone()
+                currency = currency_row[0] if currency_row else None
+            result.append(
+                {
+                    "id": item["id"],
+                    "from_stop": _stop_name(cur, item["departure_stop_id"]),
+                    "to_stop": _stop_name(cur, item["arrival_stop_id"]),
+                    "amount_paid": float(item["amount_paid"]),
+                    "currency": currency,
+                    "expires_at": item["expires_at"],
+                    "status": item["status"],
+                    "is_active": _open_ticket_is_active(item),
+                }
+            )
+    finally:
+        cur.close()
+        conn.close()
+    return jsonable_encoder(result)
+
+
+@router.get("/open-return/{open_ticket_id}/tours")
+def list_open_return_tours(open_ticket_id: int, request: Request) -> Any:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        open_ticket = _load_open_ticket(cur, open_ticket_id)
+    except HTTPException:
+        cur.close()
+        conn.close()
+        raise
+
+    try:
+        session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
+            request, purchase_id=int(open_ticket["purchase_id"])
+        )
+        guard_public_request(
+            request,
+            "open_return_tours",
+            ticket_id=resolved_ticket_id,
+            purchase_id=resolved_purchase_id,
+        )
+        link_sessions.touch_session_usage(session.jti, scope="view")
+
+        dep_id = int(open_ticket["departure_stop_id"])
+        arr_id = int(open_ticket["arrival_stop_id"])
+
+        cur.execute(
+            """
+            SELECT t.id, t.route_id, t.date
+              FROM tour t
+             WHERE t.pricelist_id = %s AND t.date >= CURRENT_DATE
+             ORDER BY t.date, t.id
+            """,
+            (open_ticket["pricelist_id"],),
+        )
+        tour_rows = cur.fetchall()
+
+        tours: list[dict[str, Any]] = []
+        for tour_id, route_id, tour_date in tour_rows:
+            stops = _fetch_route_stops(cur, int(route_id))
+            try:
+                segments, _pairs = _segments_between(stops, dep_id, arr_id)
+            except HTTPException:
+                # Stops not on this route in the right order (e.g. forward tour) -> skip.
+                continue
+            cur.execute(
+                "SELECT seat_num, available FROM seat WHERE tour_id = %s ORDER BY seat_num",
+                (tour_id,),
+            )
+            free_seats = []
+            for seat_num, avail in cur.fetchall():
+                if avail == "0":
+                    continue
+                if all(seg in _normalize_availability(avail) for seg in segments):
+                    free_seats.append(int(seat_num))
+            tours.append(
+                {
+                    "tour_id": int(tour_id),
+                    "date": tour_date,
+                    "seats": free_seats,
+                }
+            )
+    finally:
+        cur.close()
+        conn.close()
+    return jsonable_encoder(tours)
+
+
+@router.post("/open-return/{open_ticket_id}/activate")
+def activate_open_return(
+    open_ticket_id: int, data: OpenReturnActivateRequest, request: Request
+) -> Any:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        open_ticket = _load_open_ticket(cur, open_ticket_id)
+        purchase_id = int(open_ticket["purchase_id"])
+
+        session, resolved_ticket_id, resolved_purchase_id, _cookie = _require_view_session(
+            request, purchase_id=purchase_id
+        )
+        guard_public_request(
+            request,
+            "open_return_activate",
+            ticket_id=resolved_ticket_id,
+            purchase_id=resolved_purchase_id,
+        )
+        _require_csrf(request)
+        link_sessions.touch_session_usage(session.jti, scope="view")
+
+        # Lock the voucher and re-check it is still redeemable.
+        open_ticket = _load_open_ticket(cur, open_ticket_id, for_update=True)
+        if open_ticket["status"] != "open":
+            raise HTTPException(status_code=409, detail="Open ticket is not available")
+        if not _open_ticket_is_active(open_ticket):
+            cur.execute(
+                "UPDATE open_ticket SET status='expired' WHERE id = %s AND status='open'",
+                (open_ticket_id,),
+            )
+            conn.commit()
+            raise HTTPException(status_code=410, detail="Open ticket has expired")
+
+        dep_id = int(open_ticket["departure_stop_id"])
+        arr_id = int(open_ticket["arrival_stop_id"])
+
+        cur.execute("SELECT route_id FROM tour WHERE id = %s", (data.tour_id,))
+        tour_row = cur.fetchone()
+        if not tour_row:
+            raise HTTPException(status_code=404, detail="Tour not found")
+        stops = _fetch_route_stops(cur, int(tour_row[0]))
+        segments, _pairs = _segments_between(stops, dep_id, arr_id)
+
+        cur.execute(
+            "SELECT id, available FROM seat WHERE tour_id = %s AND seat_num = %s FOR UPDATE",
+            (data.tour_id, data.seat_num),
+        )
+        seat_row = cur.fetchone()
+        if not seat_row:
+            raise HTTPException(status_code=404, detail="Seat not found on the selected tour")
+        seat_id, avail = seat_row
+        if avail == "0":
+            raise HTTPException(status_code=409, detail="Seat is blocked on the selected tour")
+        _ensure_segments_available(avail, segments)
+
+        cur.execute(
+            """
+            INSERT INTO ticket
+              (tour_id, seat_id, passenger_id, departure_stop_id, arrival_stop_id,
+               purchase_id, extra_baggage)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id
+            """,
+            (
+                data.tour_id,
+                seat_id,
+                int(open_ticket["passenger_id"]),
+                dep_id,
+                arr_id,
+                purchase_id,
+                int(open_ticket["extra_baggage"]),
+            ),
+        )
+        new_ticket_id = cur.fetchone()[0]
+
+        cur.execute(
+            "UPDATE seat SET available = %s WHERE id = %s",
+            (_remove_segments(avail, segments), seat_id),
+        )
+        recalc_available(cur, int(data.tour_id))
+
+        cur.execute(
+            """
+            UPDATE open_ticket
+               SET status='redeemed', redeemed_ticket_id=%s, redeemed_at=NOW()
+             WHERE id = %s
+            """,
+            (new_ticket_id, open_ticket_id),
+        )
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:  # pragma: no cover - runtime safety
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        cur.close()
+        conn.close()
+
+    deep_link: str | None = None
+    try:
+        dto = _load_ticket_dto(new_ticket_id, _DEFAULT_LANG)
+        segment = dto.get("segment") if isinstance(dto, Mapping) else None
+        tour = dto.get("tour") if isinstance(dto, Mapping) else None
+        tour_date = tour.get("date") if isinstance(tour, Mapping) else None
+        dep_ctx = segment.get("departure") if isinstance(segment, Mapping) else None
+        dep_time = dep_ctx.get("time") if isinstance(dep_ctx, Mapping) else None
+        departure_dt = None
+        if tour_date:
+            try:
+                departure_dt = combine_departure_datetime(tour_date, dep_time)
+            except ValueError:
+                departure_dt = None
+        opaque, _expires_at = get_or_create_view_session(
+            new_ticket_id,
+            purchase_id=purchase_id,
+            lang=_DEFAULT_LANG,
+            departure_dt=departure_dt,
+            scopes=DEFAULT_TICKET_SCOPES,
+        )
+        deep_link = build_deep_link(opaque, base_url=get_client_app_base())
+    except Exception:  # pragma: no cover - deep link is best-effort
+        logger.exception("Failed to build deep link for activated ticket %s", new_ticket_id)
+
+    return jsonable_encoder({"ticket_id": new_ticket_id, "deep_link": deep_link})
 
 
 @router.get("/tickets/{ticket_id}/pdf")
