@@ -150,6 +150,18 @@ def _require_pay_access_for_public_endpoint(
         raise HTTPException(403, "Token does not match purchase")
 
 
+def _void_open_returns(cur, purchase_id: int) -> None:
+    """Cancel any still-open prepaid return vouchers for a purchase.
+
+    Open-date returns are paid up front and would otherwise stay redeemable
+    after the parent purchase is cancelled or refunded.
+    """
+    cur.execute(
+        "UPDATE open_ticket SET status='cancelled' WHERE purchase_id=%s AND status='open'",
+        (purchase_id,),
+    )
+
+
 def _log_action(
     cur,
     purchase_id: int,
@@ -1022,6 +1034,7 @@ def cancel_purchase(
             free_ticket(cur, t_id)
 
         cur.execute("UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s", (purchase_id,))
+        _void_open_returns(cur, purchase_id)
         _log_action(cur, purchase_id, "cancelled", 0, by=actor)
         conn.commit()
         if jti:
@@ -1453,6 +1466,7 @@ def cancel_booking(
             free_ticket(cur, t_id)
 
         cur.execute("UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s", (purchase_id,))
+        _void_open_returns(cur, purchase_id)
         _log_action(cur, purchase_id, "cancelled", 0, by=actor)
         conn.commit()
         if jti:
@@ -1498,6 +1512,7 @@ def refund_purchase(
             cur.execute("DELETE FROM ticket WHERE id=%s", (ticket_id,))
 
         cur.execute("UPDATE purchase SET status='refunded', update_at=NOW() WHERE id=%s", (purchase_id,))
+        _void_open_returns(cur, purchase_id)
         _log_action(cur, purchase_id, "refunded", 0, by=actor)
         conn.commit()
         for token_jti in revoked_jtis:

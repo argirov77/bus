@@ -246,3 +246,98 @@ def test_quote_open_return_adds_reverse_leg(monkeypatch):
     result = quote_purchase(data, request=object())
     # forward 10 + open return 10*0.85 = 18.5
     assert result["amount_due"] == 18.5
+
+
+def test_void_open_returns_cancels_open_vouchers():
+    captured = {}
+
+    class C:
+        def execute(self, query, params=None):
+            captured["q"] = query.lower()
+            captured["p"] = params
+
+    purchase._void_open_returns(C(), 5)
+    assert "update open_ticket set status='cancelled'" in captured["q"]
+    assert "status='open'" in captured["q"]
+    assert captured["p"] == (5,)
+
+
+class _Sess:
+    jti = "jti-1"
+
+
+class FakeActivateCursor:
+    """Cursor for activate_open_return where the parent purchase is unpaid."""
+
+    OPEN_ROW = (
+        1,    # id
+        1,    # purchase_id
+        10,   # passenger_id
+        1,    # pricelist_id
+        2,    # departure_stop_id
+        1,    # arrival_stop_id
+        False,  # is_discount
+        0,    # extra_baggage
+        100.0,  # amount_paid
+        "open",  # status
+        None,  # expires_at (active)
+        None,  # redeemed_ticket_id
+        None,  # redeemed_at
+    )
+
+    def __init__(self, purchase_status="reserved"):
+        self.query = ""
+        self._purchase_status = purchase_status
+
+    def execute(self, query, params=None):
+        self.query = query.lower()
+
+    def fetchone(self):
+        q = self.query
+        if "from open_ticket where id" in q:
+            return self.OPEN_ROW
+        if "select status from purchase where id" in q:
+            return [self._purchase_status]
+        return None
+
+    def close(self):
+        pass
+
+
+class FakeActivateConn:
+    def __init__(self, cur):
+        self._cur = cur
+
+    def cursor(self):
+        return self._cur
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        pass
+
+
+def test_activate_rejects_unpaid_purchase(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+    from backend.routers import public
+    from backend.routers.public import activate_open_return, OpenReturnActivateRequest
+
+    cur = FakeActivateCursor(purchase_status="reserved")
+    monkeypatch.setattr(public, "get_connection", lambda: FakeActivateConn(cur))
+    monkeypatch.setattr(
+        public, "_require_view_session", lambda request, **k: (_Sess(), 1, 1, "cookie")
+    )
+    monkeypatch.setattr(public, "guard_public_request", lambda *a, **k: None)
+    monkeypatch.setattr(public, "_require_csrf", lambda request: "csrf")
+    monkeypatch.setattr(public.link_sessions, "touch_session_usage", lambda *a, **k: None)
+
+    data = OpenReturnActivateRequest(tour_id=456, seat_num=15)
+    with pytest.raises(HTTPException) as exc:
+        activate_open_return(1, data, request=object())
+    assert exc.value.status_code == 409
+    assert "not paid" in exc.value.detail.lower()

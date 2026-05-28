@@ -1760,6 +1760,15 @@ def activate_open_return(
         _require_csrf(request)
         link_sessions.touch_session_usage(session.jti, scope="view")
 
+        # The open return is prepaid; it can only be redeemed once the parent
+        # purchase has actually been paid.
+        cur.execute("SELECT status FROM purchase WHERE id = %s", (purchase_id,))
+        purchase_row = cur.fetchone()
+        if not purchase_row:
+            raise HTTPException(status_code=404, detail="Purchase not found")
+        if purchase_row[0] != "paid":
+            raise HTTPException(status_code=409, detail="Return is not paid yet")
+
         # Lock the voucher and re-check it is still redeemable.
         open_ticket = _load_open_ticket(cur, open_ticket_id, for_update=True)
         if open_ticket["status"] != "open":
@@ -2373,6 +2382,12 @@ def public_cancel(
             "UPDATE purchase SET amount_due=%s, status=%s, update_at=NOW() WHERE id=%s",
             (new_amount_due, status_update, resolved_purchase_id),
         )
+        if status_update in {"cancelled", "refunded"}:
+            cur.execute(
+                "UPDATE open_ticket SET status='cancelled' "
+                "WHERE purchase_id=%s AND status='open'",
+                (resolved_purchase_id,),
+            )
 
         total_delta = round(delta, 2)
         if total_delta != 0:
