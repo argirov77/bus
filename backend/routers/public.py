@@ -1591,10 +1591,19 @@ def _open_ticket_is_active(open_ticket: Mapping[str, Any]) -> bool:
     return datetime.now() < expires_at
 
 
-def _stop_name(cur, stop_id: int) -> str | None:
+def _stop_ref(cur, stop_id: int) -> dict[str, Any]:
     cur.execute("SELECT stop_name FROM stop WHERE id = %s", (stop_id,))
     row = cur.fetchone()
-    return row[0] if row else None
+    return {"id": stop_id, "name": row[0] if row else None}
+
+
+def _format_clock(value: Any) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "strftime"):
+        return value.strftime("%H:%M")
+    text = str(value)
+    return text[:5] if len(text) >= 5 else text
 
 
 @router.get("/purchase/{purchase_id}/open-returns")
@@ -1631,8 +1640,8 @@ def list_open_returns(purchase_id: int, request: Request) -> Any:
             result.append(
                 {
                     "id": item["id"],
-                    "from_stop": _stop_name(cur, item["departure_stop_id"]),
-                    "to_stop": _stop_name(cur, item["arrival_stop_id"]),
+                    "from_stop": _stop_ref(cur, item["departure_stop_id"]),
+                    "to_stop": _stop_ref(cur, item["arrival_stop_id"]),
                     "amount_paid": float(item["amount_paid"]),
                     "currency": currency,
                     "expires_at": item["expires_at"],
@@ -1674,7 +1683,7 @@ def list_open_return_tours(open_ticket_id: int, request: Request) -> Any:
 
         cur.execute(
             """
-            SELECT t.id, t.route_id, t.date
+            SELECT t.id, t.route_id, t.date, t.layout_variant
               FROM tour t
              WHERE t.pricelist_id = %s AND t.date >= CURRENT_DATE
              ORDER BY t.date, t.id
@@ -1684,28 +1693,43 @@ def list_open_return_tours(open_ticket_id: int, request: Request) -> Any:
         tour_rows = cur.fetchall()
 
         tours: list[dict[str, Any]] = []
-        for tour_id, route_id, tour_date in tour_rows:
-            stops = _fetch_route_stops(cur, int(route_id))
+        for tour_id, route_id, tour_date, layout_variant in tour_rows:
+            cur.execute(
+                """
+                SELECT stop_id, arrival_time, departure_time
+                  FROM routestop WHERE route_id = %s ORDER BY "order"
+                """,
+                (int(route_id),),
+            )
+            stop_rows = cur.fetchall()
+            stops = [int(r[0]) for r in stop_rows]
+            times = {int(r[0]): (r[1], r[2]) for r in stop_rows}
             try:
                 segments, _pairs = _segments_between(stops, dep_id, arr_id)
             except HTTPException:
                 # Stops not on this route in the right order (e.g. forward tour) -> skip.
                 continue
+
             cur.execute(
-                "SELECT seat_num, available FROM seat WHERE tour_id = %s ORDER BY seat_num",
+                "SELECT available FROM seat WHERE tour_id = %s",
                 (tour_id,),
             )
-            free_seats = []
-            for seat_num, avail in cur.fetchall():
-                if avail == "0":
-                    continue
-                if all(seg in _normalize_availability(avail) for seg in segments):
-                    free_seats.append(int(seat_num))
+            has_free_seat = any(
+                avail != "0" and all(seg in _normalize_availability(avail) for seg in segments)
+                for (avail,) in cur.fetchall()
+            )
+            if not has_free_seat:
+                continue
+
+            dep_arrival, dep_departure = times.get(dep_id, (None, None))
+            arr_arrival, arr_departure = times.get(arr_id, (None, None))
             tours.append(
                 {
                     "tour_id": int(tour_id),
                     "date": tour_date,
-                    "seats": free_seats,
+                    "departure_time": _format_clock(dep_departure or dep_arrival),
+                    "arrival_time": _format_clock(arr_arrival or arr_departure),
+                    "layout_variant": layout_variant,
                 }
             )
     finally:
@@ -1735,6 +1759,15 @@ def activate_open_return(
         )
         _require_csrf(request)
         link_sessions.touch_session_usage(session.jti, scope="view")
+
+        # The open return is prepaid; it can only be redeemed once the parent
+        # purchase has actually been paid.
+        cur.execute("SELECT status FROM purchase WHERE id = %s", (purchase_id,))
+        purchase_row = cur.fetchone()
+        if not purchase_row:
+            raise HTTPException(status_code=404, detail="Purchase not found")
+        if purchase_row[0] != "paid":
+            raise HTTPException(status_code=409, detail="Return is not paid yet")
 
         # Lock the voucher and re-check it is still redeemable.
         open_ticket = _load_open_ticket(cur, open_ticket_id, for_update=True)
@@ -2349,6 +2382,12 @@ def public_cancel(
             "UPDATE purchase SET amount_due=%s, status=%s, update_at=NOW() WHERE id=%s",
             (new_amount_due, status_update, resolved_purchase_id),
         )
+        if status_update in {"cancelled", "refunded"}:
+            cur.execute(
+                "UPDATE open_ticket SET status='cancelled' "
+                "WHERE purchase_id=%s AND status='open'",
+                (resolved_purchase_id,),
+            )
 
         total_delta = round(delta, 2)
         if total_delta != 0:

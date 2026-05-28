@@ -105,6 +105,22 @@ class TicketLinkOut(BaseModel):
     deep_link: str
 
 
+class PurchaseQuote(BaseModel):
+    tour_id: int
+    departure_stop_id: int
+    arrival_stop_id: int
+    adult_count: int = 0
+    discount_count: int = 0
+    extra_baggage_count: int = 0
+    open_return: bool = False
+    is_return_leg: bool = False
+
+
+class PurchaseQuoteOut(BaseModel):
+    amount_due: float
+    currency: str
+
+
 class PurchaseOut(BaseModel):
     purchase_id: int
     amount_due: float
@@ -132,6 +148,18 @@ def _require_pay_access_for_public_endpoint(
     token_purchase_id = getattr(context, "purchase_id", None)
     if token_purchase_id is None or int(token_purchase_id) != int(purchase_id):
         raise HTTPException(403, "Token does not match purchase")
+
+
+def _void_open_returns(cur, purchase_id: int) -> None:
+    """Cancel any still-open prepaid return vouchers for a purchase.
+
+    Open-date returns are paid up front and would otherwise stay redeemable
+    after the parent purchase is cancelled or refunded.
+    """
+    cur.execute(
+        "UPDATE open_ticket SET status='cancelled' WHERE purchase_id=%s AND status='open'",
+        (purchase_id,),
+    )
 
 
 def _log_action(
@@ -1006,6 +1034,7 @@ def cancel_purchase(
             free_ticket(cur, t_id)
 
         cur.execute("UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s", (purchase_id,))
+        _void_open_returns(cur, purchase_id)
         _log_action(cur, purchase_id, "cancelled", 0, by=actor)
         conn.commit()
         if jti:
@@ -1168,6 +1197,72 @@ def purchase_and_pay(
     _queue_ticket_emails(background_tasks, tickets, data.lang, data.passenger_email)
     _queue_telegram_event(background_tasks, purchase_id, "paid")
     return {"purchase_id": purchase_id, "amount_due": amount_due, "tickets": tickets}
+
+
+@actions_router.post(
+    "/public/purchase/quote",
+    response_model=PurchaseQuoteOut,
+    summary="Price quote for a single leg (no PII, no persistence)",
+)
+def quote_purchase(data: PurchaseQuote, request: Request):
+    guard_public_request(request, "purchase_quote")
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT pricelist_id FROM tour WHERE id=%s", (data.tour_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Tour not found")
+        pricelist_id = row[0]
+
+        cur.execute(
+            """
+            SELECT price FROM prices
+             WHERE pricelist_id=%s AND departure_stop_id=%s AND arrival_stop_id=%s
+            """,
+            (pricelist_id, data.departure_stop_id, data.arrival_stop_id),
+        )
+        price_row = cur.fetchone()
+        if not price_row:
+            raise HTTPException(404, "Price not found")
+        base_price = float(price_row[0])
+
+        amount_due = _fare(
+            base_price,
+            adult_count=data.adult_count,
+            discount_count=data.discount_count,
+            baggage_count=data.extra_baggage_count,
+            roundtrip=data.is_return_leg,
+        )
+
+        if data.open_return:
+            cur.execute(
+                """
+                SELECT price FROM prices
+                 WHERE pricelist_id=%s AND departure_stop_id=%s AND arrival_stop_id=%s
+                """,
+                (pricelist_id, data.arrival_stop_id, data.departure_stop_id),
+            )
+            reverse_row = cur.fetchone()
+            if not reverse_row:
+                raise HTTPException(404, "Return price not found")
+            reverse_base = float(reverse_row[0])
+            amount_due = round(
+                amount_due
+                + data.adult_count * round(reverse_base * _passenger_multiplier(False, True), 2)
+                + data.discount_count * round(reverse_base * _passenger_multiplier(True, True), 2),
+                2,
+            )
+
+        cur.execute("SELECT currency FROM pricelist WHERE id=%s", (pricelist_id,))
+        currency_row = cur.fetchone()
+        currency = currency_row[0] if currency_row and currency_row[0] else "UAH"
+    finally:
+        cur.close()
+        conn.close()
+
+    return {"amount_due": amount_due, "currency": currency}
 
 
 @actions_router.post(
@@ -1371,6 +1466,7 @@ def cancel_booking(
             free_ticket(cur, t_id)
 
         cur.execute("UPDATE purchase SET status='cancelled', update_at=NOW() WHERE id=%s", (purchase_id,))
+        _void_open_returns(cur, purchase_id)
         _log_action(cur, purchase_id, "cancelled", 0, by=actor)
         conn.commit()
         if jti:
@@ -1416,6 +1512,7 @@ def refund_purchase(
             cur.execute("DELETE FROM ticket WHERE id=%s", (ticket_id,))
 
         cur.execute("UPDATE purchase SET status='refunded', update_at=NOW() WHERE id=%s", (purchase_id,))
+        _void_open_returns(cur, purchase_id)
         _log_action(cur, purchase_id, "refunded", 0, by=actor)
         conn.commit()
         for token_jti in revoked_jtis:

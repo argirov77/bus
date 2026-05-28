@@ -142,6 +142,7 @@
 | POST | `/public/purchase/{purchase_id}/baggage/quote` | Расчёт изменения суммы при добавлении/уборке дополнительного багажа. |
 | POST | `/public/purchase/{purchase_id}/baggage` | Применение изменений по багажу и обновление заказа. |
 | POST | `/public/purchase/{purchase_id}/cancel` | Частичная или полная отмена билетов в заказе, очистка cookie при полном возврате. |
+| POST | `/public/purchase/quote` | Предварительный расчёт суммы одной «ноги» (без ПДн, без cookie/CSRF). |
 | GET | `/public/purchase/{purchase_id}/open-returns` | Список предоплаченных обраток с открытой датой по заказу (стопы, цена, срок, активна ли). |
 | GET | `/public/open-return/{open_ticket_id}/tours` | Доступные рейсы обратного направления для активации открытого билета (рейсы с тем же прайслистом, где сегмент валиден, и свободными местами). |
 | POST | `/public/open-return/{open_ticket_id}/activate` | Активация открытого билета: по `tour_id` и `seat_num` создаётся оплаченный обратный билет, ваучер помечается `redeemed`. Доплаты нет. Требует CSRF. |
@@ -160,10 +161,26 @@
 - Круговая скидка 15% для обычной (с датой) обратки: передавайте `"is_return_leg": true`
   в запросе обратного рейса (или используйте текущий flow с тем же `purchase_id`).
 
+#### `POST /public/purchase/quote`
+- Публичная ручка без ПДн и без записи в БД (без cookie/CSRF). Считает сумму одной «ноги».
+- Тело: `{ "tour_id", "departure_stop_id", "arrival_stop_id", "adult_count", "discount_count", "extra_baggage_count", "open_return"?, "is_return_leg"? }`.
+- Ответ: `{ "amount_due": <number>, "currency": "UAH" }`.
+- `is_return_leg=true` → тариф ноги ×0.85; `open_return=true` → плюс цена обратного направления ×0.85.
+
+#### `GET /public/purchase/{purchase_id}/open-returns`
+- Ответ — массив: `{ "id", "from_stop": {"id","name"}, "to_stop": {"id","name"}, "amount_paid", "currency", "expires_at", "status", "is_active" }`.
+
+#### `GET /public/open-return/{open_ticket_id}/tours`
+- Только рейсы обратного маршрута с `date >= today` и наличием мест на сегменте.
+- Ответ — массив: `{ "tour_id", "date", "departure_time": "HH:MM", "arrival_time": "HH:MM", "layout_variant" }`.
+- Места грузятся отдельно через `GET /seat/?tour_id=&departure_stop_id=&arrival_stop_id=`.
+
 #### `POST /public/open-return/{open_ticket_id}/activate`
 - Тело: `{ "tour_id": <int>, "seat_num": <int> }`, заголовок `X-CSRF`.
 - Ответ: `{ "ticket_id": <int>, "deep_link": "https://.../q/<opaque>" }`.
-- Ошибки: `409` — ваучер уже использован/место занято; `410` — срок истёк.
+- Активация доступна только если родительская покупка **оплачена** (`status='paid'`); иначе `409` «Return is not paid yet».
+- Ошибки: `409` — ваучер уже использован/место занято/покупка не оплачена; `410` — срок истёк.
+- При отмене/возврате покупки (admin `/cancel`, `/refund`, `/purchase/{id}/cancel` или публичный `/public/purchase/{id}/cancel` при полной отмене) все ещё открытые ваучеры заказа переводятся в `cancelled`.
 
 ## Детальные payload-контракты по публичным эндпоинтам
 
