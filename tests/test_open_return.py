@@ -143,13 +143,14 @@ def test_open_return_creates_voucher_and_adds_to_amount(monkeypatch):
     open_inserts = [q for q, p in cur.queries if "insert into open_ticket" in q.lower()]
     assert len(open_inserts) == 1
 
-    # Reverse-direction price lookup uses swapped stops on the same pricelist.
+    # Open-date return reuses the outbound segment price from the same pricelist;
+    # it must NOT query a reverse-direction row (arrival, departure).
     reverse_lookups = [
         p
         for q, p in cur.queries
         if "select price from prices" in q.lower() and p == (1, 2, 1)
     ]
-    assert reverse_lookups, "expected a reverse-direction price lookup (arrival, departure)"
+    assert not reverse_lookups, "open-date return should not do a reverse-direction price lookup"
 
 
 def test_open_return_discount_passenger_price(monkeypatch):
@@ -232,8 +233,10 @@ def test_quote_return_leg_discount(monkeypatch):
     assert result["amount_due"] == 8.5
 
 
-def test_quote_open_return_adds_reverse_leg(monkeypatch):
-    cur = FakeQuoteCursor(forward=10, reverse=10)
+def test_quote_open_return_uses_outbound_price(monkeypatch):
+    # reverse=999 would blow up the total if it were ever used; the open-date
+    # return must be priced off the outbound segment price instead.
+    cur = FakeQuoteCursor(forward=10, reverse=999)
     _patch_quote(monkeypatch, cur)
     data = PurchaseQuote(
         tour_id=1,
