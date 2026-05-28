@@ -39,9 +39,11 @@ psycopg2.connect = lambda *a, **k: _StubConn()
 from backend.routers import purchase
 from backend.routers.purchase import (
     PurchaseCreate,
+    PurchaseQuote,
     _fare,
     _passenger_multiplier,
     _create_purchase,
+    quote_purchase,
 )
 
 
@@ -159,3 +161,88 @@ def test_open_return_discount_passenger_price(monkeypatch):
 
     # forward льгота 10*0.95 = 9.5 ; open return 10*0.95*0.85 = 8.075 -> 8.08
     assert amount_due == round(9.5 + round(10 * 0.95 * 0.85, 2), 2)
+
+
+class FakeQuoteCursor:
+    def __init__(self, forward=10, reverse=10, currency="UAH"):
+        self.query = ""
+        self._forward = forward
+        self._reverse = reverse
+        self._currency = currency
+        self._price_calls = 0
+
+    def execute(self, query, params=None):
+        self.query = query.lower()
+        self.params = params
+
+    def fetchone(self):
+        q = self.query
+        if "select pricelist_id from tour" in q:
+            return [1]
+        if "select price from prices" in q:
+            # First lookup is forward, second (if any) is the reverse direction.
+            self._price_calls += 1
+            return [self._forward] if self._price_calls == 1 else [self._reverse]
+        if "select currency from pricelist" in q:
+            return [self._currency]
+        return [1]
+
+    def close(self):
+        pass
+
+
+class FakeQuoteConn:
+    def __init__(self, cur):
+        self._cur = cur
+
+    def cursor(self):
+        return self._cur
+
+    def close(self):
+        pass
+
+
+def _patch_quote(monkeypatch, cur):
+    monkeypatch.setattr(purchase, "guard_public_request", lambda *a, **k: None)
+    monkeypatch.setattr(purchase, "get_connection", lambda: FakeQuoteConn(cur))
+
+
+def test_quote_one_way(monkeypatch):
+    cur = FakeQuoteCursor(forward=10)
+    _patch_quote(monkeypatch, cur)
+    data = PurchaseQuote(
+        tour_id=1, departure_stop_id=1, arrival_stop_id=2, adult_count=2, discount_count=0
+    )
+    result = quote_purchase(data, request=object())
+    assert result == {"amount_due": 20.0, "currency": "UAH"}
+
+
+def test_quote_return_leg_discount(monkeypatch):
+    cur = FakeQuoteCursor(forward=10)
+    _patch_quote(monkeypatch, cur)
+    data = PurchaseQuote(
+        tour_id=1,
+        departure_stop_id=2,
+        arrival_stop_id=1,
+        adult_count=1,
+        discount_count=0,
+        is_return_leg=True,
+    )
+    result = quote_purchase(data, request=object())
+    assert result["amount_due"] == 8.5
+
+
+def test_quote_open_return_adds_reverse_leg(monkeypatch):
+    cur = FakeQuoteCursor(forward=10, reverse=10)
+    _patch_quote(monkeypatch, cur)
+    data = PurchaseQuote(
+        tour_id=1,
+        departure_stop_id=1,
+        arrival_stop_id=2,
+        adult_count=1,
+        discount_count=0,
+        open_return=True,
+    )
+    result = quote_purchase(data, request=object())
+    # forward 10 + open return 10*0.85 = 18.5
+    assert result["amount_due"] == 18.5
