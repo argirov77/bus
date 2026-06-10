@@ -115,7 +115,7 @@ def test_create_refund_receipt_for_flat_amount(monkeypatch):
         "fiscal_number": "FC-RFND-1",
         "status": "done",
     }
-    assert calls and calls[0]["url"].endswith("/receipts/service")
+    assert calls and calls[0]["url"].endswith("/receipts/sell")
     body = calls[0]["json"]
     assert body["payments"][0]["value"] == 15000  # 150.00 -> kopecks
     # Single flat refund position
@@ -123,6 +123,38 @@ def test_create_refund_receipt_for_flat_amount(monkeypatch):
     assert "Повернення" in body["goods"][0]["good"]["name"]
     # Should reference the original purchase receipt when one is on file.
     assert body.get("related_receipt_id") == "RECEIPT-PREV"
+
+
+class _DummyCursorNoReceipt(_DummyCursor):
+    def fetchone(self):
+        if "checkbox_receipt_id" in self.last_query:
+            return (None,)
+        if "information_schema" in self.last_query:
+            return (1,)
+        return None
+
+
+class _DummyConnNoReceipt(_DummyConn):
+    def cursor(self):
+        return _DummyCursorNoReceipt()
+
+
+def test_create_refund_receipt_without_original_is_not_applicable(monkeypatch):
+    """No fiscalized sale receipt → CheckBox must not be called at all."""
+    import importlib
+
+    db_module = importlib.import_module("backend.database")
+    monkeypatch.setattr(db_module, "get_connection", lambda: _DummyConnNoReceipt())
+    calls = _install_post(monkeypatch, {"id": "SHOULD-NOT-BE-CREATED"})
+
+    result = checkbox.create_refund_receipt(100, None, 150.0)
+
+    assert result == {
+        "receipt_id": None,
+        "fiscal_number": None,
+        "status": "not_applicable",
+    }
+    assert calls == []
 
 
 def test_create_refund_receipt_rejects_disabled(monkeypatch):
