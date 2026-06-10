@@ -134,36 +134,81 @@ def _ensure_open_ticket_schema(cur) -> None:
     )
 
 
-def run_migrations() -> None:
-    """Apply SQL migrations found in db/migrations."""
-    migrations_dir = Path(__file__).resolve().parents[1] / "db" / "migrations"
-    if not migrations_dir.exists():
-        return
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
+def _ensure_refund_schema(cur) -> None:
+    """Create refund-request schema when migration 025 was not applied.
+
+    The sales_category enum value must be committed before any request tries
+    to INSERT it, so this runs at startup rather than lazily per-request.
+    """
+    cur.execute("ALTER TYPE public.sales_category ADD VALUE IF NOT EXISTS 'refund_requested'")
     cur.execute(
         """
-        CREATE TABLE IF NOT EXISTS schema_migrations (
-            filename VARCHAR(255) PRIMARY KEY,
-            applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        CREATE TABLE IF NOT EXISTS public.refund_request (
+            id                     SERIAL PRIMARY KEY,
+            purchase_id            INTEGER NOT NULL REFERENCES public.purchase(id),
+            ticket_ids             INTEGER[] NOT NULL DEFAULT '{}',
+            amount_requested       NUMERIC(12,2),
+            amount_refunded        NUMERIC(12,2),
+            currency               TEXT DEFAULT 'UAH',
+            status                 TEXT NOT NULL DEFAULT 'pending',
+            requested_at           TIMESTAMP NOT NULL DEFAULT NOW(),
+            requested_by           TEXT NOT NULL,
+            reason                 TEXT,
+            admin_actor            TEXT,
+            processed_at           TIMESTAMP,
+            liqpay_refund_id       TEXT,
+            liqpay_response        JSONB,
+            fiscal_receipt_id      TEXT,
+            fiscal_receipt_number  TEXT,
+            fiscal_status          TEXT,
+            failure_reason         TEXT
         )
         """
     )
-    conn.commit()
-    for path in sorted(migrations_dir.glob("*.sql")):
-        cur.execute("SELECT 1 FROM schema_migrations WHERE filename=%s", (path.name,))
-        if cur.fetchone():
-            continue
-        with open(path, "r") as f:
-            sql_statements = f.read()
-        cur.execute(sql_statements)
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_refund_request_status ON public.refund_request(status)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_refund_request_purchase ON public.refund_request(purchase_id)"
+    )
+    cur.execute(
+        "ALTER TABLE public.purchase ADD COLUMN IF NOT EXISTS refund_requested_at TIMESTAMP"
+    )
+
+
+def run_migrations() -> None:
+    """Apply SQL migrations found in db/migrations."""
+    migrations_dir = Path(__file__).resolve().parents[1] / "db" / "migrations"
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    if migrations_dir.exists():
         cur.execute(
-            "INSERT INTO schema_migrations (filename) VALUES (%s)", (path.name,)
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                filename VARCHAR(255) PRIMARY KEY,
+                applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
         )
         conn.commit()
+        for path in sorted(migrations_dir.glob("*.sql")):
+            cur.execute("SELECT 1 FROM schema_migrations WHERE filename=%s", (path.name,))
+            if cur.fetchone():
+                continue
+            with open(path, "r") as f:
+                sql_statements = f.read()
+            cur.execute(sql_statements)
+            cur.execute(
+                "INSERT INTO schema_migrations (filename) VALUES (%s)", (path.name,)
+            )
+            conn.commit()
 
+    # Safety net: these must run even when the migrations directory is not
+    # shipped with the image (e.g. Docker builds that only copy backend/),
+    # otherwise the schema silently drifts from the code.
     _ensure_purchase_schema_compatibility(cur)
     _ensure_open_ticket_schema(cur)
+    _ensure_refund_schema(cur)
     conn.commit()
     cur.close()
     conn.close()
