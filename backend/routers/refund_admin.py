@@ -7,6 +7,7 @@ entries — runs through here under admin auth.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Mapping, Optional, Sequence
 
@@ -360,35 +361,82 @@ def _execute_refund(
             "customer_email": purchase["customer_email"],
         }
 
-        # ---- LiqPay refund call (outside any DB transaction) ----
-        try:
-            liqpay_result = liqpay.refund_payment(
-                purchase["liqpay_order_id"],
-                refund_amount,
-                comment or f"Refund for purchase #{purchase['id']}",
-            )
-        except Exception as exc:
-            error = f"LiqPay refund failed: {exc}"
-            logger.exception("LiqPay refund failed for request=%s", request_id)
-            _record_failure(request_id, error)
-            refund_service.queue_failed_notification(
-                background_tasks, purchase_snapshot, request_row, error
-            )
-            raise HTTPException(status_code=502, detail=error) from exc
+        # Idempotency guards: a previous attempt may have completed some
+        # steps before failing (e.g. LiqPay refunded but CheckBox errored).
+        # A money-moving step with a persisted id must never run twice.
+        existing_liqpay_refund_id = request_row.get("liqpay_refund_id")
+        existing_fiscal_receipt_id = request_row.get("fiscal_receipt_id")
 
-        if not liqpay.is_refund_success(liqpay_result.get("status")):
-            error = f"LiqPay refund rejected: status={liqpay_result.get('status')}"
-            _record_failure(request_id, error, liqpay_response=liqpay_result.get("raw"))
-            refund_service.queue_failed_notification(
-                background_tasks, purchase_snapshot, request_row, error
+        # ---- LiqPay refund call (outside any DB transaction) ----
+        if existing_liqpay_refund_id:
+            logger.info(
+                "LiqPay refund %s already done for request=%s, skipping",
+                existing_liqpay_refund_id,
+                request_id,
             )
-            raise HTTPException(status_code=502, detail=error)
+            liqpay_result = {
+                "status": "success",
+                "payment_id": existing_liqpay_refund_id,
+                "raw": request_row.get("liqpay_response"),
+            }
+        else:
+            try:
+                liqpay_result = liqpay.refund_payment(
+                    purchase["liqpay_order_id"],
+                    refund_amount,
+                    comment or f"Refund for purchase #{purchase['id']}",
+                )
+            except Exception as exc:
+                error = f"LiqPay refund failed: {exc}"
+                logger.exception("LiqPay refund failed for request=%s", request_id)
+                _record_failure(request_id, error)
+                refund_service.queue_failed_notification(
+                    background_tasks, purchase_snapshot, request_row, error
+                )
+                raise HTTPException(status_code=502, detail=error) from exc
+
+            if not liqpay.is_refund_success(liqpay_result.get("status")):
+                error = f"LiqPay refund rejected: status={liqpay_result.get('status')}"
+                _record_failure(request_id, error, liqpay_response=liqpay_result.get("raw"))
+                refund_service.queue_failed_notification(
+                    background_tasks, purchase_snapshot, request_row, error
+                )
+                raise HTTPException(status_code=502, detail=error)
+
+            # Persist the refund id immediately, before touching CheckBox, so
+            # a fiscal failure below cannot lead to a second LiqPay refund on
+            # retry.
+            cur.execute(
+                """
+                UPDATE refund_request
+                   SET liqpay_refund_id = %s,
+                       liqpay_response = %s
+                 WHERE id = %s
+                """,
+                (
+                    liqpay_result.get("payment_id"),
+                    json.dumps(dict(liqpay_result["raw"]))
+                    if liqpay_result.get("raw")
+                    else None,
+                    request_id,
+                ),
+            )
+            conn.commit()
 
         # ---- Fiscal refund receipt (optional) ----
         fiscal_receipt_id: str | None = None
         fiscal_receipt_number: str | None = None
         fiscal_status: str | None = None
-        if void_fiscal and checkbox_service.is_enabled():
+        if existing_fiscal_receipt_id:
+            logger.info(
+                "CheckBox refund receipt %s already created for request=%s, skipping",
+                existing_fiscal_receipt_id,
+                request_id,
+            )
+            fiscal_receipt_id = existing_fiscal_receipt_id
+            fiscal_receipt_number = request_row.get("fiscal_receipt_number")
+            fiscal_status = request_row.get("fiscal_status")
+        elif void_fiscal and checkbox_service.is_enabled():
             try:
                 fiscal = checkbox_service.create_refund_receipt(
                     purchase["id"], ticket_ids_list or None, refund_amount

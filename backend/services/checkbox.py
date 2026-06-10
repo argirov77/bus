@@ -378,12 +378,20 @@ def _create_refund_receipt_request(
     if related_receipt_id:
         body["related_receipt_id"] = related_receipt_id
 
+    # A sell receipt with ``related_receipt_id`` is treated by CheckBox as a
+    # return receipt ("чек повернення"). The /receipts/service endpoint is for
+    # cash-drawer operations only and rejects goods/CASHLESS payments with 422.
     resp = httpx.post(
-        f"{_api_url()}/api/v1/receipts/service",
+        f"{_api_url()}/api/v1/receipts/sell",
         json=body,
         headers=headers,
         timeout=30.0,
     )
+    if resp.status_code >= 400:
+        logger.error(
+            "CheckBox refund receipt error: status=%s body=%s payload=%s",
+            resp.status_code, resp.text, body,
+        )
     resp.raise_for_status()
     data = resp.json()
     receipt_id = data.get("id")
@@ -405,7 +413,10 @@ def create_refund_receipt(
     is empty/None the receipt carries a single aggregate refund line for the
     requested amount.
 
-    Returns ``{receipt_id, fiscal_number, status}``.
+    Returns ``{receipt_id, fiscal_number, status}``. When the original sale
+    was never fiscalized (no ``checkbox_receipt_id`` on the purchase, e.g.
+    offline/admin payments) CheckBox is not called at all and the status is
+    ``not_applicable``.
     """
     amount_kopecks = int(round(float(amount) * 100))
     if amount_kopecks <= 0:
@@ -442,6 +453,16 @@ def create_refund_receipt(
     finally:
         cur.close()
         conn.close()
+
+    if not related_receipt_id:
+        # A return receipt requires the original sale receipt; without it
+        # CheckBox rejects the request, so skip fiscalization entirely.
+        logger.info(
+            "Skipping CheckBox refund receipt for purchase=%s: "
+            "original sale was not fiscalized",
+            purchase_id,
+        )
+        return {"receipt_id": None, "fiscal_number": None, "status": "not_applicable"}
 
     # Use the explicit amount as the source of truth (admin can override the
     # ticket-aggregate). Items are informational; payments line drives the
