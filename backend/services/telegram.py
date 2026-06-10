@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Optional
 
 import httpx
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 _TELEGRAM_API_URL = "https://api.telegram.org"
 _HTTP_TIMEOUT = 5.0
+_RETRY_BACKOFFS = (1.0, 2.0, 4.0, 8.0, 16.0)
 
 
 def is_enabled() -> bool:
@@ -24,8 +26,9 @@ def is_enabled() -> bool:
 def send_message(text: str, parse_mode: Optional[str] = "HTML") -> bool:
     """Send a message to the configured Telegram chat.
 
-    Returns True on success, False otherwise. Never raises — failures are
-    logged so they do not break the main request flow.
+    Retries transient network errors and 5xx/429 responses with exponential
+    backoff so short DNS/connectivity blips do not drop notifications. Never
+    raises — failures are logged so they do not break the main request flow.
     """
     if not is_enabled():
         return False
@@ -43,16 +46,43 @@ def send_message(text: str, parse_mode: Optional[str] = "HTML") -> bool:
         payload["parse_mode"] = parse_mode
 
     url = f"{api_url}/bot{token}/sendMessage"
-    try:
-        response = httpx.post(url, data=payload, timeout=_HTTP_TIMEOUT)
-        if response.status_code >= 400:
-            logger.error(
-                "Telegram sendMessage failed: status=%s body=%s",
-                response.status_code,
-                response.text[:500],
-            )
+    attempts = len(_RETRY_BACKOFFS) + 1
+    for attempt in range(1, attempts + 1):
+        try:
+            response = httpx.post(url, data=payload, timeout=_HTTP_TIMEOUT)
+        except (httpx.TransportError, httpx.TimeoutException) as exc:
+            if attempt < attempts:
+                delay = _RETRY_BACKOFFS[attempt - 1]
+                logger.warning(
+                    "Telegram sendMessage transport error (attempt %s/%s): %s; retrying in %.1fs",
+                    attempt, attempts, exc, delay,
+                )
+                time.sleep(delay)
+                continue
+            logger.exception("Telegram sendMessage failed after %s attempts", attempts)
             return False
-        return True
-    except Exception:
-        logger.exception("Telegram sendMessage raised an exception")
+        except Exception:
+            logger.exception("Telegram sendMessage raised an unexpected exception")
+            return False
+
+        if response.status_code < 400:
+            return True
+
+        retriable = response.status_code >= 500 or response.status_code == 429
+        if retriable and attempt < attempts:
+            delay = _RETRY_BACKOFFS[attempt - 1]
+            logger.warning(
+                "Telegram sendMessage retriable status=%s (attempt %s/%s); retrying in %.1fs body=%s",
+                response.status_code, attempt, attempts, delay, response.text[:500],
+            )
+            time.sleep(delay)
+            continue
+
+        logger.error(
+            "Telegram sendMessage failed: status=%s body=%s",
+            response.status_code,
+            response.text[:500],
+        )
         return False
+
+    return False
