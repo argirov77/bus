@@ -20,6 +20,7 @@ from ..services import link_sessions
 from ..services.link_sessions import get_or_create_view_session
 from ..services.access_guard import guard_public_request
 from ..services import liqpay
+from ..services import refund as refund_service
 from ..services.ticket_dto import get_ticket_dto
 from ..services.ticket_pdf import render_ticket_pdf
 from ..ticket_utils import free_ticket, recalc_available
@@ -79,6 +80,11 @@ class BaggageRequest(BaseModel):
 
 class CancelRequest(BaseModel):
     ticket_ids: list[int] = Field(..., min_length=1)
+
+
+class RefundRequestCreate(BaseModel):
+    ticket_ids: list[int] | None = None
+    reason: str | None = Field(default=None, max_length=2000)
 
 
 class PaymentResolveTicket(BaseModel):
@@ -953,6 +959,68 @@ async def _extract_liqpay_post_payload(request: Request) -> tuple[str | None, st
     return raw_data, raw_signature
 
 
+def _sync_refund_from_liqpay_callback(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Apply a LiqPay refund callback to the matching refund_request row.
+
+    LiqPay returns the original ``order_id`` plus a refund-specific identifier
+    (``payment_id`` or ``id``) for the refund operation itself. We persist the
+    final status against the row whose ``liqpay_refund_id`` matches.
+    """
+    liqpay_status = str(payload.get("status") or "").lower()
+    refund_id = (
+        payload.get("liqpay_refund_id")
+        or payload.get("refund_payment_id")
+        or payload.get("payment_id")
+        or payload.get("id")
+    )
+    if refund_id is None:
+        return {"matched": False, "reason": "no refund identifier"}
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        refund_service.ensure_schema(cur)
+        existing = refund_service.find_by_liqpay_refund_id(cur, str(refund_id))
+        if not existing:
+            return {"matched": False, "reason": "unknown refund id"}
+
+        if existing.get("status") in {"completed", "rejected"}:
+            return {"matched": True, "status": existing.get("status"), "noop": True}
+
+        if liqpay.is_refund_success(liqpay_status):
+            amount_refunded = (
+                existing.get("amount_refunded")
+                or existing.get("amount_requested")
+                or float(payload.get("refund_amount") or payload.get("amount") or 0)
+            )
+            refund_service.mark_completed(
+                cur,
+                int(existing["id"]),
+                amount_refunded=float(amount_refunded or 0),
+                liqpay_refund_id=str(refund_id),
+                liqpay_response=payload,
+                fiscal_receipt_id=existing.get("fiscal_receipt_id"),
+                fiscal_receipt_number=existing.get("fiscal_receipt_number"),
+                fiscal_status=existing.get("fiscal_status"),
+            )
+            conn.commit()
+            return {"matched": True, "status": "completed"}
+        refund_service.mark_failed(
+            cur,
+            int(existing["id"]),
+            failure_reason=f"LiqPay refund status: {liqpay_status or 'unknown'}",
+        )
+        conn.commit()
+        return {"matched": True, "status": "failed"}
+    except Exception as exc:
+        conn.rollback()
+        logger.exception("Failed to apply LiqPay refund callback")
+        return {"matched": False, "reason": str(exc)}
+    finally:
+        cur.close()
+        conn.close()
+
+
 @router.post("/payment/liqpay/callback")
 async def liqpay_callback(request: Request, background_tasks: BackgroundTasks) -> Mapping[str, Any]:
     data, signature = await _extract_liqpay_post_payload(request)
@@ -964,7 +1032,18 @@ async def liqpay_callback(request: Request, background_tasks: BackgroundTasks) -
         raise HTTPException(status_code=400, detail="Invalid LiqPay signature")
 
     payload = liqpay.decode_payload(data)
+    action = str(payload.get("action") or "").lower()
     order_id = str(payload.get("order_id") or "")
+
+    if action == "refund":
+        refund_result = _sync_refund_from_liqpay_callback(payload)
+        logger.info(
+            "LiqPay refund callback order_id=%s result=%s",
+            order_id,
+            refund_result,
+        )
+        return {"ok": True, "action": "refund", **refund_result}
+
     purchase_id = _extract_purchase_id_from_order(order_id)
     if purchase_id is None:
         raise HTTPException(status_code=400, detail="Unrecognized LiqPay order")
@@ -2220,6 +2299,20 @@ def public_baggage_quote(
     return jsonable_encoder(response)
 
 
+def _ensure_cancel_allowed(status: str) -> None:
+    """``/cancel`` and ``/cancel/preview`` only operate on reserved purchases.
+
+    Paid purchases must go through the refund-request workflow instead, so the
+    customer cannot bypass fiscal/refund accounting by reusing the legacy
+    cancel endpoint.
+    """
+    if status == "paid":
+        raise HTTPException(
+            status_code=409,
+            detail="Purchase is already paid; create a refund request instead",
+        )
+
+
 @router.post("/purchase/{purchase_id}/cancel/preview")
 def public_cancel_preview(
     purchase_id: int, data: CancelRequest, request: Request
@@ -2233,6 +2326,7 @@ def public_cancel_preview(
     try:
         amount_due, status = _load_purchase_state(cur, resolved_purchase_id)
         _ensure_purchase_active(status)
+        _ensure_cancel_allowed(status)
         plans, delta = _plan_cancel(
             cur,
             resolved_purchase_id,
@@ -2355,6 +2449,7 @@ def public_cancel(
             cur, resolved_purchase_id, for_update=True
         )
         _ensure_purchase_active(status)
+        _ensure_cancel_allowed(status)
         plans, delta = _plan_cancel(
             cur,
             resolved_purchase_id,
@@ -2433,6 +2528,174 @@ def public_cancel(
             path="/",
         )
     return response
+
+
+def _serialize_refund_request(request: Mapping[str, Any]) -> dict[str, Any]:
+    """Public-facing view of a refund_request row."""
+    return {
+        "id": request.get("id"),
+        "purchase_id": request.get("purchase_id"),
+        "ticket_ids": list(request.get("ticket_ids") or []),
+        "amount_requested": (
+            float(request["amount_requested"])
+            if request.get("amount_requested") is not None
+            else None
+        ),
+        "amount_refunded": (
+            float(request["amount_refunded"])
+            if request.get("amount_refunded") is not None
+            else None
+        ),
+        "currency": request.get("currency") or "UAH",
+        "status": request.get("status"),
+        "requested_at": request.get("requested_at"),
+        "requested_by": request.get("requested_by"),
+        "reason": request.get("reason"),
+        "processed_at": request.get("processed_at"),
+        "failure_reason": request.get("failure_reason"),
+    }
+
+
+def _ticket_ids_for_purchase(cur, purchase_id: int) -> list[int]:
+    cur.execute(
+        "SELECT id FROM ticket WHERE purchase_id = %s ORDER BY id",
+        (purchase_id,),
+    )
+    return [int(r[0]) for r in cur.fetchall()]
+
+
+def _compute_refund_amount_for_tickets(
+    cur, purchase_id: int, ticket_ids: Sequence[int]
+) -> float:
+    """Sum the ticket value for the requested ticket subset.
+
+    Reuses :func:`_plan_cancel` so the pricing rules stay identical between the
+    cancel and refund-request flows (base fare + 10% baggage surcharge).
+    """
+    if not ticket_ids:
+        return 0.0
+    _plans, delta = _plan_cancel(cur, purchase_id, list(ticket_ids), lock_tickets=False)
+    # _plan_cancel returns a negative delta (money out of the purchase).
+    return round(abs(delta), 2)
+
+
+@router.post("/purchase/{purchase_id}/refund-request")
+def create_refund_request(
+    purchase_id: int,
+    data: RefundRequestCreate,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> Mapping[str, Any]:
+    session, _ticket_id, resolved_purchase_id, _cookie = _require_purchase_context(
+        request, purchase_id, "refund_request"
+    )
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        refund_service.ensure_schema(cur)
+
+        cur.execute(
+            "SELECT status FROM purchase WHERE id = %s FOR UPDATE",
+            (resolved_purchase_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Purchase not found")
+        status = str(row[0] or "")
+
+        if status == "reserved":
+            raise HTTPException(
+                status_code=409,
+                detail="Purchase is reserved; use /cancel to release the booking",
+            )
+        if status != "paid":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Refund requests require a paid purchase (current status: {status})",
+            )
+
+        # Idempotency: if an active request already exists, return it as-is.
+        existing = refund_service.find_active_request(cur, resolved_purchase_id)
+        if existing:
+            conn.commit()
+            return jsonable_encoder(_serialize_refund_request(existing))
+
+        available_ticket_ids = _ticket_ids_for_purchase(cur, resolved_purchase_id)
+        requested_ticket_ids = list(data.ticket_ids or [])
+
+        if requested_ticket_ids:
+            invalid = [t for t in requested_ticket_ids if t not in available_ticket_ids]
+            if invalid:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Tickets {invalid} do not belong to this purchase",
+                )
+        else:
+            requested_ticket_ids = list(available_ticket_ids)
+
+        if not requested_ticket_ids:
+            raise HTTPException(status_code=400, detail="Purchase has no tickets to refund")
+
+        amount_requested = _compute_refund_amount_for_tickets(
+            cur, resolved_purchase_id, requested_ticket_ids
+        )
+
+        currency = "UAH"
+        created = refund_service.create_request(
+            cur,
+            purchase_id=resolved_purchase_id,
+            ticket_ids=requested_ticket_ids,
+            amount_requested=amount_requested,
+            currency=currency,
+            requested_by="customer",
+            reason=data.reason,
+        )
+
+        _log_sale(
+            cur,
+            resolved_purchase_id,
+            "refund_requested",
+            0,
+            actor=session.jti,
+        )
+
+        refund_service.queue_requested_notification(
+            background_tasks, cur, resolved_purchase_id, created, "customer"
+        )
+
+        conn.commit()
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as exc:  # pragma: no cover - defensive
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        cur.close()
+        conn.close()
+
+    return jsonable_encoder(_serialize_refund_request(created))
+
+
+@router.get("/purchase/{purchase_id}/refund-request")
+def get_active_refund_request(purchase_id: int, request: Request) -> Mapping[str, Any]:
+    session, _ticket_id, resolved_purchase_id, _cookie = _require_purchase_context(
+        request, purchase_id, "refund_request_view"
+    )
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        refund_service.ensure_schema(cur)
+        active = refund_service.find_active_request(cur, resolved_purchase_id)
+    finally:
+        cur.close()
+        conn.close()
+
+    if not active:
+        return jsonable_encoder({"request": None})
+    return jsonable_encoder({"request": _serialize_refund_request(active)})
 
 
 __all__ = ["router", "session_router"]

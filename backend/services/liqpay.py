@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from datetime import date
+from decimal import Decimal
 from typing import Any, Mapping, Sequence
 
 import httpx
@@ -11,6 +12,7 @@ from ..utils.client_app import build_liqpay_result_url, build_liqpay_server_url
 
 
 LIQPAY_CHECKOUT_URL = "https://www.liqpay.ua/api/3/checkout"
+LIQPAY_API_URL = "https://www.liqpay.ua/api/request"
 
 
 def _env(key: str, default: str) -> str:
@@ -142,6 +144,76 @@ def build_purchase_description(cur, purchase_id: int) -> str | None:
 def verify_signature(data: str, signature: str) -> bool:
     expected_signature = sign(data)
     return expected_signature == signature
+
+
+def refund_payment(
+    order_id: str,
+    amount: Decimal | float,
+    comment: str | None = None,
+) -> dict[str, Any]:
+    """Issue a (partial or full) refund through LiqPay.
+
+    Returns a normalized dict ``{status, payment_id, refund_amount, raw}``.
+    The LiqPay endpoint expects action=refund and the same order_id used at
+    payment time. Partial refunds are supported by passing a smaller amount.
+    """
+
+    order_value = (order_id or "").strip()
+    if not order_value:
+        raise ValueError("order_id is required")
+
+    amount_value = round(float(amount), 2)
+    if amount_value <= 0:
+        raise ValueError("refund amount must be positive")
+
+    payload: dict[str, Any] = {
+        "version": "3",
+        "public_key": _env("LIQPAY_PUBLIC_KEY", "sandbox"),
+        "action": "refund",
+        "amount": amount_value,
+        "order_id": order_value,
+    }
+    if comment:
+        payload["description"] = comment[:255]
+
+    data, signature = encode_payload(payload)
+
+    timeout = float(os.getenv("LIQPAY_REFUND_TIMEOUT_S", "15"))
+    response = httpx.post(
+        LIQPAY_API_URL,
+        data={"data": data, "signature": signature},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+
+    body = response.json()
+    if not isinstance(body, Mapping):
+        raise ValueError("Unexpected LiqPay refund response")
+
+    raw_status = str(body.get("status") or "").lower()
+    payment_id = body.get("payment_id")
+    refund_amount_raw = (
+        body.get("refund_amount")
+        or body.get("amount_refund")
+        or body.get("amount")
+        or amount_value
+    )
+    try:
+        refund_amount = float(refund_amount_raw)
+    except (TypeError, ValueError):
+        refund_amount = amount_value
+
+    return {
+        "status": raw_status,
+        "payment_id": str(payment_id) if payment_id is not None else None,
+        "refund_amount": refund_amount,
+        "raw": dict(body),
+    }
+
+
+def is_refund_success(status: str | None) -> bool:
+    """LiqPay statuses that mean the refund landed at the bank side."""
+    return (status or "").lower() in {"success", "ok", "sandbox", "reversed"}
 
 
 def verify_order(order_id: str) -> Mapping[str, Any]:

@@ -9,6 +9,7 @@ import ToursPage from "./pages/ToursPage";
 import ReportPage from "./pages/ReportPage";
 import LoginPage from "./pages/LoginPage";
 import PurchasesPage from "./pages/PurchasesPage";
+import RefundRequestsPage from "./pages/RefundRequestsPage";
 import { ToastProvider } from "./components/Toast";
 import { useToast } from "./components/Toast";
 
@@ -85,6 +86,9 @@ function App() {
             </NavLink>
           </li>
           <li>
+            <RefundRequestsNavLink />
+          </li>
+          <li>
             <button className="btn btn--ghost btn--sm" onClick={handleLogout}>Logout</button>
           </li>
         </ul>
@@ -98,10 +102,58 @@ function App() {
           <Route path="/report" element={<ReportPage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/purchases" element={<PurchasesPage />} />
+          <Route path="/refund-requests" element={<RefundRequestsPage />} />
         </Routes>
       </div>
     </Router>
     </ToastProvider>
+  );
+}
+
+function RefundRequestsNavLink() {
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      axios
+        .get("/admin/refund-requests/", { params: { status: "pending" } })
+        .then((res) => {
+          if (!cancelled) setPendingCount((res.data || []).length);
+        })
+        .catch(() => {
+          if (!cancelled) setPendingCount(0);
+        });
+    };
+    load();
+    const id = setInterval(load, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  return (
+    <NavLink
+      to="/refund-requests"
+      className={({ isActive }) => (isActive ? "active" : undefined)}
+    >
+      Refunds
+      {pendingCount > 0 && (
+        <span
+          style={{
+            marginLeft: 6,
+            background: "#d4a000",
+            color: "#fff",
+            borderRadius: 10,
+            padding: "1px 7px",
+            fontSize: 12,
+          }}
+        >
+          {pendingCount}
+        </span>
+      )}
+    </NavLink>
   );
 }
 

@@ -9,6 +9,7 @@ import logging
 import os
 import time
 import threading
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -269,6 +270,211 @@ def _poll_receipt(receipt_id: str) -> dict[str, Any]:
 def get_receipt_png_url(receipt_id: str) -> str:
     """Return URL for the receipt PNG image."""
     return f"{_api_url()}/api/v1/receipts/{receipt_id}/png"
+
+
+# ---------------------------------------------------------------------------
+# Refund receipts
+# ---------------------------------------------------------------------------
+
+def _load_refund_items_for_tickets(
+    cur, purchase_id: int, ticket_ids: list[int]
+) -> tuple[list[dict[str, Any]], int]:
+    """Build CheckBox refund goods entries from the listed tickets.
+
+    Mirrors the structure of ``_load_purchase_receipt_items`` but limited to a
+    subset of tickets — used when an admin issues a partial refund.
+    """
+    if not ticket_ids:
+        return [], 0
+
+    cur.execute(
+        """
+        SELECT
+            t.id,
+            t.extra_baggage,
+            COALESCE(dep.stop_ua, dep.stop_name) AS departure_name,
+            COALESCE(arr.stop_ua, arr.stop_name) AS arrival_name,
+            p.price
+        FROM ticket t
+        JOIN tour tr ON tr.id = t.tour_id
+        JOIN stop dep ON dep.id = t.departure_stop_id
+        JOIN stop arr ON arr.id = t.arrival_stop_id
+        JOIN prices p ON p.departure_stop_id = t.departure_stop_id
+                     AND p.arrival_stop_id = t.arrival_stop_id
+                     AND p.pricelist_id = tr.pricelist_id
+        WHERE t.purchase_id = %s
+          AND t.id = ANY(%s)
+        ORDER BY t.id
+        """,
+        (purchase_id, list(ticket_ids)),
+    )
+    rows = cur.fetchall() or []
+
+    items: list[dict[str, Any]] = []
+    total_kopecks = 0
+    for ticket_id, extra_baggage, dep_name, arr_name, base_price in rows:
+        price_kopecks = int(round(float(base_price) * 100))
+        items.append({
+            "good": {
+                "code": str(ticket_id),
+                "name": f"Повернення: квиток {dep_name} – {arr_name}",
+                "price": price_kopecks,
+            },
+            "quantity": 1000,
+        })
+        total_kopecks += price_kopecks
+
+        extra_bag = int(extra_baggage or 0)
+        if extra_bag > 0:
+            baggage_price_kopecks = int(round(float(base_price) * 0.1 * extra_bag * 100))
+            items.append({
+                "good": {
+                    "code": f"{ticket_id}-bag",
+                    "name": "Повернення: додатковий багаж",
+                    "price": baggage_price_kopecks,
+                },
+                "quantity": 1000,
+            })
+            total_kopecks += baggage_price_kopecks
+
+    return items, total_kopecks
+
+
+def _flat_refund_items(purchase_id: int, amount_kopecks: int) -> list[dict[str, Any]]:
+    """Single-line refund position used when no ticket list is supplied."""
+    return [
+        {
+            "good": {
+                "code": f"refund-{purchase_id}",
+                "name": f"Повернення коштів за замовлення #{purchase_id}",
+                "price": amount_kopecks,
+            },
+            "quantity": 1000,
+        }
+    ]
+
+
+def _create_refund_receipt_request(
+    items: list[dict[str, Any]],
+    amount_kopecks: int,
+    *,
+    related_receipt_id: str | None = None,
+) -> str:
+    """Post a refund (return) receipt to CheckBox and return the receipt id."""
+    license_key = _env("CHECKBOX_LICENSE_KEY")
+    headers = {**_auth_headers()}
+    if license_key:
+        headers["X-License-Key"] = license_key
+
+    body: dict[str, Any] = {
+        "goods": items,
+        "payments": [
+            {
+                "type": "CASHLESS",
+                "value": amount_kopecks,
+            }
+        ],
+    }
+    if related_receipt_id:
+        body["related_receipt_id"] = related_receipt_id
+
+    resp = httpx.post(
+        f"{_api_url()}/api/v1/receipts/service",
+        json=body,
+        headers=headers,
+        timeout=30.0,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    receipt_id = data.get("id")
+    if not receipt_id:
+        raise RuntimeError("CheckBox refund receipt creation did not return id")
+    logger.info("CheckBox refund receipt %s created", receipt_id)
+    return receipt_id
+
+
+def create_refund_receipt(
+    purchase_id: int,
+    ticket_ids: list[int] | None,
+    amount: Decimal | float,
+) -> dict[str, Any]:
+    """Create a fiscal refund receipt for the given purchase/tickets.
+
+    Each call produces a fresh fiscal document with its own number — partial
+    refunds therefore get an independent receipt per call. When ``ticket_ids``
+    is empty/None the receipt carries a single aggregate refund line for the
+    requested amount.
+
+    Returns ``{receipt_id, fiscal_number, status}``.
+    """
+    amount_kopecks = int(round(float(amount) * 100))
+    if amount_kopecks <= 0:
+        raise ValueError("refund amount must be positive")
+
+    if not is_enabled():
+        raise RuntimeError("CheckBox is disabled")
+
+    from ..database import get_connection
+
+    related_receipt_id: str | None = None
+    items: list[dict[str, Any]]
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        if _purchase_has_column(cur, "checkbox_receipt_id"):
+            cur.execute(
+                "SELECT checkbox_receipt_id FROM purchase WHERE id = %s",
+                (purchase_id,),
+            )
+            row = cur.fetchone()
+            if row and row[0]:
+                related_receipt_id = str(row[0])
+
+        if ticket_ids:
+            items, items_kopecks = _load_refund_items_for_tickets(cur, purchase_id, list(ticket_ids))
+            if not items:
+                items = _flat_refund_items(purchase_id, amount_kopecks)
+                items_kopecks = amount_kopecks
+        else:
+            items = _flat_refund_items(purchase_id, amount_kopecks)
+            items_kopecks = amount_kopecks
+    finally:
+        cur.close()
+        conn.close()
+
+    # Use the explicit amount as the source of truth (admin can override the
+    # ticket-aggregate). Items are informational; payments line drives the
+    # fiscal total.
+    _ensure_shift()
+    receipt_id = _create_refund_receipt_request(
+        items,
+        amount_kopecks,
+        related_receipt_id=related_receipt_id,
+    )
+
+    try:
+        receipt_data = _poll_receipt(receipt_id)
+    except Exception:
+        # The receipt was accepted but did not reach DONE in time. Surface the
+        # id so the caller can persist it and retry status polling later.
+        return {
+            "receipt_id": receipt_id,
+            "fiscal_number": None,
+            "status": "pending",
+        }
+
+    fiscal_number = (
+        receipt_data.get("fiscal_code")
+        or receipt_data.get("fiscal_number")
+        or receipt_data.get("number")
+    )
+
+    return {
+        "receipt_id": receipt_id,
+        "fiscal_number": str(fiscal_number) if fiscal_number else None,
+        "status": "done",
+    }
 
 
 # ---------------------------------------------------------------------------
