@@ -111,8 +111,8 @@ def _purchase_summary(purchase: Mapping[str, Any]) -> str:
     name = purchase.get("customer_name") or "—"
     email = purchase.get("customer_email") or "—"
     parts = [
-        f"Замовлення: <b>#{_escape(pid)}</b>",
-        f"Клієнт: {_escape(name)} ({_escape(email)})",
+        f"Заказ: <b>#{_escape(pid)}</b>",
+        f"Клиент: {_escape(name)} ({_escape(email)})",
     ]
     return "\n".join(parts)
 
@@ -121,11 +121,11 @@ def _request_summary(request: Mapping[str, Any]) -> list[str]:
     lines: list[str] = []
     ticket_ids = request.get("ticket_ids") or []
     if ticket_ids:
-        lines.append(f"Квитки: {', '.join(str(t) for t in ticket_ids)}")
+        lines.append(f"Билеты: {', '.join(str(t) for t in ticket_ids)}")
     amount_requested = request.get("amount_requested")
     if amount_requested is not None:
         currency = request.get("currency") or "UAH"
-        lines.append(f"Сума заявки: {_format_amount(amount_requested, currency)}")
+        lines.append(f"Сумма заявки: {_format_amount(amount_requested, currency)}")
     reason = request.get("reason")
     if reason:
         lines.append(f"Причина: {_escape(reason)}")
@@ -141,9 +141,9 @@ def notify_refund_requested(
     if not is_enabled():
         return False
     header = (
-        "🔁 <b>Нова заявка на повернення</b>"
+        "🔁 <b>Новая заявка на возврат</b>"
         if (requester or "").lower() != "admin"
-        else "🔁 <b>Адміністратор створив заявку на повернення</b>"
+        else "🔁 <b>Администратор создал заявку на возврат</b>"
     )
     lines = [header, _purchase_summary(purchase), *_request_summary(request)]
     return send_message("\n".join(lines))
@@ -159,16 +159,16 @@ def notify_refund_completed(
     currency = request.get("currency") or "UAH"
     amount_refunded = request.get("amount_refunded") or request.get("amount_requested")
     lines = [
-        "✅ <b>Повернення завершено</b>",
+        "✅ <b>Возврат завершён</b>",
         _purchase_summary(purchase),
-        f"Повернуто: <b>{_format_amount(amount_refunded, currency)}</b>",
+        f"Возвращено: <b>{_format_amount(amount_refunded, currency)}</b>",
     ]
     liqpay_id = request.get("liqpay_refund_id")
     if liqpay_id:
         lines.append(f"LiqPay: {_escape(liqpay_id)}")
     fiscal = request.get("fiscal_receipt_number") or request.get("fiscal_receipt_id")
     if fiscal:
-        lines.append(f"Фіскальний чек: {_escape(fiscal)}")
+        lines.append(f"Фискальный чек: {_escape(fiscal)}")
     return send_message("\n".join(lines))
 
 
@@ -181,7 +181,7 @@ def notify_refund_failed(
     if not is_enabled():
         return False
     lines = [
-        "❌ <b>Помилка повернення</b>",
+        "❌ <b>Ошибка возврата</b>",
         _purchase_summary(purchase),
     ]
     request_id = request.get("id")
