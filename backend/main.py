@@ -4,11 +4,25 @@ import time
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
+import socket
 
 from dotenv import load_dotenv
 
 # Load .env configuration for local/non-docker runs.
 load_dotenv()
+
+# Force IPv4 for outbound traffic when the host has no IPv6 egress. CheckBox
+# and other upstreams advertise AAAA records but our prod host can't route
+# them, and httpx surfaces the resulting connect failure as "Temporary
+# failure in name resolution". Filtering DNS results to AF_INET avoids the
+# whole IPv6 attempt. Toggle off by setting FORCE_IPV4=false in .env.
+if os.getenv("FORCE_IPV4", "true").lower() in ("1", "true", "yes"):
+    _original_getaddrinfo = socket.getaddrinfo
+
+    def _ipv4_only_getaddrinfo(host, port, family=0, *args, **kwargs):
+        return _original_getaddrinfo(host, port, socket.AF_INET, *args, **kwargs)
+
+    socket.getaddrinfo = _ipv4_only_getaddrinfo
 
 # Ensure application runs in Bulgarian time (UTC+3) so all logs and time-based
 # functions reflect the expected timezone.
