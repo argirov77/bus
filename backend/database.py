@@ -1,9 +1,12 @@
+import logging
 import os
 import time
 import psycopg2
 from psycopg2 import sql
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+logger = logging.getLogger("backend.database")
 
 # Determine database host from environment. When running under docker-compose
 # a DB_HOST variable is typically provided and points to the "db" service.
@@ -119,7 +122,19 @@ def _ensure_ticket_link_tokens_schema(cur) -> None:
 
 def _ensure_refund_request_schema(cur) -> None:
     """Create the refund-request schema when migration 025 was marked but not applied."""
-    cur.execute("ALTER TYPE public.sales_category ADD VALUE IF NOT EXISTS 'refund_requested'")
+    # Extend sales_category enum on a separate autocommit connection so the
+    # new value is durably visible to any later use without polluting the
+    # current transaction. ALTER TYPE ... ADD VALUE has surprising visibility
+    # rules inside a transaction block — outside of one it just works.
+    side = psycopg2.connect(DATABASE_URL)
+    side.autocommit = True
+    try:
+        with side.cursor() as side_cur:
+            side_cur.execute(
+                "ALTER TYPE public.sales_category ADD VALUE IF NOT EXISTS 'refund_requested'"
+            )
+    finally:
+        side.close()
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS public.refund_request (
@@ -220,11 +235,27 @@ def run_migrations() -> None:
         )
         conn.commit()
 
-    _ensure_purchase_schema_compatibility(cur)
-    _ensure_open_ticket_schema(cur)
-    _ensure_ticket_link_tokens_schema(cur)
-    _ensure_refund_request_schema(cur)
-    conn.commit()
+    # Each guard runs in its own savepoint so a failure in one does not
+    # poison the connection and skip the others. Without savepoints a single
+    # psycopg2 error aborts the whole transaction and every subsequent guard
+    # silently no-ops, which is exactly the regression we kept hitting on
+    # prod: schema_migrations said "applied", the tables did not exist, and
+    # a single guard failure hid the rest.
+    for name, guard in (
+        ("purchase", _ensure_purchase_schema_compatibility),
+        ("open_ticket", _ensure_open_ticket_schema),
+        ("ticket_link_tokens", _ensure_ticket_link_tokens_schema),
+        ("refund_request", _ensure_refund_request_schema),
+    ):
+        try:
+            cur.execute("SAVEPOINT guard")
+            guard(cur)
+            cur.execute("RELEASE SAVEPOINT guard")
+            conn.commit()
+            logger.info("Schema guard %s applied", name)
+        except Exception as exc:
+            conn.rollback()
+            logger.error("Schema guard %s failed: %s", name, exc)
     cur.close()
     conn.close()
 
