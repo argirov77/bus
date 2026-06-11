@@ -425,10 +425,13 @@ def _load_refund_items_for_tickets(
     total_kopecks = 0
     for ticket_id, extra_baggage, dep_name, arr_name, base_price in rows:
         price_kopecks = int(round(float(base_price) * 100))
+        # Name MUST match the original sale receipt verbatim — CheckBox
+        # matches refund items to the related sale receipt by code + name,
+        # and rejects with receipt.goods_to_return when either differs.
         items.append({
             "good": {
                 "code": str(ticket_id),
-                "name": f"Повернення: квиток {dep_name} – {arr_name}",
+                "name": f"Автобусний квиток {dep_name} – {arr_name}",
                 "price": price_kopecks,
             },
             "quantity": 1000,
@@ -442,7 +445,7 @@ def _load_refund_items_for_tickets(
             items.append({
                 "good": {
                     "code": f"{ticket_id}-bag",
-                    "name": "Повернення: додатковий багаж",
+                    "name": "Додатковий багаж",
                     "price": baggage_price_kopecks,
                 },
                 "quantity": 1000,
