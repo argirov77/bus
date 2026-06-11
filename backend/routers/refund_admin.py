@@ -315,10 +315,10 @@ def _execute_refund(
         if not request_row:
             raise HTTPException(status_code=404, detail="Refund request not found")
 
-        if request_row.get("status") not in {"pending"}:
+        if request_row.get("status") not in {"pending", "failed"}:
             raise HTTPException(
                 status_code=409,
-                detail=f"Refund request is not pending (status={request_row.get('status')})",
+                detail=f"Refund request cannot be processed (status={request_row.get('status')})",
             )
 
         purchase = _load_purchase_for_refund(cur, int(request_row["purchase_id"]))
@@ -458,6 +458,28 @@ def _execute_refund(
                 )
                 raise HTTPException(status_code=502, detail=error) from exc
 
+            # Persist the fiscal id immediately so a downstream failure in the
+            # seat/inventory transaction cannot roll it back. Without this the
+            # CheckBox receipt exists but our DB forgets it and a retry would
+            # issue a second receipt.
+            if fiscal_receipt_id or fiscal_status:
+                cur.execute(
+                    """
+                    UPDATE refund_request
+                       SET fiscal_receipt_id = %s,
+                           fiscal_receipt_number = %s,
+                           fiscal_status = %s
+                     WHERE id = %s
+                    """,
+                    (
+                        fiscal_receipt_id,
+                        fiscal_receipt_number,
+                        fiscal_status,
+                        request_id,
+                    ),
+                )
+                conn.commit()
+
         # ---- Apply seat & purchase changes inside a fresh DB transaction ----
         cur2 = conn.cursor()
         try:
@@ -530,6 +552,12 @@ def _execute_refund(
     except Exception as exc:
         conn.rollback()
         logger.exception("Unhandled error processing refund request=%s", request_id)
+        # Don't leave the row stuck in 'processing' — flip it to 'failed' so
+        # an admin can retry once they've fixed the underlying cause.
+        try:
+            _record_failure(request_id, f"Unhandled error: {exc}")
+        except Exception:
+            logger.exception("Failed to record failure for request=%s", request_id)
         raise HTTPException(status_code=500, detail=str(exc))
     finally:
         cur.close()

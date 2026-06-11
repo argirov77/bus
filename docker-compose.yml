@@ -38,6 +38,14 @@ services:
     ports:
       # ONLY localhost — nginx will proxy
       - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    # Force IPv4 — CheckBox returns AAAA records but our host has no IPv6 egress,
+    # httpx mistakes the resulting connect failure for "name resolution".
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
 
   frontend:
     build:
