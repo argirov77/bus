@@ -39,6 +39,28 @@ def _api_url() -> str:
     return _env("CHECKBOX_API_URL", "https://api.checkbox.ua").rstrip("/")
 
 
+def _log_http_error(resp: httpx.Response, payload: Any = None) -> None:
+    """Log the body of every CheckBox 4xx/5xx response before it gets raised.
+
+    ``raise_for_status`` swallows the response body, which made every CheckBox
+    failure undiagnosable — call this right before it.
+    """
+    if resp.status_code < 400:
+        return
+    if payload is not None:
+        logger.error(
+            "CheckBox %s %s -> %s body=%s payload=%s",
+            resp.request.method, str(resp.request.url),
+            resp.status_code, resp.text, payload,
+        )
+    else:
+        logger.error(
+            "CheckBox %s %s -> %s body=%s",
+            resp.request.method, str(resp.request.url),
+            resp.status_code, resp.text,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Token cache (module-level, thread-safe)
 # ---------------------------------------------------------------------------
@@ -73,6 +95,7 @@ def _get_token() -> str:
         headers=headers,
         timeout=15.0,
     )
+    _log_http_error(resp)
     resp.raise_for_status()
     token = resp.json().get("access_token")
     if not token:
@@ -114,6 +137,7 @@ def get_cashier_shift_status(token: str) -> tuple[int, dict[str, Any] | None]:
         headers=headers,
         timeout=10.0,
     )
+    _log_http_error(resp)
     resp.raise_for_status()
     return resp.status_code, resp.json()
 
@@ -153,61 +177,145 @@ def _has_required_fiscal_columns(cur) -> tuple[bool, list[str]]:
 _shift_lock = threading.Lock()
 _active_shift_id: str | None = None
 
+_SHIFT_WAIT_TIMEOUT = 30  # seconds to wait for OPENED/CLOSED transitions
 
-def _ensure_shift() -> str:
-    """Ensure an OPENED shift exists, opening one if needed. Returns shift id."""
-    global _active_shift_id
 
-    license_key = _env("CHECKBOX_LICENSE_KEY")
+def _shift_headers() -> dict[str, str]:
     headers = {**_auth_headers()}
+    license_key = _env("CHECKBOX_LICENSE_KEY")
     if license_key:
         headers["X-License-Key"] = license_key
+    return headers
 
-    # Check if there's already an active shift for this cashier
-    try:
-        resp = httpx.get(
-            f"{_api_url()}/api/v1/cashier/shift",
-            headers=headers,
-            timeout=10.0,
-        )
-        if resp.status_code == 200:
-            shift = resp.json()
-            if shift and shift.get("status") == "OPENED":
-                shift_id = shift["id"]
-                with _shift_lock:
-                    _active_shift_id = shift_id
-                return shift_id
-    except Exception:
-        logger.debug("Could not check existing shift, will try to open new one")
 
-    # Open a new shift
+def _get_current_shift(headers: dict[str, str]) -> dict[str, Any] | None:
+    """Return the cashier's current shift, or None when there is none.
+
+    CheckBox answers ``GET /api/v1/cashier/shift`` with a JSON ``null`` body
+    when the cashier has no shift at all.
+    """
+    resp = httpx.get(
+        f"{_api_url()}/api/v1/cashier/shift",
+        headers=headers,
+        timeout=10.0,
+    )
+    _log_http_error(resp)
+    resp.raise_for_status()
+    data = resp.json()
+    return data if isinstance(data, dict) else None
+
+
+def _fetch_shift(shift_id: str, headers: dict[str, str]) -> dict[str, Any]:
+    resp = httpx.get(
+        f"{_api_url()}/api/v1/shifts/{shift_id}",
+        headers=headers,
+        timeout=10.0,
+    )
+    _log_http_error(resp)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _remember_shift(shift_id: str) -> str:
+    global _active_shift_id
+    with _shift_lock:
+        _active_shift_id = shift_id
+    return shift_id
+
+
+def _wait_until_opened(shift_id: str, headers: dict[str, str]) -> str:
+    """Poll a CREATED/OPENING shift until it reaches OPENED."""
+    deadline = time.time() + _SHIFT_WAIT_TIMEOUT
+    while True:
+        status = _fetch_shift(shift_id, headers).get("status")
+        if status == "OPENED":
+            logger.info("CheckBox shift %s OPENED", shift_id)
+            return _remember_shift(shift_id)
+        if status in ("CLOSING", "CLOSED"):
+            raise RuntimeError(
+                f"CheckBox shift {shift_id} moved to {status} while waiting for OPENED"
+            )
+        if time.time() >= deadline:
+            raise RuntimeError(
+                f"CheckBox shift {shift_id} did not reach OPENED within "
+                f"{_SHIFT_WAIT_TIMEOUT}s (last status={status})"
+            )
+        logger.info("CheckBox shift %s status=%s, waiting for OPENED", shift_id, status)
+        time.sleep(2)
+
+
+def _wait_until_closed(shift_id: str, headers: dict[str, str]) -> None:
+    """Poll a CLOSING shift until it is fully CLOSED."""
+    deadline = time.time() + _SHIFT_WAIT_TIMEOUT
+    while True:
+        status = _fetch_shift(shift_id, headers).get("status")
+        if status == "CLOSED":
+            logger.info("CheckBox shift %s fully CLOSED", shift_id)
+            return
+        if time.time() >= deadline:
+            raise RuntimeError(
+                f"CheckBox shift {shift_id} did not finish closing within "
+                f"{_SHIFT_WAIT_TIMEOUT}s (last status={status})"
+            )
+        logger.info("CheckBox shift %s status=%s, waiting for CLOSED", shift_id, status)
+        time.sleep(2)
+
+
+def _open_new_shift(headers: dict[str, str]) -> str:
     resp = httpx.post(
         f"{_api_url()}/api/v1/shifts",
         headers=headers,
         timeout=15.0,
     )
+    _log_http_error(resp)
+    if resp.status_code == 400:
+        # CheckBox answers 400 when the cashier already has an active shift
+        # (e.g. one stuck in CREATED/OPENING that appeared between our check
+        # and this call). Re-read the cashier's shift and reuse it.
+        current = _get_current_shift(headers)
+        if current and current.get("id") and current.get("status") in (
+            "OPENED", "CREATED", "OPENING",
+        ):
+            logger.info(
+                "POST /shifts returned 400 but cashier already has shift %s "
+                "(status=%s), reusing it",
+                current.get("id"), current.get("status"),
+            )
+            return _wait_until_opened(str(current["id"]), headers)
     resp.raise_for_status()
-    shift = resp.json()
-    shift_id = shift["id"]
+    shift_id = resp.json()["id"]
+    logger.info("CheckBox shift %s created, waiting for OPENED", shift_id)
+    return _wait_until_opened(shift_id, headers)
 
-    # Poll until OPENED (max 30s)
-    deadline = time.time() + 30
-    while time.time() < deadline:
-        poll = httpx.get(
-            f"{_api_url()}/api/v1/shifts/{shift_id}",
-            headers=headers,
-            timeout=10.0,
-        )
-        poll.raise_for_status()
-        data = poll.json()
-        if data.get("status") == "OPENED":
-            with _shift_lock:
-                _active_shift_id = shift_id
-            logger.info("CheckBox shift %s opened", shift_id)
-            return shift_id
-        time.sleep(2)
 
-    raise RuntimeError(f"CheckBox shift {shift_id} did not reach OPENED status within 30s")
+def _ensure_shift() -> str:
+    """Ensure an OPENED shift exists, opening one if needed. Returns shift id.
+
+    Covers every CheckBox shift status: OPENED is reused as-is, a
+    CREATED/OPENING shift is awaited, a CLOSING one is awaited until CLOSED
+    and then replaced, CLOSED or no shift at all means opening a new one.
+    """
+    headers = _shift_headers()
+
+    shift = _get_current_shift(headers)
+    status = shift.get("status") if shift else None
+    shift_id = str(shift["id"]) if shift and shift.get("id") else None
+
+    if status == "OPENED" and shift_id:
+        logger.info("Using existing OPENED shift %s", shift_id)
+        return _remember_shift(shift_id)
+
+    if status in ("CREATED", "OPENING") and shift_id:
+        logger.info("Shift %s is %s, waiting for it to open", shift_id, status)
+        return _wait_until_opened(shift_id, headers)
+
+    if status == "CLOSING" and shift_id:
+        logger.info("Shift %s is CLOSING, waiting before opening a new one", shift_id)
+        _wait_until_closed(shift_id, headers)
+        status = "CLOSED"
+
+    logger.info("No usable shift (status=%s), opening a new one", status)
+    return _open_new_shift(headers)
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +345,7 @@ def _create_receipt(items: list[dict[str, Any]], payment_amount_kopecks: int) ->
         headers=headers,
         timeout=30.0,
     )
+    _log_http_error(resp, payload=body)
     resp.raise_for_status()
     data = resp.json()
     receipt_id = data.get("id")
@@ -256,10 +365,12 @@ def _poll_receipt(receipt_id: str) -> dict[str, Any]:
             headers=headers,
             timeout=10.0,
         )
+        _log_http_error(resp)
         resp.raise_for_status()
         data = resp.json()
         status = data.get("status", "")
         if status == "DONE":
+            logger.info("CheckBox receipt %s DONE", receipt_id)
             return data
         if status in ("ERROR", "CANCELLED"):
             raise RuntimeError(f"CheckBox receipt {receipt_id} ended with status {status}")
@@ -387,11 +498,7 @@ def _create_refund_receipt_request(
         headers=headers,
         timeout=30.0,
     )
-    if resp.status_code >= 400:
-        logger.error(
-            "CheckBox refund receipt error: status=%s body=%s payload=%s",
-            resp.status_code, resp.text, body,
-        )
+    _log_http_error(resp, payload=body)
     resp.raise_for_status()
     data = resp.json()
     receipt_id = data.get("id")
