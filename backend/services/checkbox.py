@@ -432,6 +432,7 @@ def _load_refund_items_for_tickets(
                 "price": price_kopecks,
             },
             "quantity": 1000,
+            "is_return": True,
         })
         total_kopecks += price_kopecks
 
@@ -445,6 +446,7 @@ def _load_refund_items_for_tickets(
                     "price": baggage_price_kopecks,
                 },
                 "quantity": 1000,
+                "is_return": True,
             })
             total_kopecks += baggage_price_kopecks
 
@@ -461,6 +463,7 @@ def _flat_refund_items(purchase_id: int, amount_kopecks: int) -> list[dict[str, 
                 "price": amount_kopecks,
             },
             "quantity": 1000,
+            "is_return": True,
         }
     ]
 
