@@ -97,6 +97,64 @@ def _ensure_purchase_schema_compatibility(cur) -> None:
     )
 
 
+def _ensure_ticket_link_tokens_schema(cur) -> None:
+    """Create the ticket-link-token schema when migration 006 was marked but not applied."""
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS public.ticket_link_tokens (
+            jti UUID PRIMARY KEY,
+            ticket_id INTEGER NOT NULL,
+            purchase_id INTEGER,
+            scopes JSONB NOT NULL,
+            lang VARCHAR(16) NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            revoked_at TIMESTAMPTZ
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ticket_link_tokens_ticket_id ON public.ticket_link_tokens (ticket_id)"
+    )
+
+
+def _ensure_refund_request_schema(cur) -> None:
+    """Create the refund-request schema when migration 025 was marked but not applied."""
+    cur.execute("ALTER TYPE public.sales_category ADD VALUE IF NOT EXISTS 'refund_requested'")
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS public.refund_request (
+            id                     SERIAL PRIMARY KEY,
+            purchase_id            INTEGER NOT NULL REFERENCES public.purchase(id),
+            ticket_ids             INTEGER[] NOT NULL DEFAULT '{}',
+            amount_requested       NUMERIC(12,2),
+            amount_refunded        NUMERIC(12,2),
+            currency               TEXT DEFAULT 'UAH',
+            status                 TEXT NOT NULL DEFAULT 'pending',
+            requested_at           TIMESTAMP NOT NULL DEFAULT NOW(),
+            requested_by           TEXT NOT NULL,
+            reason                 TEXT,
+            admin_actor            TEXT,
+            processed_at           TIMESTAMP,
+            liqpay_refund_id       TEXT,
+            liqpay_response        JSONB,
+            fiscal_receipt_id      TEXT,
+            fiscal_receipt_number  TEXT,
+            fiscal_status          TEXT,
+            failure_reason         TEXT
+        )
+        """
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_refund_request_status ON public.refund_request(status)"
+    )
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_refund_request_purchase ON public.refund_request(purchase_id)"
+    )
+    cur.execute(
+        "ALTER TABLE public.purchase ADD COLUMN IF NOT EXISTS refund_requested_at TIMESTAMP"
+    )
+
+
 def _ensure_open_ticket_schema(cur) -> None:
     """Create the open-date return ticket schema when migration 024 was marked but not applied."""
     cur.execute(
@@ -164,6 +222,8 @@ def run_migrations() -> None:
 
     _ensure_purchase_schema_compatibility(cur)
     _ensure_open_ticket_schema(cur)
+    _ensure_ticket_link_tokens_schema(cur)
+    _ensure_refund_request_schema(cur)
     conn.commit()
     cur.close()
     conn.close()
