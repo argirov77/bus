@@ -46,6 +46,13 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    # Pin upstreams to stable IPs so a flaky resolver inside the container
+    # cannot block fiscalization or refund processing. Cloudflare anycast
+    # for CheckBox and AWS Global Accelerator for LiqPay are stable enough
+    # to hardcode; if either ever rotates we'll re-pin.
+    extra_hosts:
+      - "api.checkbox.ua:188.114.96.3"
+      - "www.liqpay.ua:99.83.131.17"
 
   frontend:
     build:
