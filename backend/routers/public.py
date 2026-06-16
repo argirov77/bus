@@ -2430,11 +2430,17 @@ def public_baggage(
 
 @router.post("/purchase/{purchase_id}/cancel")
 def public_cancel(
-    purchase_id: int, data: CancelRequest, request: Request
+    purchase_id: int,
+    data: CancelRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
 ) -> JSONResponse:
     session, _ticket_id, resolved_purchase_id, cookie_name = _require_purchase_context(
         request, purchase_id, "cancel"
     )
+
+    from .purchase import _capture_purchase_snapshot, _queue_telegram_event
+    from ..services import telegram
 
     conn = get_connection()
     cur = conn.cursor()
@@ -2444,6 +2450,7 @@ def public_cancel(
     new_amount_due = 0.0
     status = "reserved"
     remaining_tickets = 0
+    telegram_snapshot: dict | None = None
     try:
         amount_due, status = _load_purchase_state(
             cur, resolved_purchase_id, for_update=True
@@ -2456,6 +2463,11 @@ def public_cancel(
             data.ticket_ids,
             lock_tickets=True,
         )
+
+        # Snapshot passenger/route/seat data *before* the tickets are deleted so
+        # the Telegram notification can still describe what was cancelled.
+        if plans and telegram.is_enabled():
+            telegram_snapshot = _capture_purchase_snapshot(conn, resolved_purchase_id)
 
         for plan in plans:
             free_ticket(cur, plan["ticket_id"])
@@ -2501,6 +2513,14 @@ def public_cancel(
     finally:
         cur.close()
         conn.close()
+
+    # Notify operators about the customer-initiated cancellation. Mirrors the
+    # admin cancel flow, which the self-service (minicabinet) path previously
+    # skipped entirely.
+    if plans:
+        _queue_telegram_event(
+            background_tasks, resolved_purchase_id, "cancelled", telegram_snapshot
+        )
 
     payload = {
         "cancelled_ticket_ids": [plan["ticket_id"] for plan in plans],
