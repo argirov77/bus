@@ -299,3 +299,82 @@ def test_public_cancel_preview_returns_expected_amounts(public_client, monkeypat
         "lock_tickets": False,
     }
     assert free_called == []
+
+
+def test_public_cancel_releases_seats_and_notifies_telegram(public_client, monkeypatch):
+    """The self-service (minicabinet) cancel must free seats and queue Telegram.
+
+    Regression test: previously the endpoint released seats but never queued a
+    Telegram notification (unlike the admin cancel flow).
+    """
+    client, _state = public_client
+    public_module = sys.modules["backend.routers.public"]
+    purchase_module = sys.modules["backend.routers.purchase"]
+    telegram_module = sys.modules["backend.services.telegram"]
+
+    class _DummySession:
+        jti = "cancel-jti"
+
+    def fake_require_purchase_context(request, purchase_id, scope):
+        return _DummySession(), None, purchase_id, "cookie"
+
+    class _DummyCursor:
+        def execute(self, *_args, **_kwargs):
+            return None
+
+        def fetchone(self):
+            # COUNT(*) of remaining tickets after cancellation.
+            return (0,)
+
+        def close(self):
+            return None
+
+    class _DummyConnection:
+        def cursor(self):
+            return _DummyCursor()
+
+        def commit(self):
+            return None
+
+        def rollback(self):
+            return None
+
+        def close(self):
+            return None
+
+    def fake_load_purchase_state(cur, purchase_id, *, for_update=False):
+        return 0.0, "reserved"
+
+    def fake_plan_cancel(cur, purchase_id, ticket_ids, *, lock_tickets=False):
+        return ([{"ticket_id": 101, "value": 10.0, "tour_id": 7, "extra_baggage": 0}], -10.0)
+
+    free_called: list[Any] = []
+
+    def fake_free_ticket(cur, ticket_id):
+        free_called.append(ticket_id)
+
+    telegram_events: list[tuple[Any, ...]] = []
+
+    def fake_queue_telegram_event(background_tasks, purchase_id, event_type, snapshot=None):
+        telegram_events.append((purchase_id, event_type, snapshot))
+
+    monkeypatch.setattr(public_module, "_require_purchase_context", fake_require_purchase_context)
+    monkeypatch.setattr(public_module, "get_connection", lambda: _DummyConnection())
+    monkeypatch.setattr(public_module, "_load_purchase_state", fake_load_purchase_state)
+    monkeypatch.setattr(public_module, "_plan_cancel", fake_plan_cancel)
+    monkeypatch.setattr(public_module, "free_ticket", fake_free_ticket)
+    monkeypatch.setattr(public_module, "_log_sale", lambda *a, **k: None)
+    monkeypatch.setattr(public_module.link_sessions, "revoke_ticket_sessions", lambda *a, **k: None)
+    monkeypatch.setattr(telegram_module, "is_enabled", lambda: True)
+    monkeypatch.setattr(purchase_module, "_capture_purchase_snapshot", lambda conn, pid: {"pid": pid})
+    monkeypatch.setattr(purchase_module, "_queue_telegram_event", fake_queue_telegram_event)
+
+    response = client.post(
+        "/public/purchase/5/cancel",
+        json={"ticket_ids": [101]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["cancelled_ticket_ids"] == [101]
+    assert free_called == [101]
+    assert telegram_events == [(5, "cancelled", {"pid": 5})]
