@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from ..auth import optional_scope, require_admin_token, require_scope
 from ..database import get_connection
+from ..models import BookingTermsEnum
 from ..ticket_utils import free_ticket
 from ..services import link_sessions
 from ._ticket_link_helpers import (
@@ -657,7 +658,7 @@ def _create_purchase(
 
     # Determine route/pricelist and ordered stops
     cur.execute(
-        "SELECT route_id, pricelist_id, date FROM tour WHERE id=%s",
+        "SELECT route_id, pricelist_id, date, booking_terms FROM tour WHERE id=%s",
         (data.tour_id,),
     )
     row = cur.fetchone()
@@ -667,6 +668,15 @@ def _create_purchase(
     route_id = row[0]
     pricelist_id = row[1] if len(row) > 1 else None
     tour_date = row[2] if len(row) > 2 else None
+    booking_terms_value = row[3] if len(row) > 3 else None
+    try:
+        booking_terms = (
+            BookingTermsEnum(booking_terms_value)
+            if booking_terms_value is not None
+            else BookingTermsEnum.EXPIRE_AFTER_48H
+        )
+    except ValueError:
+        booking_terms = BookingTermsEnum.EXPIRE_AFTER_48H
 
     if pricelist_id is None:
         cur.execute("SELECT pricelist_id FROM tour WHERE id=%s", (data.tour_id,))
@@ -769,12 +779,31 @@ def _create_purchase(
                 (new_amount, purchase_id),
             )
     else:
-        # 1) create purchase record using first passenger as customer name
+        # 1) create purchase record using first passenger as customer name.
+        # The reservation deadline (after which _cancel_expired_loop frees the
+        # seats) depends on the tour's booking terms:
+        #   EXPIRE_AFTER_48H  -> 48h after booking
+        #   EXPIRE_BEFORE_48H -> 48h before departure
+        #   NO_EXPIRY         -> no deadline, booking never auto-expires
+        #   NO_BOOKING        -> no deadline (reservation is not time-limited)
+        deadline_sql = "NOW() + interval '48 hours'"
+        deadline_params: list = []
+        if booking_terms in (
+            BookingTermsEnum.NO_EXPIRY,
+            BookingTermsEnum.NO_BOOKING,
+        ):
+            deadline_sql = "NULL"
+        elif booking_terms == BookingTermsEnum.EXPIRE_BEFORE_48H:
+            departure_dt = combine_departure_datetime(
+                tour_date, stop_departures.get(data.departure_stop_id)
+            )
+            deadline_sql = "%s::timestamptz - interval '48 hours'"
+            deadline_params = [departure_dt]
         cur.execute(
-            """
+            f"""
             INSERT INTO purchase
               (customer_name, customer_email, customer_phone, amount_due, deadline, status, update_at, payment_method)
-            VALUES (%s,%s,%s,%s,NOW() + interval '1 day',%s,NOW(),%s)
+            VALUES (%s,%s,%s,%s,{deadline_sql},%s,NOW(),%s)
             RETURNING id
             """,
             (
@@ -782,6 +811,7 @@ def _create_purchase(
                 data.passenger_email,
                 data.passenger_phone,
                 total_price,
+                *deadline_params,
                 status,
                 payment_method,
             ),

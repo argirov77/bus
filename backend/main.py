@@ -123,8 +123,12 @@ def _cancel_expired_loop():
         conn = get_connection()
         cur = conn.cursor()
         try:
+            # deadline IS NULL means the tour's booking terms allow the booking
+            # to be held indefinitely (NO_EXPIRY / NO_BOOKING) — never auto-cancel
+            # those. NULL < NOW() is already NULL (false) in SQL, but the explicit
+            # guard keeps the intent clear.
             cur.execute(
-                "SELECT id FROM purchase WHERE status='reserved' AND deadline < NOW()",
+                "SELECT id FROM purchase WHERE status='reserved' AND deadline IS NOT NULL AND deadline < NOW()",
             )
             purchase_ids = [row[0] for row in cur.fetchall()]
 
