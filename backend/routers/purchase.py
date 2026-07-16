@@ -56,7 +56,7 @@ actions_router = APIRouter(tags=["purchase"])
 
 
 DISCOUNT_MULTIPLIER = 0.95
-ROUNDTRIP_MULTIPLIER = 0.85
+ROUNDTRIP_MULTIPLIER = 0.92
 BAGGAGE_MULTIPLIER = 0.10
 OPEN_RETURN_VALID_INTERVAL = "3 months"
 
@@ -737,7 +737,7 @@ def _create_purchase(
         roundtrip=roundtrip,
     )
 
-    # Prepaid open-date return fare, minus 15%. The return tour isn't chosen yet,
+    # Prepaid open-date return fare, minus 8%. The return tour isn't chosen yet,
     # so it's priced off the outbound segment price from the same pricelist rather
     # than a reverse-direction row the outbound pricelist doesn't contain.
     open_return_unit: tuple[float, float] | None = None

@@ -50,21 +50,21 @@ from backend.routers.purchase import (
 def test_passenger_multiplier_combinations():
     assert _passenger_multiplier(False, False) == 1.0
     assert _passenger_multiplier(True, False) == 0.95
-    assert _passenger_multiplier(False, True) == 0.85
+    assert _passenger_multiplier(False, True) == 0.92
     # Discount and round-trip stack multiplicatively.
-    assert _passenger_multiplier(True, True) == 0.95 * 0.85
+    assert _passenger_multiplier(True, True) == 0.95 * 0.92
 
 
 def test_fare_one_way_and_roundtrip():
     # one adult, one discount, no baggage, one-way
     assert _fare(100, adult_count=1, discount_count=1, baggage_count=0) == 195.0
-    # same, round trip: each fare gets x0.85
+    # same, round trip: each fare gets x0.92
     assert _fare(100, adult_count=1, discount_count=1, baggage_count=0, roundtrip=True) == round(
-        100 * (0.85 + 0.95 * 0.85), 2
+        100 * (0.92 + 0.95 * 0.92), 2
     )
     # baggage is NOT discounted by the round-trip multiplier
     assert _fare(100, adult_count=1, discount_count=0, baggage_count=1, roundtrip=True) == round(
-        100 * (0.85 + 0.10), 2
+        100 * (0.92 + 0.10), 2
     )
 
 
@@ -136,8 +136,8 @@ def test_open_return_creates_voucher_and_adds_to_amount(monkeypatch):
 
     purchase_id, amount_due, specs = _create_purchase(cur, data, "reserved")
 
-    # forward fare 10 + open return 10 * 0.85 = 18.5
-    assert amount_due == 18.5
+    # forward fare 10 + open return 10 * 0.92 = 19.2
+    assert amount_due == 19.2
     assert len(specs) == 1
 
     open_inserts = [q for q, p in cur.queries if "insert into open_ticket" in q.lower()]
@@ -160,8 +160,8 @@ def test_open_return_discount_passenger_price(monkeypatch):
 
     _purchase_id, amount_due, _specs = _create_purchase(cur, data, "reserved")
 
-    # forward льгота 10*0.95 = 9.5 ; open return 10*0.95*0.85 = 8.075 -> 8.08
-    assert amount_due == round(9.5 + round(10 * 0.95 * 0.85, 2), 2)
+    # forward льгота 10*0.95 = 9.5 ; open return 10*0.95*0.92 = 8.74
+    assert amount_due == round(9.5 + round(10 * 0.95 * 0.92, 2), 2)
 
 
 class FakeQuoteCursor:
@@ -230,7 +230,7 @@ def test_quote_return_leg_discount(monkeypatch):
         is_return_leg=True,
     )
     result = quote_purchase(data, request=object())
-    assert result["amount_due"] == 8.5
+    assert result["amount_due"] == 9.2
 
 
 def test_quote_open_return_uses_outbound_price(monkeypatch):
@@ -247,8 +247,8 @@ def test_quote_open_return_uses_outbound_price(monkeypatch):
         open_return=True,
     )
     result = quote_purchase(data, request=object())
-    # forward 10 + open return 10*0.85 = 18.5
-    assert result["amount_due"] == 18.5
+    # forward 10 + open return 10*0.92 = 19.2
+    assert result["amount_due"] == 19.2
 
 
 def test_void_open_returns_cancels_open_vouchers():
