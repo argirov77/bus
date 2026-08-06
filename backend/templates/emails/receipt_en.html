@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+  <body>
+    <p>Hello {{ customer_name or "traveller" }},</p>
+    <p>
+      Your payment for order <strong>#{{ purchase_id }}</strong> has been confirmed.
+      The fiscal receipt is attached to this email.
+    </p>
+    <ul>
+      {% if fiscal_code %}<li><strong>Fiscal number:</strong> {{ fiscal_code }}</li>{% endif %}
+      {% if amount_text %}<li><strong>Amount:</strong> {{ amount_text }}</li>{% endif %}
+    </ul>
+    {% if receipt_url %}
+      <p><a href="{{ receipt_url }}">Open the fiscal receipt online</a></p>
+    {% endif %}
+    <p>Thank you for travelling with us!</p>
+  </body>
+</html>

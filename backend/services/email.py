@@ -30,6 +30,12 @@ _SUBJECT_TEMPLATES = {
     "ua": "Ваш квиток №{ticket}",
 }
 
+_RECEIPT_SUBJECT_TEMPLATES = {
+    "bg": "Фискален чек за поръчка №{purchase}",
+    "en": "Fiscal receipt for order #{purchase}",
+    "ua": "Фіскальний чек для замовлення №{purchase}",
+}
+
 _STATUS_LABELS = {
     "bg": {
         "paid": "потвърден",
@@ -163,6 +169,51 @@ def render_ticket_email(
     return subject, html
 
 
+def _load_smtp_settings() -> Tuple[str, int, str | None, str | None, str, str | None]:
+    """Read SMTP configuration from the environment.
+
+    Raises ``EmailConfigurationError`` when a required variable is missing.
+    """
+    host = _get_env("SMTP_HOST")
+    port_raw = _get_env("SMTP_PORT")
+    username = _get_env("SMTP_USERNAME", required=False)
+    password = _get_env("SMTP_PASSWORD", required=False)
+    from_email = _get_env("SMTP_FROM")
+    from_name = _get_env("SMTP_FROM_NAME", required=False)
+    port = int(port_raw) if port_raw else 587
+    return host, port, username, password, from_email, from_name
+
+
+def _dispatch_message(
+    message: EmailMessage,
+    host: str,
+    port: int,
+    username: str | None,
+    password: str | None,
+    to: str,
+) -> None:
+    """Open an SMTP connection and send an already-built message (best effort)."""
+    context = ssl.create_default_context()
+    use_ssl = port == 465
+
+    if use_ssl:
+        smtp_cls = smtplib.SMTP_SSL
+        smtp_kwargs = {"context": context}
+    else:
+        smtp_cls = smtplib.SMTP
+        smtp_kwargs = {}
+
+    try:
+        with smtp_cls(host, port, timeout=30, **smtp_kwargs) as server:
+            if not use_ssl:
+                server.starttls(context=context)
+            if username and password:
+                server.login(username, password)
+            server.send_message(message)
+    except (smtplib.SMTPException, OSError) as exc:
+        logger.warning("Failed to send email to %s: %s", to, exc)
+
+
 def send_ticket_email(
     to: str,
     subject: str,
@@ -172,17 +223,10 @@ def send_ticket_email(
     """Send a ticket email with the provided HTML body and PDF attachment."""
 
     try:
-        host = _get_env("SMTP_HOST")
-        port_raw = _get_env("SMTP_PORT")
-        username = _get_env("SMTP_USERNAME", required=False)
-        password = _get_env("SMTP_PASSWORD", required=False)
-        from_email = _get_env("SMTP_FROM")
-        from_name = _get_env("SMTP_FROM_NAME", required=False)
+        host, port, username, password, from_email, from_name = _load_smtp_settings()
     except EmailConfigurationError:
         logger.info("Skipping ticket email delivery because SMTP is not configured")
         return
-
-    port = int(port_raw) if port_raw else 587
 
     message = EmailMessage()
     message["Subject"] = subject
@@ -205,25 +249,80 @@ def send_ticket_email(
             filename=filename,
         )
 
-    context = ssl.create_default_context()
-    use_ssl = port == 465
+    _dispatch_message(message, host, port, username, password, to)
 
-    if use_ssl:
-        smtp_cls = smtplib.SMTP_SSL
-        smtp_kwargs = {"context": context}
-    else:
-        smtp_cls = smtplib.SMTP
-        smtp_kwargs = {}
+
+def _load_receipt_template(lang: str):
+    template_name = f"receipt_{lang}.html"
+    if not (_TEMPLATES_DIR / template_name).exists():
+        template_name = f"receipt_{DEFAULT_EMAIL_LANG}.html"
+    return _ENV.get_template(template_name)
+
+
+def render_receipt_email(
+    *,
+    purchase_id: Any,
+    fiscal_code: Any,
+    receipt_url: str | None,
+    customer_name: str | None = None,
+    amount_text: str | None = None,
+    lang: str | None = None,
+) -> Tuple[str, str]:
+    """Render the fiscal-receipt email subject and HTML body."""
+
+    lang_value = _resolve_lang(lang)
+    template = _load_receipt_template(lang_value)
+
+    context = {
+        "lang": lang_value,
+        "customer_name": customer_name,
+        "purchase_id": purchase_id,
+        "fiscal_code": fiscal_code,
+        "receipt_url": receipt_url,
+        "amount_text": amount_text,
+    }
+
+    html = template.render(**context)
+    subject_template = (
+        _RECEIPT_SUBJECT_TEMPLATES.get(lang_value)
+        or _RECEIPT_SUBJECT_TEMPLATES[DEFAULT_EMAIL_LANG]
+    )
+    subject = subject_template.format(purchase=purchase_id or "")
+    return subject, html
+
+
+def send_receipt_email(
+    to: str,
+    subject: str,
+    html_body: str,
+    png_bytes: bytes | None,
+) -> None:
+    """Send a fiscal-receipt email with the receipt PNG attached."""
 
     try:
-        with smtp_cls(host, port, timeout=30, **smtp_kwargs) as server:
-            if not use_ssl:
-                server.starttls(context=context)
-            if username and password:
-                server.login(username, password)
-            server.send_message(message)
-    except (smtplib.SMTPException, OSError) as exc:
-        logger.warning("Failed to send ticket email to %s: %s", to, exc)
+        host, port, username, password, from_email, from_name = _load_smtp_settings()
+    except EmailConfigurationError:
+        logger.info("Skipping receipt email delivery because SMTP is not configured")
+        return
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = f"{from_name} <{from_email}>" if from_name else from_email
+    message["To"] = to
+    message.set_content(
+        "This email requires an HTML-compatible client to display the fiscal receipt."
+    )
+    message.add_alternative(html_body, subtype="html")
+
+    if png_bytes:
+        message.add_attachment(
+            png_bytes,
+            maintype="image",
+            subtype="png",
+            filename="receipt.png",
+        )
+
+    _dispatch_message(message, host, port, username, password, to)
 
 
 def send_otp_email(to: str, code: str, lang: str | None = None) -> None:
@@ -274,5 +373,7 @@ __all__ = [
     "EmailConfigurationError",
     "render_ticket_email",
     "send_ticket_email",
+    "render_receipt_email",
+    "send_receipt_email",
     "send_otp_email",
 ]
