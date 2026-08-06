@@ -49,42 +49,39 @@ def _block_real_db(monkeypatch):
     yield
 
 
-@pytest.mark.parametrize(
-    "lang, expected_subject, marker",
-    [
-        ("bg", "Фискален чек за поръчка №77", "Отворете фискалния чек онлайн"),
-        ("en", "Fiscal receipt for order #77", "Open the fiscal receipt online"),
-        ("ua", "Фіскальний чек для замовлення №77", "Відкрити фіскальний чек онлайн"),
-    ],
-)
-def test_render_receipt_email_localization(lang, expected_subject, marker):
+def test_render_receipt_email_is_multilingual():
     subject, html = render_receipt_email(
         purchase_id=77,
         fiscal_code="FC-123",
         receipt_url="https://receipts.example/77.png",
         customer_name="Ivan",
         amount_text="150.00 UAH",
-        lang=lang,
     )
 
-    assert subject == expected_subject
+    # One combined subject with every language + the order number.
+    assert "77" in subject
+    assert "Чек" in subject and "Fiscal receipt" in subject
+
     assert "FC-123" in html
     assert "https://receipts.example/77.png" in html
     assert "150.00 UAH" in html
-    assert marker in html
+    # All four language blocks present (confirmation wording per language).
+    assert "підтверджено" in html  # ua
+    assert "подтверждена" in html  # ru
+    assert "потвърдено" in html  # bg
+    assert "has been confirmed" in html  # en
 
 
-def test_render_receipt_email_defaults_to_bg_for_unknown_lang():
+def test_render_receipt_email_omits_link_without_url():
     subject, html = render_receipt_email(
         purchase_id=5,
         fiscal_code="FC-5",
         receipt_url=None,
-        lang="zz",
     )
 
-    assert "поръчка №5" in subject
-    # No receipt_url -> the online link block is omitted.
-    assert "http" not in html
+    assert "5" in subject
+    # No receipt_url -> the online link block is omitted (no hyperlink).
+    assert "href" not in html
 
 
 class _DummyCursor:

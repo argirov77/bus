@@ -365,15 +365,7 @@ def email_test_env(monkeypatch):
     return state, purchase_router
 
 
-@pytest.mark.parametrize(
-    "lang, expected_subject, marker",
-    [
-        ("en", "Your ticket #42", "Open your ticket online"),
-        ("bg", "Вашият билет №42", "Отворете билета онлайн"),
-        ("ua", "Ваш квиток №42", "Відкрити квиток онлайн"),
-    ],
-)
-def test_render_ticket_email_localization(lang, expected_subject, marker):
+def test_render_ticket_email_is_multilingual():
     dto = {
         "ticket": {"id": 42, "seat_number": 7},
         "passenger": {"name": "Ivan"},
@@ -393,11 +385,21 @@ def test_render_ticket_email_localization(lang, expected_subject, marker):
     }
     deep_link = "https://example.test/api/q/opaque-42"
 
-    subject, html = render_ticket_email(dto, deep_link, lang)
+    subject, html = render_ticket_email(dto, deep_link)
 
-    assert expected_subject in subject
+    # One combined subject carrying every language + the ticket number.
+    assert "42" in subject
+    assert "Квиток" in subject and "Ticket" in subject
+
     assert deep_link in html
-    assert marker in html
+    # Localized status word for each language is present.
+    assert "зарезервований" in html  # ua
+    assert "забронирован" in html  # ru
+    assert "резервиран" in html  # bg
+    assert "reserved" in html  # en
+    # Trip details rendered once.
+    assert "Sofia" in html and "Varna" in html
+    assert "08:00" in html and "11:00" in html
 
 
 def _run_background_tasks(tasks: BackgroundTasks) -> None:

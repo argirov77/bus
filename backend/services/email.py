@@ -24,17 +24,14 @@ _ENV = Environment(
 
 logger = logging.getLogger(__name__)
 
-_SUBJECT_TEMPLATES = {
-    "bg": "Вашият билет №{ticket}",
-    "en": "Your ticket #{ticket}",
-    "ua": "Ваш квиток №{ticket}",
-}
+# Emails are multilingual: every message carries all supported languages at
+# once, so the recipient always finds their own. This is the display order.
+EMAIL_LANGS = ("ua", "ru", "bg", "en")
 
-_RECEIPT_SUBJECT_TEMPLATES = {
-    "bg": "Фискален чек за поръчка №{purchase}",
-    "en": "Fiscal receipt for order #{purchase}",
-    "ua": "Фіскальний чек для замовлення №{purchase}",
-}
+# Combined subject lines (all languages in one). Kept short so they read well
+# in an inbox list.
+_TICKET_SUBJECT = "Квиток / Билет / Ticket №{ticket} — Maximov Tours"
+_RECEIPT_SUBJECT = "Чек / Фискален чек / Fiscal receipt №{purchase} — Maximov Tours"
 
 _STATUS_LABELS = {
     "bg": {
@@ -43,6 +40,14 @@ _STATUS_LABELS = {
         "refunded": "възстановен",
         "cancelled": "отменен",
         "canceled": "отменен",
+        "default": "активен",
+    },
+    "ru": {
+        "paid": "оплачен",
+        "reserved": "забронирован",
+        "refunded": "возвращён",
+        "cancelled": "отменён",
+        "canceled": "отменён",
         "default": "активен",
     },
     "en": {
@@ -81,13 +86,6 @@ def _resolve_lang(lang: str | None) -> str:
     return lang.lower()
 
 
-def _resolve_subject(lang: str, ticket_number: Any, purchase_id: Any) -> str:
-    template = _SUBJECT_TEMPLATES.get(lang) or _SUBJECT_TEMPLATES[DEFAULT_EMAIL_LANG]
-    ticket_value = ticket_number or purchase_id or ""
-    purchase_value = purchase_id or ticket_value
-    return template.format(ticket=ticket_value, purchase=purchase_value)
-
-
 def _format_date(value: Any) -> str | None:
     if not value:
         return None
@@ -110,22 +108,18 @@ def _status_text(lang: str, status_value: str | None) -> str:
     return labels["default"]
 
 
-def _load_template(lang: str):
-    template_name = f"ticket_{lang}.html"
-    if not (_TEMPLATES_DIR / template_name).exists():
-        template_name = f"ticket_{DEFAULT_EMAIL_LANG}.html"
-    return _ENV.get_template(template_name)
-
-
 def render_ticket_email(
     dto: Mapping[str, Any],
     deep_link: str,
-    lang: str | None,
+    lang: str | None = None,
 ) -> Tuple[str, str]:
-    """Render ticket email subject and HTML body for the given DTO."""
+    """Render the multilingual ticket email subject and HTML body.
 
-    lang_value = _resolve_lang(lang)
-    template = _load_template(lang_value)
+    ``lang`` is accepted for backwards compatibility but the rendered message
+    always contains every language in :data:`EMAIL_LANGS`.
+    """
+
+    template = _ENV.get_template("ticket.html")
 
     ticket = dto.get("ticket") if isinstance(dto, Mapping) else None
     purchase = dto.get("purchase") if isinstance(dto, Mapping) else None
@@ -141,13 +135,13 @@ def render_ticket_email(
     purchase_status = (purchase or {}).get("status")
     flags = (purchase or {}).get("flags") or dto.get("payment_status") or {}
     status_value = flags.get("status") or purchase_status
-    status_text = _status_text(lang_value, status_value)
+    status_texts = {code: _status_text(code, status_value) for code in EMAIL_LANGS}
 
     departure = (segment or {}).get("departure") or {}
     arrival = (segment or {}).get("arrival") or {}
 
     context = {
-        "lang": lang_value,
+        "langs": EMAIL_LANGS,
         "customer_name": ((purchase or {}).get("customer") or {}).get("name")
         or (passenger or {}).get("name"),
         "ticket_number": ticket_number,
@@ -159,13 +153,13 @@ def render_ticket_email(
         "departure_time": departure.get("time"),
         "arrival_name": arrival.get("name"),
         "arrival_time": arrival.get("time"),
-        "status_text": status_text,
+        "status_texts": status_texts,
         "is_paid": bool(flags.get("is_paid")),
         "deep_link": deep_link,
     }
 
     html = template.render(**context)
-    subject = _resolve_subject(lang_value, ticket_number, purchase_id)
+    subject = _TICKET_SUBJECT.format(ticket=ticket_number or purchase_id or "")
     return subject, html
 
 
@@ -252,13 +246,6 @@ def send_ticket_email(
     _dispatch_message(message, host, port, username, password, to)
 
 
-def _load_receipt_template(lang: str):
-    template_name = f"receipt_{lang}.html"
-    if not (_TEMPLATES_DIR / template_name).exists():
-        template_name = f"receipt_{DEFAULT_EMAIL_LANG}.html"
-    return _ENV.get_template(template_name)
-
-
 def render_receipt_email(
     *,
     purchase_id: Any,
@@ -268,13 +255,16 @@ def render_receipt_email(
     amount_text: str | None = None,
     lang: str | None = None,
 ) -> Tuple[str, str]:
-    """Render the fiscal-receipt email subject and HTML body."""
+    """Render the multilingual fiscal-receipt email subject and HTML body.
 
-    lang_value = _resolve_lang(lang)
-    template = _load_receipt_template(lang_value)
+    ``lang`` is accepted for backwards compatibility but the rendered message
+    always contains every language in :data:`EMAIL_LANGS`.
+    """
+
+    template = _ENV.get_template("receipt.html")
 
     context = {
-        "lang": lang_value,
+        "langs": EMAIL_LANGS,
         "customer_name": customer_name,
         "purchase_id": purchase_id,
         "fiscal_code": fiscal_code,
@@ -283,11 +273,7 @@ def render_receipt_email(
     }
 
     html = template.render(**context)
-    subject_template = (
-        _RECEIPT_SUBJECT_TEMPLATES.get(lang_value)
-        or _RECEIPT_SUBJECT_TEMPLATES[DEFAULT_EMAIL_LANG]
-    )
-    subject = subject_template.format(purchase=purchase_id or "")
+    subject = _RECEIPT_SUBJECT.format(purchase=purchase_id or "")
     return subject, html
 
 
