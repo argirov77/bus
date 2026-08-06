@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="uk">
+  <body style="margin:0;padding:0;background:#f4f5f7;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0"
+                 style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;color:#1f2933;">
+            <!-- Header -->
+            <tr>
+              <td style="background:#0f4c81;padding:20px 28px;color:#ffffff;">
+                <div style="font-size:18px;font-weight:bold;letter-spacing:0.5px;">MAXIMOV TOURS</div>
+                <div style="font-size:13px;opacity:0.85;margin-top:2px;">
+                  Квиток / Билет / Билет / Ticket
+                  {% if ticket_number %}№{{ ticket_number }}{% endif %}
+                </div>
+              </td>
+            </tr>
+
+            <!-- Greetings + status, all languages -->
+            <tr>
+              <td style="padding:24px 28px 8px 28px;font-size:15px;line-height:1.5;">
+                <p style="margin:0 0 10px 0;">
+                  🇺🇦 Вітаємо{% if customer_name %}, {{ customer_name }}{% endif %}! Ваш квиток
+                  {% if ticket_number %}<strong>№{{ ticket_number }}</strong>{% endif %}
+                  {% if route_name %}на рейс {{ route_name }}{% endif %} —
+                  статус: <strong>{{ status_texts['ua'] }}</strong>.
+                </p>
+                <p style="margin:0 0 10px 0;">
+                  🇷🇺 Здравствуйте{% if customer_name %}, {{ customer_name }}{% endif %}! Ваш билет
+                  {% if ticket_number %}<strong>№{{ ticket_number }}</strong>{% endif %}
+                  {% if route_name %}на рейс {{ route_name }}{% endif %} —
+                  статус: <strong>{{ status_texts['ru'] }}</strong>.
+                </p>
+                <p style="margin:0 0 10px 0;">
+                  🇧🇬 Здравейте{% if customer_name %}, {{ customer_name }}{% endif %}! Вашият билет
+                  {% if ticket_number %}<strong>№{{ ticket_number }}</strong>{% endif %}
+                  {% if route_name %}за {{ route_name }}{% endif %} —
+                  статус: <strong>{{ status_texts['bg'] }}</strong>.
+                </p>
+                <p style="margin:0 0 4px 0;">
+                  🇬🇧 Hello{% if customer_name %}, {{ customer_name }}{% endif %}! Your ticket
+                  {% if ticket_number %}<strong>#{{ ticket_number }}</strong>{% endif %}
+                  {% if route_name %}for {{ route_name }}{% endif %} —
+                  status: <strong>{{ status_texts['en'] }}</strong>.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Trip details (shown once, language-neutral labels) -->
+            <tr>
+              <td style="padding:8px 28px 4px 28px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                       style="background:#f7f9fc;border-radius:10px;font-size:14px;line-height:1.5;">
+                  <tr><td style="padding:14px 16px 6px 16px;">
+                    {% if tour_date %}
+                      <div style="margin-bottom:6px;">📅 <strong>Дата / Дата / Дата / Date:</strong> {{ tour_date }}</div>
+                    {% endif %}
+                    {% if departure_name or departure_time %}
+                      <div style="margin-bottom:6px;">
+                        🚏 <strong>Відправлення / Отправление / Заминаване / Departure:</strong>
+                        {{ departure_name or "" }}{% if departure_time %} — {{ departure_time }}{% endif %}
+                      </div>
+                    {% endif %}
+                    {% if arrival_name or arrival_time %}
+                      <div style="margin-bottom:6px;">
+                        🏁 <strong>Прибуття / Прибытие / Пристигане / Arrival:</strong>
+                        {{ arrival_name or "" }}{% if arrival_time %} — {{ arrival_time }}{% endif %}
+                      </div>
+                    {% endif %}
+                    {% if seat_number %}
+                      <div style="margin-bottom:8px;">💺 <strong>Місце / Место / Място / Seat:</strong> {{ seat_number }}</div>
+                    {% endif %}
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- CTA -->
+            <tr>
+              <td align="center" style="padding:20px 28px 8px 28px;">
+                <a href="{{ deep_link }}"
+                   style="display:inline-block;background:#0f4c81;color:#ffffff;text-decoration:none;
+                          padding:13px 26px;border-radius:8px;font-size:15px;font-weight:bold;">
+                  Керувати поїздкою · Управление поездкой · Управление · Manage trip
+                </a>
+                <div style="font-size:12px;color:#616e7c;margin-top:10px;">
+                  Оплатити, скасувати або перенести поїздку · Оплатить, отменить или перенести ·
+                  Плащане, отмяна или пренасяне · Pay, cancel or reschedule
+                </div>
+              </td>
+            </tr>
+
+            <!-- Footer note -->
+            <tr>
+              <td style="padding:12px 28px 24px 28px;font-size:12px;color:#616e7c;line-height:1.6;border-top:1px solid #eef1f5;">
+                📎 PDF-версію квитка додано до листа · PDF-версия билета во вложении ·
+                PDF версията на билета е приложена · The PDF ticket is attached.
+                <br>
+                {% if is_paid %}✅ Оплату підтверджено · Оплата подтверждена · Плащането е потвърдено · Payment confirmed.{% endif %}
+                <div style="margin-top:10px;">Maximov Tours · since 1992</div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

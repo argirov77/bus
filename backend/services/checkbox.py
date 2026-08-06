@@ -35,6 +35,11 @@ def is_enabled() -> bool:
     return _env("CHECKBOX_ENABLED", "false").lower() in ("true", "1", "yes")
 
 
+def _receipt_email_enabled() -> bool:
+    """Return True when the customer should receive the fiscal receipt by email."""
+    return _env("FISCAL_RECEIPT_EMAIL_ENABLED", "true").lower() in ("true", "1", "yes")
+
+
 def _api_url() -> str:
     return _env("CHECKBOX_API_URL", "https://api.checkbox.ua").rstrip("/")
 
@@ -383,6 +388,26 @@ def get_receipt_png_url(receipt_id: str) -> str:
     return f"{_api_url()}/api/v1/receipts/{receipt_id}/png"
 
 
+def get_receipt_png_bytes(receipt_id: str) -> bytes | None:
+    """Download the fiscal receipt PNG image, returning raw bytes or None.
+
+    Best effort: any failure is logged and swallowed so it never blocks the
+    fiscalization flow or the receipt email (a link is still delivered).
+    """
+    try:
+        resp = httpx.get(
+            get_receipt_png_url(receipt_id),
+            headers=_auth_headers(),
+            timeout=15.0,
+        )
+        _log_http_error(resp)
+        resp.raise_for_status()
+        return resp.content
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("Failed to download CheckBox receipt PNG for %s", receipt_id)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Refund receipts
 # ---------------------------------------------------------------------------
@@ -673,6 +698,69 @@ def _load_purchase_receipt_items(cur, purchase_id: int) -> tuple[list[dict[str, 
 # Main orchestrator
 # ---------------------------------------------------------------------------
 
+def _deliver_receipt_email(
+    purchase_id: int,
+    receipt_id: str | None,
+    fiscal_code: str | None,
+) -> None:
+    """Email the fiscalized receipt to the purchase customer (best effort).
+
+    Uses its own DB connection to read the customer contact details, downloads
+    the receipt PNG from CheckBox and sends it as an attachment alongside a
+    link. Any failure is logged and swallowed so it never affects the already
+    committed fiscalization state.
+    """
+    if not _receipt_email_enabled():
+        return
+
+    from ..database import get_connection
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT customer_email, customer_name, amount_due FROM purchase WHERE id = %s",
+            (purchase_id,),
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    if not row:
+        return
+
+    customer_email, customer_name, amount_due = row
+    if not customer_email:
+        logger.info(
+            "Skipping receipt email for purchase %s: no customer email on file",
+            purchase_id,
+        )
+        return
+
+    receipt_url = get_receipt_png_url(receipt_id) if receipt_id else None
+    png_bytes = get_receipt_png_bytes(receipt_id) if receipt_id else None
+
+    amount_text = None
+    if amount_due is not None:
+        currency = _env("LIQPAY_CURRENCY", "UAH")
+        amount_text = f"{float(amount_due):.2f} {currency}".strip()
+
+    from .email import render_receipt_email, send_receipt_email
+
+    subject, html_body = render_receipt_email(
+        purchase_id=purchase_id,
+        fiscal_code=fiscal_code,
+        receipt_url=receipt_url,
+        customer_name=customer_name,
+        amount_text=amount_text,
+    )
+    send_receipt_email(customer_email, subject, html_body, png_bytes)
+    logger.info(
+        "Sent fiscal receipt email for purchase %s to %s", purchase_id, customer_email
+    )
+
+
 def fiscalize_purchase(purchase_id: int) -> None:
     """Fiscalize a purchase via CheckBox. Safe to call multiple times (idempotent).
 
@@ -779,6 +867,16 @@ def fiscalize_purchase(purchase_id: int) -> None:
             receipt_id,
             fiscal_code,
         )
+
+        # Deliver the fiscal receipt to the customer by email. Best effort:
+        # fiscalization is already committed, so a mail failure must not flip
+        # the purchase back to a retry state.
+        try:
+            _deliver_receipt_email(purchase_id, receipt_id, fiscal_code)
+        except Exception:  # pragma: no cover - defensive
+            logger.exception(
+                "Failed to email fiscal receipt for purchase %s", purchase_id
+            )
 
     except Exception as exc:
         conn.rollback()
