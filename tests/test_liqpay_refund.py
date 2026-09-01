@@ -90,3 +90,53 @@ def test_is_refund_success_recognizes_known_statuses():
     assert liqpay.is_refund_success("sandbox")
     assert not liqpay.is_refund_success("failure")
     assert not liqpay.is_refund_success(None)
+
+
+def test_refund_payment_surfaces_liqpay_error_fields(monkeypatch, caplog):
+    def fake_post(url, data=None, timeout=None):
+        return _FakeResponse(
+            {
+                "result": "error",
+                "status": "error",
+                "err_code": "payment_not_found",
+                "err_description": "Платіж не знайдено",
+            }
+        )
+
+    monkeypatch.setattr("backend.services.liqpay.httpx.post", fake_post)
+
+    with caplog.at_level("WARNING", logger="backend.services.liqpay"):
+        result = liqpay.refund_payment("purchase-114", 1350.0)
+
+    assert result["status"] == "error"
+    assert result["err_code"] == "payment_not_found"
+    assert result["err_description"] == "Платіж не знайдено"
+    assert liqpay.describe_refund_result(result) == (
+        "status=error code=payment_not_found description=Платіж не знайдено"
+    )
+    # The raw body is logged so the cause survives in the backend log.
+    assert any("payment_not_found" in message for message in caplog.messages)
+
+
+def test_refund_payment_does_not_treat_echoed_description_as_an_error(monkeypatch):
+    def fake_post(url, data=None, timeout=None):
+        return _FakeResponse(
+            {
+                "status": "success",
+                "payment_id": "42",
+                "description": "Refund for purchase #114",
+            }
+        )
+
+    monkeypatch.setattr("backend.services.liqpay.httpx.post", fake_post)
+
+    result = liqpay.refund_payment("purchase-114", 1350.0, "Refund for purchase #114")
+
+    assert result["err_code"] is None
+    assert result["err_description"] is None
+    assert liqpay.describe_refund_result(result) == "status=success"
+
+
+def test_extract_error_ignores_non_mapping_bodies():
+    assert liqpay.extract_error(None) == (None, None)
+    assert liqpay.extract_error({}) == (None, None)

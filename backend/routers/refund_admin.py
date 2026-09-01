@@ -156,6 +156,37 @@ def _active_ticket_ids(cur, purchase_id: int) -> list[int]:
     return [int(r[0]) for r in cur.fetchall()]
 
 
+def _describe_liqpay_order(order_id: str | None) -> str:
+    """Best-effort snapshot of what LiqPay itself knows about the order.
+
+    A refusal like ``status=error code=payment_not_found`` only makes sense
+    next to the payment's real state (wrong order id, not captured yet, amount
+    smaller than the requested refund), so ask LiqPay for it before giving up.
+    Never raises: this runs on the failure path and must not mask the refusal.
+    """
+    if not order_id:
+        return ""
+    try:
+        body = liqpay.verify_order(order_id)
+    except Exception:
+        logger.exception("LiqPay status lookup failed for order_id=%s", order_id)
+        return ""
+
+    err_code, err_description = liqpay.extract_error(body)
+    parts = [f"status={body.get('status') or 'unknown'}"]
+    if body.get("amount") is not None:
+        parts.append(f"amount={body.get('amount')}")
+    if body.get("currency"):
+        parts.append(f"currency={body.get('currency')}")
+    if body.get("sender_commission") is not None:
+        parts.append(f"sender_commission={body.get('sender_commission')}")
+    if err_code:
+        parts.append(f"code={err_code}")
+    if err_description:
+        parts.append(f"description={err_description}")
+    return f" (order {order_id}: {', '.join(parts)})"
+
+
 def _log_sale(
     cur,
     purchase_id: int,
@@ -396,7 +427,19 @@ def _execute_refund(
                 raise HTTPException(status_code=502, detail=error) from exc
 
             if not liqpay.is_refund_success(liqpay_result.get("status")):
-                error = f"LiqPay refund rejected: status={liqpay_result.get('status')}"
+                error = (
+                    "LiqPay refund rejected: "
+                    f"{liqpay.describe_refund_result(liqpay_result)}"
+                    f"{_describe_liqpay_order(purchase.get('liqpay_order_id'))}"
+                )
+                logger.error(
+                    "LiqPay refund rejected for request=%s purchase=%s order_id=%s amount=%s: %s",
+                    request_id,
+                    purchase["id"],
+                    purchase.get("liqpay_order_id"),
+                    refund_amount,
+                    error,
+                )
                 _record_failure(request_id, error, liqpay_response=liqpay_result.get("raw"))
                 refund_service.queue_failed_notification(
                     background_tasks, purchase_snapshot, request_row, error

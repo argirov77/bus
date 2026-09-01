@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import logging
 import os
 from datetime import date
 from decimal import Decimal
@@ -10,6 +11,8 @@ import httpx
 
 from ..utils.client_app import build_liqpay_result_url, build_liqpay_server_url
 
+
+logger = logging.getLogger(__name__)
 
 LIQPAY_CHECKOUT_URL = "https://www.liqpay.ua/api/3/checkout"
 LIQPAY_API_URL = "https://www.liqpay.ua/api/request"
@@ -146,6 +149,38 @@ def verify_signature(data: str, signature: str) -> bool:
     return expected_signature == signature
 
 
+def extract_error(body: Mapping[str, Any] | None) -> tuple[str | None, str | None]:
+    """Pull LiqPay's error code/description out of an API response body.
+
+    Only the ``err_*``/``error_*`` keys are read: a successful response echoes
+    back the payment ``description`` we sent, which is not an error at all.
+    """
+    if not isinstance(body, Mapping):
+        return None, None
+    code = body.get("err_code") or body.get("error_code")
+    description = body.get("err_description") or body.get("error_description")
+    return (
+        str(code) if code not in (None, "") else None,
+        str(description) if description not in (None, "") else None,
+    )
+
+
+def describe_refund_result(result: Mapping[str, Any]) -> str:
+    """Human-readable one-liner for a rejected refund.
+
+    ``status=error`` alone is useless when triaging: LiqPay always ships the
+    real cause in ``err_code``/``err_description``, so keep them together.
+    """
+    parts = [f"status={result.get('status') or 'unknown'}"]
+    err_code = result.get("err_code")
+    err_description = result.get("err_description")
+    if err_code:
+        parts.append(f"code={err_code}")
+    if err_description:
+        parts.append(f"description={err_description}")
+    return " ".join(parts)
+
+
 def refund_payment(
     order_id: str,
     amount: Decimal | float,
@@ -153,7 +188,8 @@ def refund_payment(
 ) -> dict[str, Any]:
     """Issue a (partial or full) refund through LiqPay.
 
-    Returns a normalized dict ``{status, payment_id, refund_amount, raw}``.
+    Returns a normalized dict
+    ``{status, err_code, err_description, payment_id, refund_amount, raw}``.
     The LiqPay endpoint expects action=refund and the same order_id used at
     payment time. Partial refunds are supported by passing a smaller amount.
     """
@@ -191,6 +227,7 @@ def refund_payment(
         raise ValueError("Unexpected LiqPay refund response")
 
     raw_status = str(body.get("status") or "").lower()
+    err_code, err_description = extract_error(body)
     payment_id = body.get("payment_id")
     refund_amount_raw = (
         body.get("refund_amount")
@@ -203,12 +240,27 @@ def refund_payment(
     except (TypeError, ValueError):
         refund_amount = amount_value
 
-    return {
+    result = {
         "status": raw_status,
+        "err_code": err_code,
+        "err_description": err_description,
         "payment_id": str(payment_id) if payment_id is not None else None,
         "refund_amount": refund_amount,
         "raw": dict(body),
     }
+
+    if not is_refund_success(raw_status):
+        # The whole body is logged because LiqPay keeps adding fields and the
+        # only chance to see them is the moment a refund is refused.
+        logger.warning(
+            "LiqPay refund refused for order_id=%s amount=%s: %s | raw=%s",
+            order_value,
+            amount_value,
+            describe_refund_result(result),
+            json.dumps(dict(body), ensure_ascii=False, default=str),
+        )
+
+    return result
 
 
 def is_refund_success(status: str | None) -> bool:
