@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 import { API } from "../config";
 import { downloadTicketPdf } from "../utils/ticket";
 import "../styles/PurchasesPage.css";
@@ -32,6 +33,7 @@ const makeScrollKey = (orderId, section) => `${orderId}::${section}`;
 
 export default function PurchasesPage() {
   useEffect(() => { document.title = "Заказы"; }, []);
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
@@ -126,7 +128,28 @@ export default function PurchasesPage() {
     axios.post(`${API}/purchase/${id}/cancel`).then(load).catch(console.error);
   };
   const handleRefund = (id) => {
-    axios.post(`${API}/purchase/${id}/refund`).then(load).catch(console.error);
+    const purchase = items.find((p) => p.id === id);
+    const method = String(purchase?.payment_method || "").toLowerCase();
+    if (method === "online") {
+      // Онлайн-оплату нельзя вернуть одной кнопкой: сумму, билеты и
+      // фискальный чек возврата выбирают на странице заявок.
+      navigate(`/refund-requests?purchase=${id}`);
+      return;
+    }
+    if (!window.confirm(
+      `Оформить возврат по заказу #${id}? Деньги возвращаются вне системы, `
+      + "фискальный чек возврата не оформляется."
+    )) {
+      return;
+    }
+    // Эндпоинт живёт по /refund/{id}, а не /purchase/{id}/refund.
+    axios
+      .post(`${API}/refund/${id}`)
+      .then(load)
+      .catch((err) => {
+        console.error(err);
+        window.alert("Не удалось оформить возврат");
+      });
   };
 
   const handleTicketDownload = async (ticketId) => {

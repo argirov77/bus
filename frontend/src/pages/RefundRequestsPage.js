@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
+import { useSearchParams } from "react-router-dom";
 import { API } from "../config";
 
 const formatDateTime = (date) => {
@@ -29,8 +30,14 @@ export default function RefundRequestsPage() {
     document.title = "Заявки на возврат";
   }, []);
 
+  // Deep link from the purchases page: ?purchase=114 opens that order's request.
+  const [searchParams] = useSearchParams();
+  const purchaseParam = Number(searchParams.get("purchase")) || null;
+  const autoSelected = useRef(false);
+
   const [requests, setRequests] = useState([]);
-  const [filter, setFilter] = useState("pending");
+  const [listLoaded, setListLoaded] = useState(false);
+  const [filter, setFilter] = useState(purchaseParam ? "" : "pending");
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailError, setDetailError] = useState(null);
@@ -49,11 +56,13 @@ export default function RefundRequestsPage() {
       .get(`${API}/admin/refund-requests/`, { params })
       .then((res) => {
         setRequests(res.data || []);
+        setListLoaded(true);
         // A refresh triggered by a failed action must not wipe its message.
         if (!preserveError) setError(null);
       })
       .catch((err) => {
         console.error(err);
+        setListLoaded(true);
         setError("Не удалось загрузить заявки");
       });
   }, [filter]);
@@ -100,6 +109,15 @@ export default function RefundRequestsPage() {
   useEffect(() => {
     loadDetail(selectedId);
   }, [selectedId, loadDetail]);
+
+  useEffect(() => {
+    if (!purchaseParam || autoSelected.current) return;
+    const match = requests.find((r) => r.purchase_id === purchaseParam);
+    if (match) {
+      autoSelected.current = true;
+      setSelectedId(match.id);
+    }
+  }, [requests, purchaseParam]);
 
   const handleToggleTicket = (ticketId) => {
     setSelectedTickets((prev) => ({ ...prev, [ticketId]: !prev[ticketId] }));
@@ -213,6 +231,14 @@ export default function RefundRequestsPage() {
       </div>
 
       {error && <div style={{ color: "red", marginBottom: 8 }}>{error}</div>}
+      {purchaseParam
+        && listLoaded
+        && !requests.some((r) => r.purchase_id === purchaseParam) && (
+        <div style={{ color: "#a15c00", marginBottom: 8 }}>
+          По заказу #{purchaseParam} заявок на возврат не найдено — клиент ещё
+          не оформил заявку.
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <div>
