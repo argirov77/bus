@@ -65,6 +65,7 @@ _original_connect = psycopg2.connect
 psycopg2.connect = lambda *a, **k: _BootstrapConn()
 try:
     from backend.routers import refund_admin
+    from backend.services import liqpay as real_liqpay
 finally:
     psycopg2.connect = _original_connect
 
@@ -282,20 +283,36 @@ class FakeConn:
 class LiqPayStub:
     def __init__(self) -> None:
         self.calls: list[tuple[str, float]] = []
+        self.verify_calls: list[str] = []
         self.result: dict[str, Any] = {
             "status": "success",
             "payment_id": "2870201631",
             "refund_amount": 3500.0,
             "raw": {"status": "success"},
         }
+        self.verify_result: dict[str, Any] | Exception = {
+            "status": "success",
+            "amount": 3500.0,
+            "currency": "UAH",
+        }
 
     def refund_payment(self, order_id, amount, comment=None):
         self.calls.append((order_id, amount))
         return dict(self.result)
 
+    def verify_order(self, order_id):
+        self.verify_calls.append(order_id)
+        if isinstance(self.verify_result, Exception):
+            raise self.verify_result
+        return dict(self.verify_result)
+
     @staticmethod
     def is_refund_success(status):
         return (status or "").lower() in {"success", "ok", "sandbox", "reversed"}
+
+    # Pure formatting helpers: reuse the real implementations.
+    extract_error = staticmethod(real_liqpay.extract_error)
+    describe_refund_result = staticmethod(real_liqpay.describe_refund_result)
 
 
 class CheckboxStub:
@@ -406,3 +423,76 @@ def test_refund_without_original_receipt_is_not_applicable(env):
     assert row["fiscal_receipt_id"] is None
     assert row["failure_reason"] is None
     assert len(liqpay_stub.calls) == 1
+
+
+def test_rejected_liqpay_refund_records_code_description_and_order_state(env):
+    """``status=error`` alone is untriageable — the row must carry the reason.
+
+    Reproduces the production report: a partial refund (1350 of 1500) came
+    back rejected and the admin UI could only show "status=error".
+    """
+    db, liqpay_stub, checkbox_stub = env
+    req = db.seed(114, paid_amount=1500.0, ticket_ids=[161], request_amount=1500.0)
+
+    liqpay_stub.result = {
+        "status": "error",
+        "err_code": "payment_not_found",
+        "err_description": "Платіж не знайдено",
+        "payment_id": None,
+        "refund_amount": 1350.0,
+        "raw": {
+            "result": "error",
+            "status": "error",
+            "err_code": "payment_not_found",
+            "err_description": "Платіж не знайдено",
+        },
+    }
+    liqpay_stub.verify_result = {
+        "status": "wait_accept",
+        "amount": 1500.0,
+        "currency": "UAH",
+    }
+
+    with pytest.raises(HTTPException) as exc_info:
+        _process(req["id"], 1350.0)
+
+    assert exc_info.value.status_code == 502
+    detail = str(exc_info.value.detail)
+    assert "code=payment_not_found" in detail
+    assert "Платіж не знайдено" in detail
+    # The order snapshot explains *why* LiqPay refused it.
+    assert "order ORDER-114" in detail
+    assert "status=wait_accept" in detail
+    assert liqpay_stub.verify_calls == ["ORDER-114"]
+
+    row = db.refunds[0]
+    assert row["status"] == "failed"
+    assert "payment_not_found" in row["failure_reason"]
+    assert row["liqpay_refund_id"] is None  # no money moved
+    assert row["liqpay_response"]["err_code"] == "payment_not_found"
+    # A refused refund must never reach the fiscal step.
+    assert checkbox_stub.calls == []
+
+
+def test_liqpay_status_lookup_failure_still_reports_the_refusal(env):
+    """The diagnostic lookup is best-effort and must not mask the error."""
+    db, liqpay_stub, checkbox_stub = env
+    req = db.seed(115, paid_amount=800.0, ticket_ids=[170], request_amount=800.0)
+
+    liqpay_stub.result = {
+        "status": "error",
+        "err_code": "err_amount_limit",
+        "err_description": None,
+        "payment_id": None,
+        "refund_amount": 800.0,
+        "raw": {"status": "error", "err_code": "err_amount_limit"},
+    }
+    liqpay_stub.verify_result = RuntimeError("connection reset")
+
+    with pytest.raises(HTTPException) as exc_info:
+        _process(req["id"], 800.0)
+
+    detail = str(exc_info.value.detail)
+    assert "status=error" in detail
+    assert "code=err_amount_limit" in detail
+    assert db.refunds[0]["status"] == "failed"

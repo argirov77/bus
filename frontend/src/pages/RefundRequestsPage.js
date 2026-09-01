@@ -42,14 +42,15 @@ export default function RefundRequestsPage() {
   const [comment, setComment] = useState("");
   const [rejectReason, setRejectReason] = useState("");
 
-  const loadList = useCallback(() => {
+  const loadList = useCallback(({ preserveError = false } = {}) => {
     const params = {};
     if (filter) params.status = filter;
     axios
       .get(`${API}/admin/refund-requests/`, { params })
       .then((res) => {
         setRequests(res.data || []);
-        setError(null);
+        // A refresh triggered by a failed action must not wipe its message.
+        if (!preserveError) setError(null);
       })
       .catch((err) => {
         console.error(err);
@@ -61,7 +62,7 @@ export default function RefundRequestsPage() {
     loadList();
   }, [loadList]);
 
-  const loadDetail = useCallback((id) => {
+  const loadDetail = useCallback((id, { preserveForm = false } = {}) => {
     if (id == null) {
       setDetail(null);
       return;
@@ -71,6 +72,9 @@ export default function RefundRequestsPage() {
       .get(`${API}/admin/refund-requests/${id}`)
       .then((res) => {
         setDetail(res.data);
+        // Keep what the admin typed when we are only refreshing the status
+        // after a failed attempt — they will retry with the same values.
+        if (preserveForm) return;
         const ticketIds = (res.data?.request?.ticket_ids || []);
         const sel = {};
         (res.data?.tickets || []).forEach((t) => {
@@ -153,6 +157,10 @@ export default function RefundRequestsPage() {
         console.error(err);
         const msg = err?.response?.data?.detail || "Не удалось обработать возврат";
         setError(String(msg));
+        // The request moved to "failed" server-side — refresh so the status and
+        // the stored failure reason match reality instead of staying "pending".
+        loadList({ preserveError: true });
+        loadDetail(selectedId, { preserveForm: true });
       })
       .finally(() => setBusy(false));
   };
@@ -180,6 +188,9 @@ export default function RefundRequestsPage() {
   const pendingCount = requests.filter((r) => r.status === "pending").length;
   const request = detail?.request;
   const isPending = request?.status === "pending";
+  // A failed request can be retried: the backend skips the LiqPay/CheckBox
+  // steps that already succeeded, so re-processing never refunds twice.
+  const canProcess = isPending || request?.status === "failed";
 
   return (
     <div style={{ padding: 16 }}>
@@ -295,7 +306,7 @@ export default function RefundRequestsPage() {
                         <input
                           type="checkbox"
                           checked={!!selectedTickets[t.id]}
-                          disabled={!isPending}
+                          disabled={!canProcess}
                           onChange={() => handleToggleTicket(t.id)}
                         />
                       </td>
@@ -310,8 +321,13 @@ export default function RefundRequestsPage() {
                 </tbody>
               </table>
 
-              {isPending ? (
+              {canProcess ? (
                 <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
+                  {request.failure_reason && (
+                    <div style={{ color: "red" }}>
+                      Прошлая попытка не удалась: {request.failure_reason}
+                    </div>
+                  )}
                   <label>
                     Сумма возврата:&nbsp;
                     <input
@@ -351,9 +367,13 @@ export default function RefundRequestsPage() {
                       }
                       title={!detail.liqpay_order_id ? "Только для оплат через LiqPay" : ""}
                     >
-                      {busy ? "Обработка..." : "Вернуть через LiqPay"}
+                      {busy
+                        ? "Обработка..."
+                        : isPending
+                          ? "Вернуть через LiqPay"
+                          : "Повторить возврат"}
                     </button>
-                    {request.requested_by === "customer" && (
+                    {isPending && request.requested_by === "customer" && (
                       <>
                         <input
                           type="text"
